@@ -21,7 +21,7 @@
 Multi-word compare-and-swap library
 <p>
 
-    <em>2d93a54 — <a href="https://github.com/kayceesrk/kcas ">homepage</a></em><br>
+    <em>c20751f — <a href="https://github.com/kayceesrk/kcas ">homepage</a></em><br>
 </div>
 <hr width="100%">
 <br>
@@ -101,8 +101,8 @@ The type of CAS result.<br>
 
 <pre><span id="VALtry_map"><span class="keyword">val</span> try_map</span> : <code class="type">'a <a href="Kcas.html#TYPEref">ref</a> -> ('a -> 'a option) -> 'a <a href="Kcas.html#TYPEcas_result">cas_result</a></code></pre><div class="info ">
 <code class="code">try_map&nbsp;r&nbsp;f</code> invokes <code class="code">f&nbsp;c</code>, where <code class="code">c</code> is the result of <code class="code">get&nbsp;r</code>. If the
-    result of <code class="code">f&nbsp;c</code> is <code class="code"><span class="constructor">None</span></code>, then <code class="code"><span class="constructor">Aborted</span></code> is returned. If the result of <code class="code">f<br>
-&nbsp;&nbsp;&nbsp;&nbsp;c</code> is <code class="code"><span class="constructor">Some</span>&nbsp;v</code>, then attempt to CAS update <code class="code">r</code> from <code class="code">c</code> to <code class="code">v</code>. If the CAS
+    result of <code class="code">f&nbsp;c</code> is <code class="code"><span class="constructor">None</span></code>, then <code class="code"><span class="constructor">Aborted</span></code> is returned. If the result of <code class="code">f&nbsp;c</code>
+    is <code class="code"><span class="constructor">Some</span>&nbsp;v</code>, then attempt to CAS update <code class="code">r</code> from <code class="code">c</code> to <code class="code">v</code>. If the CAS
     succeeds, then <code class="code"><span class="constructor">Success</span>&nbsp;c</code> is returned. If the CAS fails, then <code class="code"><span class="constructor">Failed</span></code> is
     returned.<br>
 </div>
