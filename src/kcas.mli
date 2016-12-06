@@ -68,8 +68,8 @@ type 'a cas_result =
 
 val try_map : 'a ref -> ('a -> 'a option) -> 'a cas_result
 (** [try_map r f] invokes [f c], where [c] is the result of [get r]. If the
-    result of [f c] is [None], then [Aborted] is returned. If the result of [f
-    c] is [Some v], then attempt to CAS update [r] from [c] to [v]. If the CAS
+    result of [f c] is [None], then [Aborted] is returned. If the result of [f c]
+    is [Some v], then attempt to CAS update [r] from [c] to [v]. If the CAS
     succeeds, then [Success c] is returned. If the CAS fails, then [Failed] is
     returned. *)
 
