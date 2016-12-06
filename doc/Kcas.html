@@ -9,7 +9,11 @@
 <link title="Index of types" rel=Appendix href="index_types.html">
 <link title="Index of values" rel=Appendix href="index_values.html">
 <link title="Index of modules" rel=Appendix href="index_modules.html">
+<link title="Index of module types" rel=Appendix href="index_module_types.html">
 <link title="Kcas" rel="Chapter" href="Kcas.html"><link title="Kcas" rel="Section" href="#1_Kcas">
+<link title="References" rel="Subsection" href="#2_References">
+<link title="Compare-and-swap" rel="Subsection" href="#2_Compareandswap">
+<link title="Backoff" rel="Subsection" href="#2_Backoff">
 <title>Kcas</title>
 </head>
 <body>
@@ -21,11 +25,13 @@
 Multi-word compare-and-swap library
 <p>
 
-    <em>025eac5 — <a href="https://github.com/kayceesrk/kcas ">homepage</a></em><br>
+    <em>754642a — <a href="https://github.com/kayceesrk/kcas ">homepage</a></em><br>
 </div>
 <hr width="100%">
 <br>
 <h1 id="1_Kcas">Kcas</h1><br>
+<br>
+<h2 id="2_References">References</h2><br>
 
 <pre><span id="TYPEref"><span class="keyword">type</span> <code class="type">'a</code> ref</span> </pre>
 <div class="info ">
@@ -41,7 +47,12 @@ Create a new reference.<br>
 Get the value of the reference.<br>
 </div>
 
-<pre><span id="VALget_id"><span class="keyword">val</span> get_id</span> : <code class="type">'a <a href="Kcas.html#TYPEref">ref</a> -> int</code></pre>
+<pre><span id="VALget_id"><span class="keyword">val</span> get_id</span> : <code class="type">'a <a href="Kcas.html#TYPEref">ref</a> -> int</code></pre><div class="info ">
+Get the unique identity of the reference.<br>
+</div>
+<br>
+<h2 id="2_Compareandswap">Compare-and-swap</h2><br>
+
 <pre><span id="TYPEt"><span class="keyword">type</span> <code class="type"></code>t</span> </pre>
 <div class="info ">
 The type of compare-and-swap value.<br>
@@ -119,4 +130,11 @@ Like <a href="Kcas.html#VALtry_map"><code class="code"><span class="constructor"
 <pre><span id="VALdecr"><span class="keyword">val</span> decr</span> : <code class="type">int <a href="Kcas.html#TYPEref">ref</a> -> unit</code></pre><div class="info ">
 <code class="code">decr&nbsp;r</code> atomically decrements <code class="code">r</code><br>
 </div>
-</body></html>
+<br>
+<h2 id="2_Backoff">Backoff</h2> 
+<p>
+
+    Suspend domains with exponential backoff.<br>
+
+<pre><span class="keyword">module type</span> <a href="Kcas.Backoff.html">Backoff</a> = <code class="code"><span class="keyword">sig</span></code> <a href="Kcas.Backoff.html">..</a> <code class="code"><span class="keyword">end</span></code></pre>
+<pre><span class="keyword">module</span> <a href="Kcas.Backoff.html">Backoff</a>: <code class="type"><a href="Kcas.Backoff.html">Backoff</a></code><code class="type"> </code></pre></body></html>

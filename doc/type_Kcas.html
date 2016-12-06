@@ -6,6 +6,7 @@
 <link title="Index of types" rel=Appendix href="index_types.html">
 <link title="Index of values" rel=Appendix href="index_values.html">
 <link title="Index of modules" rel=Appendix href="index_modules.html">
+<link title="Index of module types" rel=Appendix href="index_module_types.html">
 <link title="Kcas" rel="Chapter" href="Kcas.html"><title>Kcas</title>
 </head>
 <body>
@@ -25,4 +26,12 @@
 &nbsp;&nbsp;<span class="keyword">val</span>&nbsp;map&nbsp;:&nbsp;<span class="keywordsign">'</span>a&nbsp;<span class="constructor">Kcas</span>.ref&nbsp;<span class="keywordsign">-&gt;</span>&nbsp;(<span class="keywordsign">'</span>a&nbsp;<span class="keywordsign">-&gt;</span>&nbsp;<span class="keywordsign">'</span>a&nbsp;option)&nbsp;<span class="keywordsign">-&gt;</span>&nbsp;<span class="keywordsign">'</span>a&nbsp;<span class="constructor">Kcas</span>.cas_result<br>
 &nbsp;&nbsp;<span class="keyword">val</span>&nbsp;incr&nbsp;:&nbsp;int&nbsp;<span class="constructor">Kcas</span>.ref&nbsp;<span class="keywordsign">-&gt;</span>&nbsp;unit<br>
 &nbsp;&nbsp;<span class="keyword">val</span>&nbsp;decr&nbsp;:&nbsp;int&nbsp;<span class="constructor">Kcas</span>.ref&nbsp;<span class="keywordsign">-&gt;</span>&nbsp;unit<br>
+&nbsp;&nbsp;<span class="keyword">module</span>&nbsp;<span class="keyword">type</span>&nbsp;<span class="constructor">Backoff</span>&nbsp;=<br>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="keyword">sig</span><br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="keyword">type</span>&nbsp;t<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="keyword">val</span>&nbsp;create&nbsp;:&nbsp;?max:int&nbsp;<span class="keywordsign">-&gt;</span>&nbsp;unit&nbsp;<span class="keywordsign">-&gt;</span>&nbsp;<span class="constructor">Kcas</span>.<span class="constructor">Backoff</span>.t<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="keyword">val</span>&nbsp;once&nbsp;:&nbsp;<span class="constructor">Kcas</span>.<span class="constructor">Backoff</span>.t&nbsp;<span class="keywordsign">-&gt;</span>&nbsp;unit<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="keyword">val</span>&nbsp;reset&nbsp;:&nbsp;<span class="constructor">Kcas</span>.<span class="constructor">Backoff</span>.t&nbsp;<span class="keywordsign">-&gt;</span>&nbsp;unit<br>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="keyword">end</span><br>
+&nbsp;&nbsp;<span class="keyword">module</span>&nbsp;<span class="constructor">Backoff</span>&nbsp;:&nbsp;<span class="constructor">Backoff</span><br>
 <span class="keyword">end</span></code></body></html>

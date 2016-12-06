@@ -7,6 +7,7 @@
 <link title="Index of types" rel=Appendix href="index_types.html">
 <link title="Index of values" rel=Appendix href="index_values.html">
 <link title="Index of modules" rel=Appendix href="index_modules.html">
+<link title="Index of module types" rel=Appendix href="index_module_types.html">
 <link title="Kcas" rel="Chapter" href="Kcas.html"><title>Index of values</title>
 </head>
 <body>
@@ -26,6 +27,13 @@
 <code class="code">commit&nbsp;c</code> performs the CAS <code class="code">c</code> and returns <code class="code"><span class="keyword">true</span></code> if the CAS is successful.
 </div>
 </td></tr>
+<tr><td><a href="Kcas.Backoff.html#VALcreate">create</a> [<a href="Kcas.Backoff.html">Kcas.Backoff</a>]</td>
+<td><div class="info">
+<code class="code">create&nbsp;~max:maxv&nbsp;()</code> returns a backoff value, which when waited upon,
+      suspends the calling domain for <code class="code">x</code> milliseconds, where <code class="code">x</code> is the
+      current value of the backoff.
+</div>
+</td></tr>
 <tr><td align="left"><br>D</td></tr>
 <tr><td><a href="Kcas.html#VALdecr">decr</a> [<a href="Kcas.html">Kcas</a>]</td>
 <td><div class="info">
@@ -39,7 +47,10 @@ Get the value of the reference.
 </div>
 </td></tr>
 <tr><td><a href="Kcas.html#VALget_id">get_id</a> [<a href="Kcas.html">Kcas</a>]</td>
-<td></td></tr>
+<td><div class="info">
+Get the unique identity of the reference.
+</div>
+</td></tr>
 <tr><td align="left"><br>I</td></tr>
 <tr><td><a href="Kcas.html#VALincr">incr</a> [<a href="Kcas.html">Kcas</a>]</td>
 <td><div class="info">
@@ -70,10 +81,22 @@ Like <a href="Kcas.html#VALtry_map"><code class="code"><span class="constructor"
     reference <code class="code">r</code> to <code class="code">u</code> if the current content of <code class="code">r</code> is <code class="code">e</code>.
 </div>
 </td></tr>
+<tr><td align="left"><br>O</td></tr>
+<tr><td><a href="Kcas.Backoff.html#VALonce">once</a> [<a href="Kcas.Backoff.html">Kcas.Backoff</a>]</td>
+<td><div class="info">
+<code class="code">once&nbsp;b</code> suspends the current domain for <code class="code">x</code> milliseconds, where <code class="code">x</code> is
+      the current value of the backoff.
+</div>
+</td></tr>
 <tr><td align="left"><br>R</td></tr>
 <tr><td><a href="Kcas.html#VALref">ref</a> [<a href="Kcas.html">Kcas</a>]</td>
 <td><div class="info">
 Create a new reference.
+</div>
+</td></tr>
+<tr><td><a href="Kcas.Backoff.html#VALreset">reset</a> [<a href="Kcas.Backoff.html">Kcas.Backoff</a>]</td>
+<td><div class="info">
+Resets the backoff clock to 1 millisecond.
 </div>
 </td></tr>
 <tr><td align="left"><br>T</td></tr>
