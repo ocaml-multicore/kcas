@@ -15,10 +15,11 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
 
-type t
+module type S =  sig
+  type t
+  val create : ?max:int -> unit -> t
+  val once : t -> unit
+  val reset : t -> unit
+end
 
-val create : ?max:int -> unit -> t
-
-val once : t -> unit
-
-val reset : t -> unit
+module M : S

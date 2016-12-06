@@ -15,17 +15,27 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
 
+module type S =  sig
+  type t
+  val create : ?max:int -> unit -> t
+  val once : t -> unit
+  val reset : t -> unit
+end
 
-type t = int * int ref
+module M : S = struct
 
-let _ = Random.self_init ()
+  type t = int * int ref
 
-let create ?(max=32) () = (max, ref 1)
+  let _ = Random.self_init ()
 
-let once (maxv, r) =
-  let t = Random.int (!r) in
-  r := min (2 * !r) maxv;
-  if t = 0 then ()
-  else ignore (Unix.select [] [] [] (0.001 *. (float_of_int t)))
+  let create ?(max=32) () = (max, ref 1)
 
-let reset (_,r) = r := 1
+  let once (maxv, r) =
+    let t = Random.int (!r) in
+    r := min (2 * !r) maxv;
+    if t = 0 then ()
+    else ignore (Unix.select [] [] [] (0.001 *. (float_of_int t)))
+
+  let reset (_,r) = r := 1
+
+end

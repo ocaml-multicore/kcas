@@ -118,11 +118,14 @@ let try_map r f =
   | None -> Aborted
   | Some v -> if cas r s v then Success s else Failed
 
+module type Backoff = Kcas_backoff.S
+module Backoff = Kcas_backoff.M
+
 let map r f =
-  let b = Kcas_backoff.create () in
+  let b = Backoff.create () in
   let rec loop () =
     match try_map r f with
-    | Failed -> Kcas_backoff.once b; loop ()
+    | Failed -> Backoff.once b; loop ()
     | v -> v
   in loop ()
 

@@ -28,6 +28,8 @@
    OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
   ---------------------------------------------------------------------------*)
 
+(** {2 References} *)
+
 type 'a ref
 (** The type of shared memory reference. *)
 
@@ -38,6 +40,9 @@ val get : 'a ref -> 'a
 (** Get the value of the reference. *)
 
 val get_id : 'a ref -> int
+(** Get the unique identity of the reference. *)
+
+(** {2 Compare-and-swap} *)
 
 type t
 (** The type of compare-and-swap value. *)
@@ -82,3 +87,28 @@ val incr : int ref -> unit
 
 val decr : int ref -> unit
 (** [decr r] atomically decrements [r] *)
+
+(** {2 Backoff} 
+ 
+    Suspend domains with exponential backoff. *)
+
+module type Backoff = sig
+  type t
+  (** The type of backoff value *)
+
+  val create : ?max:int -> unit -> t
+  (** [create ~max:maxv ()] returns a backoff value, which when waited upon,
+      suspends the calling domain for [x] milliseconds, where [x] is the
+      current value of the backoff. The backoff value [x] is doubled after
+      every wait upto a maximum of [maxv] milliseconds. The default maximum is
+      32 milliseconds. The initial backoff is 1 millisecond. *)
+
+  val once : t -> unit
+  (** [once b] suspends the current domain for [x] milliseconds, where [x] is
+      the current value of the backoff. *)
+
+  val reset : t -> unit
+  (** Resets the backoff clock to 1 millisecond. *)
+end
+
+module Backoff : Backoff
