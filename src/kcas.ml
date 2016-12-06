@@ -119,10 +119,10 @@ let try_map r f =
   | Some v -> if cas r s v then Success s else Failed
 
 let map r f =
-  let b = Backoff.create () in
+  let b = Kcas_backoff.create () in
   let rec loop () =
     match try_map r f with
-    | Failed -> Backoff.once b; loop ()
+    | Failed -> Kcas_backoff.once b; loop ()
     | v -> v
   in loop ()
 
