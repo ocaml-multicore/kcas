@@ -60,11 +60,11 @@ val kCAS : t list -> bool
 (** [kCAS l] performs a lock-free multi-word CAS and returns [true] if the
     multi-word CAS is successful. *)
 
+(** The type of CAS result. *)
 type 'a cas_result = 
   | Aborted 
   | Failed 
   | Success of 'a
-(** The type of CAS result. *)
 
 val try_map : 'a ref -> ('a -> 'a option) -> 'a cas_result
 (** [try_map r f] invokes [f c], where [c] is the result of [get r]. If the
