@@ -3,18 +3,13 @@
 <head>
 <link rel="stylesheet" href="style.css" type="text/css">
 <meta content="text/html; charset=utf-8" http-equiv="Content-Type">
-<meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="Start" href="index.html">
 <link rel="Up" href="index.html">
 <link title="Index of types" rel=Appendix href="index_types.html">
 <link title="Index of values" rel=Appendix href="index_values.html">
 <link title="Index of modules" rel=Appendix href="index_modules.html">
 <link title="Index of module types" rel=Appendix href="index_module_types.html">
-<link title="Kcas" rel="Chapter" href="Kcas.html"><link title="Kcas" rel="Section" href="#1_Kcas">
-<link title="References" rel="Subsection" href="#2_References">
-<link title="Compare-and-swap" rel="Subsection" href="#2_Compareandswap">
-<link title="Backoff" rel="Subsection" href="#2_Backoff">
-<title>Kcas</title>
+<link title="Kcas" rel="Chapter" href="Kcas.html"><title>Kcas</title>
 </head>
 <body>
 <div class="navbar">&nbsp;<a class="up" href="index.html" title="Index">Up</a>
@@ -25,13 +20,9 @@
 Multi-word compare-and-swap library
 <p>
 
-    <em>754642a — <a href="https://github.com/kayceesrk/kcas ">homepage</a></em><br>
+    <em>0.1.3 — <a href="https://github.com/kayceesrk/kcas ">homepage</a></em><br>
 </div>
 <hr width="100%">
-<br>
-<h1 id="1_Kcas">Kcas</h1><br>
-<br>
-<h2 id="2_References">References</h2><br>
 
 <pre><span id="TYPEref"><span class="keyword">type</span> <code class="type">'a</code> ref</span> </pre>
 <div class="info ">
@@ -50,8 +41,6 @@ Get the value of the reference.<br>
 <pre><span id="VALget_id"><span class="keyword">val</span> get_id</span> : <code class="type">'a <a href="Kcas.html#TYPEref">ref</a> -> int</code></pre><div class="info ">
 Get the unique identity of the reference.<br>
 </div>
-<br>
-<h2 id="2_Compareandswap">Compare-and-swap</h2><br>
 
 <pre><span id="TYPEt"><span class="keyword">type</span> <code class="type"></code>t</span> </pre>
 <div class="info ">
@@ -60,25 +49,25 @@ The type of compare-and-swap value.<br>
 
 
 <pre><span id="VALmk_cas"><span class="keyword">val</span> mk_cas</span> : <code class="type">'a <a href="Kcas.html#TYPEref">ref</a> -> 'a -> 'a -> <a href="Kcas.html#TYPEt">t</a></code></pre><div class="info ">
-<code class="code">mk_cas&nbsp;r&nbsp;e&nbsp;u</code> returns a new CAS value, which when performed, updates the
+<code class="code">mk_cas r e u</code> returns a new CAS value, which when performed, updates the
     reference <code class="code">r</code> to <code class="code">u</code> if the current content of <code class="code">r</code> is <code class="code">e</code>.<br>
 </div>
 
 <pre><span id="VALcas"><span class="keyword">val</span> cas</span> : <code class="type">'a <a href="Kcas.html#TYPEref">ref</a> -> 'a -> 'a -> bool</code></pre><div class="info ">
-<code class="code">cas&nbsp;r&nbsp;e&nbsp;u</code> updates the reference <code class="code">r</code> to value <code class="code">u</code> if the current content
+<code class="code">cas r e u</code> updates the reference <code class="code">r</code> to value <code class="code">u</code> if the current content
     of <code class="code">r</code> is <code class="code">e</code>.<br>
 </div>
 
 <pre><span id="VALis_on_ref"><span class="keyword">val</span> is_on_ref</span> : <code class="type"><a href="Kcas.html#TYPEt">t</a> -> 'a <a href="Kcas.html#TYPEref">ref</a> -> bool</code></pre><div class="info ">
-<code class="code">is_on_ref&nbsp;c&nbsp;r</code> returns <code class="code"><span class="keyword">true</span></code> if <code class="code">c</code> is a CAS on the reference <code class="code">r</code>.<br>
+<code class="code">is_on_ref c r</code> returns <code class="code"><span class="keyword">true</span></code> if <code class="code">c</code> is a CAS on the reference <code class="code">r</code>.<br>
 </div>
 
 <pre><span id="VALcommit"><span class="keyword">val</span> commit</span> : <code class="type"><a href="Kcas.html#TYPEt">t</a> -> bool</code></pre><div class="info ">
-<code class="code">commit&nbsp;c</code> performs the CAS <code class="code">c</code> and returns <code class="code"><span class="keyword">true</span></code> if the CAS is successful.<br>
+<code class="code">commit c</code> performs the CAS <code class="code">c</code> and returns <code class="code"><span class="keyword">true</span></code> if the CAS is successful.<br>
 </div>
 
 <pre><span id="VALkCAS"><span class="keyword">val</span> kCAS</span> : <code class="type"><a href="Kcas.html#TYPEt">t</a> list -> bool</code></pre><div class="info ">
-<code class="code">kCAS&nbsp;l</code> performs a lock-free multi-word CAS and returns <code class="code"><span class="keyword">true</span></code> if the
+<code class="code">kCAS l</code> performs a lock-free multi-word CAS and returns <code class="code"><span class="keyword">true</span></code> if the
     multi-word CAS is successful.<br>
 </div>
 
@@ -111,30 +100,27 @@ The type of CAS result.<br>
 
 
 <pre><span id="VALtry_map"><span class="keyword">val</span> try_map</span> : <code class="type">'a <a href="Kcas.html#TYPEref">ref</a> -> ('a -> 'a option) -> 'a <a href="Kcas.html#TYPEcas_result">cas_result</a></code></pre><div class="info ">
-<code class="code">try_map&nbsp;r&nbsp;f</code> invokes <code class="code">f&nbsp;c</code>, where <code class="code">c</code> is the result of <code class="code">get&nbsp;r</code>. If the
-    result of <code class="code">f&nbsp;c</code> is <code class="code"><span class="constructor">None</span></code>, then <code class="code"><span class="constructor">Aborted</span></code> is returned. If the result of <code class="code">f&nbsp;c</code>
-    is <code class="code"><span class="constructor">Some</span>&nbsp;v</code>, then attempt to CAS update <code class="code">r</code> from <code class="code">c</code> to <code class="code">v</code>. If the CAS
-    succeeds, then <code class="code"><span class="constructor">Success</span>&nbsp;c</code> is returned. If the CAS fails, then <code class="code"><span class="constructor">Failed</span></code> is
+<code class="code">try_map r f</code> invokes <code class="code">f c</code>, where <code class="code">c</code> is the result of <code class="code">get r</code>. If the
+    result of <code class="code">f c</code> is <code class="code"><span class="constructor">None</span></code>, then <code class="code"><span class="constructor">Aborted</span></code> is returned. If the result of <code class="code">f c</code>
+    is <code class="code"><span class="constructor">Some</span> v</code>, then attempt to CAS update <code class="code">r</code> from <code class="code">c</code> to <code class="code">v</code>. If the CAS
+    succeeds, then <code class="code"><span class="constructor">Success</span> c</code> is returned. If the CAS fails, then <code class="code"><span class="constructor">Failed</span></code> is
     returned.<br>
 </div>
 
 <pre><span id="VALmap"><span class="keyword">val</span> map</span> : <code class="type">'a <a href="Kcas.html#TYPEref">ref</a> -> ('a -> 'a option) -> 'a <a href="Kcas.html#TYPEcas_result">cas_result</a></code></pre><div class="info ">
-Like <a href="Kcas.html#VALtry_map"><code class="code"><span class="constructor">Kcas</span>.try_map</code></a> but retries on CAS failure. Hence, <code class="code">map&nbsp;r&nbsp;f</code> never returns
+Like <a href="Kcas.html#VALtry_map"><code class="code"><span class="constructor">Kcas</span>.try_map</code></a> but retries on CAS failure. Hence, <code class="code">map r f</code> never returns
     <code class="code"><span class="constructor">Failed</span></code>.<br>
 </div>
 
 <pre><span id="VALincr"><span class="keyword">val</span> incr</span> : <code class="type">int <a href="Kcas.html#TYPEref">ref</a> -> unit</code></pre><div class="info ">
-<code class="code">incr&nbsp;r</code> atomically increments <code class="code">r</code><br>
+<code class="code">incr r</code> atomically increments <code class="code">r</code><br>
 </div>
 
 <pre><span id="VALdecr"><span class="keyword">val</span> decr</span> : <code class="type">int <a href="Kcas.html#TYPEref">ref</a> -> unit</code></pre><div class="info ">
-<code class="code">decr&nbsp;r</code> atomically decrements <code class="code">r</code><br>
+<code class="code">decr r</code> atomically decrements <code class="code">r</code><br>
 </div>
-<br>
-<h2 id="2_Backoff">Backoff</h2> 
-<p>
 
-    Suspend domains with exponential backoff.<br>
-
+<pre><span class="keyword">module type</span> <a href="Kcas.W1.html">W1</a> = <code class="code"><span class="keyword">sig</span></code> <a href="Kcas.W1.html">..</a> <code class="code"><span class="keyword">end</span></code></pre>
+<pre><span class="keyword">module</span> <a href="Kcas.W1.html">W1</a>: <code class="type"><a href="Kcas.W1.html">W1</a></code><code class="type"> </code></pre>
 <pre><span class="keyword">module type</span> <a href="Kcas.Backoff.html">Backoff</a> = <code class="code"><span class="keyword">sig</span></code> <a href="Kcas.Backoff.html">..</a> <code class="code"><span class="keyword">end</span></code></pre>
 <pre><span class="keyword">module</span> <a href="Kcas.Backoff.html">Backoff</a>: <code class="type"><a href="Kcas.Backoff.html">Backoff</a></code><code class="type"> </code></pre></body></html>

@@ -1,0 +1,62 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+<link rel="stylesheet" href="style.css" type="text/css">
+<meta content="text/html; charset=utf-8" http-equiv="Content-Type">
+<link rel="Start" href="index.html">
+<link rel="next" href="Kcas.Backoff.html">
+<link rel="Up" href="Kcas.html">
+<link title="Index of types" rel=Appendix href="index_types.html">
+<link title="Index of values" rel=Appendix href="index_values.html">
+<link title="Index of modules" rel=Appendix href="index_modules.html">
+<link title="Index of module types" rel=Appendix href="index_module_types.html">
+<link title="Kcas" rel="Chapter" href="Kcas.html"><title>Kcas.W1</title>
+</head>
+<body>
+<div class="navbar">&nbsp;<a class="up" href="Kcas.html" title="Kcas">Up</a>
+&nbsp;<a class="post" href="Kcas.Backoff.html" title="Kcas.Backoff">Next</a>
+</div>
+<h1>Module type <a href="type_Kcas.W1.html">Kcas.W1</a></h1>
+
+<pre><span class="keyword">module type</span> W1 = <code class="code"><span class="keyword">sig</span></code> <a href="Kcas.W1.html">..</a> <code class="code"><span class="keyword">end</span></code></pre><hr width="100%">
+
+<pre><span id="TYPEref"><span class="keyword">type</span> <code class="type">'a</code> ref</span> </pre>
+<div class="info ">
+The type of shared memory reference.<br>
+</div>
+
+
+<pre><span id="VALref"><span class="keyword">val</span> ref</span> : <code class="type">'a -> 'a <a href="Kcas.W1.html#TYPEref">ref</a></code></pre><div class="info ">
+Create a new reference.<br>
+</div>
+
+<pre><span id="VALget"><span class="keyword">val</span> get</span> : <code class="type">'a <a href="Kcas.W1.html#TYPEref">ref</a> -> 'a</code></pre><div class="info ">
+Get the value of the reference.<br>
+</div>
+
+<pre><span id="VALcas"><span class="keyword">val</span> cas</span> : <code class="type">'a <a href="Kcas.W1.html#TYPEref">ref</a> -> 'a -> 'a -> bool</code></pre><div class="info ">
+<code class="code">cas r e u</code> updates the reference <code class="code">r</code> to value <code class="code">u</code> if the current content
+      of <code class="code">r</code> is <code class="code">e</code>.<br>
+</div>
+
+<pre><span id="VALtry_map"><span class="keyword">val</span> try_map</span> : <code class="type">'a <a href="Kcas.W1.html#TYPEref">ref</a> -> ('a -> 'a option) -> 'a <a href="Kcas.html#TYPEcas_result">Kcas.cas_result</a></code></pre><div class="info ">
+<code class="code">try_map r f</code> invokes <code class="code">f c</code>, where <code class="code">c</code> is the result of <code class="code">get r</code>. If the
+      result of <code class="code">f c</code> is <code class="code"><span class="constructor">None</span></code>, then <code class="code"><span class="constructor">Aborted</span></code> is returned. If the result of <code class="code">f c</code>
+      is <code class="code"><span class="constructor">Some</span> v</code>, then attempt to CAS update <code class="code">r</code> from <code class="code">c</code> to <code class="code">v</code>. If the CAS
+      succeeds, then <code class="code"><span class="constructor">Success</span> c</code> is returned. If the CAS fails, then <code class="code"><span class="constructor">Failed</span></code> is
+      returned.<br>
+</div>
+
+<pre><span id="VALmap"><span class="keyword">val</span> map</span> : <code class="type">'a <a href="Kcas.W1.html#TYPEref">ref</a> -> ('a -> 'a option) -> 'a <a href="Kcas.html#TYPEcas_result">Kcas.cas_result</a></code></pre><div class="info ">
+Like <a href="Kcas.W1.html#VALtry_map"><code class="code"><span class="constructor">Kcas</span>.<span class="constructor">W1</span>.try_map</code></a> but retries on CAS failure. Hence, <code class="code">map r f</code> never returns
+      <code class="code"><span class="constructor">Failed</span></code>.<br>
+</div>
+
+<pre><span id="VALincr"><span class="keyword">val</span> incr</span> : <code class="type">int <a href="Kcas.W1.html#TYPEref">ref</a> -> unit</code></pre><div class="info ">
+<code class="code">incr r</code> atomically increments <code class="code">r</code><br>
+</div>
+
+<pre><span id="VALdecr"><span class="keyword">val</span> decr</span> : <code class="type">int <a href="Kcas.W1.html#TYPEref">ref</a> -> unit</code></pre><div class="info ">
+<code class="code">decr r</code> atomically decrements <code class="code">r</code><br>
+</div>
+</body></html>
