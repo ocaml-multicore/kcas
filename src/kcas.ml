@@ -131,3 +131,39 @@ let map r f =
 
 let incr r = ignore @@ map r (fun x -> Some (x + 1))
 let decr r = ignore @@ map r (fun x -> Some (x - 1))
+
+module type W1 = sig
+  type 'a ref
+  val ref : 'a -> 'a ref
+  val get : 'a ref -> 'a
+  val cas : 'a ref -> 'a -> 'a -> bool
+  val try_map : 'a ref -> ('a -> 'a option) -> 'a cas_result
+  val map : 'a ref -> ('a -> 'a option) -> 'a cas_result
+  val incr : int ref -> unit
+  val decr : int ref -> unit
+end
+
+module W1 : W1 = struct
+  type 'a ref = 'a Pervasives.ref
+  let ref = Pervasives.ref
+  let get = Pervasives.(!)
+  let cas = compare_and_swap
+
+  let try_map r f =
+    let s = get r in
+    match f s with
+    | None -> Aborted
+    | Some v -> if cas r s v then Success s else Failed
+
+  let map r f =
+    let b = Backoff.create () in
+    let rec loop () =
+      match try_map r f with
+      | Failed -> Backoff.once b; loop ()
+      | v -> v
+    in loop ()
+
+  let incr r = ignore @@ map r (fun x -> Some (x + 1))
+  let decr r = ignore @@ map r (fun x -> Some (x - 1))
+
+end

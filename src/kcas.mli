@@ -88,6 +88,49 @@ val incr : int ref -> unit
 val decr : int ref -> unit
 (** [decr r] atomically decrements [r] *)
 
+
+(** {2 Single-word Compare-and-swap} 
+ 
+    References optimized for single-word (traditional) CAS operation. The
+    internal representation of a single word CAS reference is more efficient
+    than that of a multi-word CAS reference. *)
+
+module type W1 = sig
+
+  type 'a ref
+  (** The type of shared memory reference. *)
+
+  val ref : 'a -> 'a ref
+  (** Create a new reference. *)
+
+  val get : 'a ref -> 'a
+  (** Get the value of the reference. *)
+
+  val cas : 'a ref -> 'a -> 'a -> bool
+  (** [cas r e u] updates the reference [r] to value [u] if the current content
+      of [r] is [e]. *)
+
+  val try_map : 'a ref -> ('a -> 'a option) -> 'a cas_result
+  (** [try_map r f] invokes [f c], where [c] is the result of [get r]. If the
+      result of [f c] is [None], then [Aborted] is returned. If the result of [f c]
+      is [Some v], then attempt to CAS update [r] from [c] to [v]. If the CAS
+      succeeds, then [Success c] is returned. If the CAS fails, then [Failed] is
+      returned. *)
+
+  val map : 'a ref -> ('a -> 'a option) -> 'a cas_result
+  (** Like {!try_map} but retries on CAS failure. Hence, [map r f] never returns
+      [Failed]. *)
+
+  val incr : int ref -> unit
+  (** [incr r] atomically increments [r] *)
+
+  val decr : int ref -> unit
+  (** [decr r] atomically decrements [r] *)
+
+end
+
+module W1 : W1
+
 (** {2 Backoff} 
  
     Suspend domains with exponential backoff. *)
