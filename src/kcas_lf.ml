@@ -46,16 +46,17 @@ let mk_rdcss_desc c1 c2 =
 ;;
 
 let cas r expect update =
-  match r.content, expect with
+  let s = r.content in
+  match s, expect with
   |WORD(x), WORD(e) when x == e ->
     (* print_endline "CAS WORD"; *)
     if expect == update then
       true
     else
-      compare_and_swap r r.content update
+      compare_and_swap r s update
   |DESC(d1, s1, l1), DESC(d2, s2, l2) when d1 == d2 && s1 == s2 && l1 == l2 ->
     (* print_endline "CAS DESC"; *)
-    compare_and_swap r r.content update
+    compare_and_swap r s update
   |_ -> (*print_endline "CAS INVALID ARGUMENT";*) false
 ;;
 
@@ -183,7 +184,8 @@ let rec thread1 (a1, a2) =
   for i = 1 to n_max do
     let cd1 = DESC(CASN_DESC, ref 0, [CAS (a1, WORD(0), WORD(1)) ; CAS (a2, WORD(0), WORD(1))]) in
     let cd2 = DESC(CASN_DESC, ref 0, [CAS (a1, WORD(1), WORD(0)) ; CAS (a2, WORD(1), WORD(0))]) in
-    print_endline (sprintf "Appel thread1 n°%d\n\n" !n);
+    (* print_endline "CALL"; *)
+    (* print_endline (sprintf "Appel thread1 n°%d\n\n" !n); *)
     let out1 = casn cd1 in
     (* print_endline (sprintf "Thread 1,    out1 : %b,    val1 : %s,    val2 : %s\n" out1 (get a1) (get a2)); *)
     let out2 = casn cd2 in
@@ -191,7 +193,7 @@ let rec thread1 (a1, a2) =
     if out1 = true && out2 = true then
       n := !n + 1
   done;
-  printf "Thread 1 : %d/%d\n" !n n_max
+  print_endline (sprintf "Thread 1 : %d/%d\n" !n n_max)
 ;;
 
 let rec thread2 (a1, a2) =
@@ -217,7 +219,7 @@ let rec thread3 (a1, a2) =
   for i = 1 to n_max do
     let cd1 = DESC(CASN_DESC, ref 0, [CAS (a1, WORD(0), WORD(1)) ; CAS (a2, WORD(1), WORD(0))]) in
     let cd2 = DESC(CASN_DESC, ref 0, [CAS (a1, WORD(1), WORD(0)) ; CAS (a2, WORD(0), WORD(1))]) in
-    print_endline (sprintf "Appel thread3 n°%d\n\n" !n);
+    (* print_endline (sprintf "Appel thread3 n°%d\n\n" !n); *)
     let out1 = casn cd1 in
     (* print_endline (sprintf "Thread 3,    out1 : %b,    val1 : %s,    val2 : %s\n" out1 (get a1) (get a2)); *)
     let out2 = casn cd2 in
@@ -232,14 +234,13 @@ let rec thread3 (a1, a2) =
 let () =
   let a1 = ref 0 in
   let a2 = ref 0 in
+  
+(* WORKS *)
+  thread1 (a1, a2);
 
+(* DOESN'T WORK *)
   let th1 = Thread.create thread1 (a1, a2) in
-  let th2 = Thread.create thread2 (a1, a2) in
-  let th3 = Thread.create thread3 (a1, a2) in
-
-  Thread.join th1;
-  Thread.join th2;
-  Thread.join th3
+  Thread.join th1
 ;;
 
 
