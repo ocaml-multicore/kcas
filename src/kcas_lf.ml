@@ -174,15 +174,14 @@ let rec casn cd =
     phase2 cas_to_proceed st.content
   |_ -> false
 ;;
-(*
+
 let rec casn_read a =
   let r = rdcss_read a in
   if is_casn r then begin
-    casn r;
-    casn_read a
+    casn r; casn_read a
   end else
     r
-;;*)
+;;
 
 let n_max = 100000;;
 
