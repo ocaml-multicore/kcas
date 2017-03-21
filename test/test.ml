@@ -46,17 +46,12 @@ let get r =
 
 let thread1 (a1, a2) =
   for i = 1 to nb_iter do
-(*     print_endline (sprintf "TH%d APPEL N°%d" (Domain.self ()) i); *)
     let cd1 = [CAS (a1, WORD(v_x), WORD(v_y)) ; CAS (a2, WORD(v_x), WORD(v_y))] in
     let cd2 = [CAS (a1, WORD(v_y), WORD(v_x)) ; CAS (a2, WORD(v_y), WORD(v_x))] in
     let out1 = casn cd1 in
-(*     print_endline (sprintf "TH%d OUT1 = %b    a1 = %s    a2 = %s" (Domain.self ()) out1 (get a1) (get a2)); *)
     let out2 = casn cd2 in
-(*     print_endline (sprintf "TH%d OUT2 = %b    a1 = %s    a2 = %s" (Domain.self ()) out2 (get a1) (get a2)); *)
     if out1 <> true || out2 <> true then begin
       print_endline (sprintf "TH%d  APPEL N°%d ECHEC OUT1 = %b    OUT2 = %b!!!!!!!!!" (Domain.self ()) i out1 out2);
-(*       print_endline (sprintf "TH%d  APPEL N°%d ECHEC OUT1 = %b    OUT2 = %b    a1 = %s    a2 = %s !!!!!!!!!" *)
-(*       (Domain.self ()) i out1 out2 (get a1) (get a2)); *)
       th1_success := false
     end
   done;
@@ -67,17 +62,12 @@ let thread1 (a1, a2) =
 
 let thread2 (a1, a2) =
   for i = 1 to nb_iter do
-(*     print_endline (sprintf "TH%d APPEL N°%d" (Domain.self ()) i); *)
     let cd1 = [CAS (a1, WORD(v_y), WORD(v_x)) ; CAS (a2, WORD(v_x), WORD(v_y))] in
     let cd2 = [CAS (a1, WORD(v_x), WORD(v_y)) ; CAS (a2, WORD(v_y), WORD(v_x))] in
     let out1 = casn cd1 in
-(*     print_endline (sprintf "TH%d OUT1 = %b    a1 = %s    a2 = %s" (Domain.self ()) out1 (get a1) (get a2)); *)
     let out2 = casn cd2 in
-(*     print_endline (sprintf "TH%d OUT2 = %b    a1 = %s    a2 = %s" (Domain.self ()) out2 (get a1) (get a2)); *)
     if out1 <> false || out2 <> false then begin
       print_endline (sprintf "TH%d  APPEL N°%d ECHEC OUT1 = %b    OUT2 = %b!!!!!!!!!" (Domain.self ()) i out1 out2);
-(*       print_endline (sprintf "TH%d APPEL N°%d ECHEC OUT1 = %b    OUT2 = %b    a1 = %s    a2 = %s !!!!!!!!!" *)
-(*       (Domain.self ()) i out1 out2 (get a1) (get a2)); *)
       th2_success := false
     end
   done
@@ -85,17 +75,12 @@ let thread2 (a1, a2) =
 
 let thread3 (a1, a2) =
   for i = 1 to nb_iter do
-(*     print_endline (sprintf "TH%d APPEL N°%d" (Domain.self ()) i); *)
     let cd1 = [CAS (a1, WORD(v_x), WORD(v_y)) ; CAS (a2, WORD(v_y), WORD(v_x))] in
     let cd2 = [CAS (a1, WORD(v_y), WORD(v_x)) ; CAS (a2, WORD(v_x), WORD(v_y))] in
     let out1 = casn cd1 in
-(*     print_endline (sprintf "TH%d OUT1 = %b    a1 = %s    a2 = %s" (Domain.self ()) out1 (get a1) (get a2)); *)
     let out2 = casn cd2 in
-(*     print_endline (sprintf "TH%d OUT2 = %b    a1 = %s    a2 = %s" (Domain.self ()) out2 (get a1) (get a2)); *)
     if out1 <> false || out2 <> false then begin
       print_endline (sprintf "TH%d  APPEL N°%d ECHEC OUT1 = %b    OUT2 = %b!!!!!!!!!" (Domain.self ()) i out1 out2);
-(*       print_endline (sprintf "TH%d  APPEL N°%d ECHEC OUT1 = %b    OUT2 = %b    a1 = %s    a2 = %s !!!!!!!!!" *)
-(*       (Domain.self ()) i out1 out2 (get a1) (get a2)); *)
       th3_success := false
     end
   done
