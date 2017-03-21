@@ -33,25 +33,22 @@ let th2_success = Pervasives.ref true;;
 let th3_success = Pervasives.ref true;;
 let th4_success = Pervasives.ref true;;
 let th5_success = Pervasives.ref true;;
-(*
-let rec get s =
-  word s.content
-and word a =
-  match a with
-  |WORD(i) -> sprintf "%d" i
-  |RDCSS_DESC(a1, o1, a2, o2, n2) ->
-    sprintf "RDCSS_DESC (%s, %s, %s, %s, %s)"
-    (get a1) (word o1) (get a2) (word o2) (word n2)
-  |CASN_DESC(st, c_l) ->
-    List.fold_left (fun out (CAS(a, o, n)) -> out ^ (sprintf "CAS(%s, %s, %s) ; " (get a) (word o) (word n)))
-    (sprintf "CASN_DESC Status: %s    " (get st)) c_l
-;;*)
+
+let v_x = 0;;
+let v_y = 1;;
+
+let get r =
+  match r.content with
+  |WORD(out) -> "WORD"
+  |RDCSS_DESC(_) -> "RDCSS"
+  |CASN_DESC(_) -> "CASN"
+;;
 
 let thread1 (a1, a2) =
   for i = 1 to nb_iter do
 (*     print_endline (sprintf "TH%d APPEL N°%d" (Domain.self ()) i); *)
-    let cd1 = [CAS (a1, WORD(0), WORD(1)) ; CAS (a2, WORD(0), WORD(1))] in
-    let cd2 = [CAS (a1, WORD(1), WORD(0)) ; CAS (a2, WORD(1), WORD(0))] in
+    let cd1 = [CAS (a1, WORD(v_x), WORD(v_y)) ; CAS (a2, WORD(v_x), WORD(v_y))] in
+    let cd2 = [CAS (a1, WORD(v_y), WORD(v_x)) ; CAS (a2, WORD(v_y), WORD(v_x))] in
     let out1 = casn cd1 in
 (*     print_endline (sprintf "TH%d OUT1 = %b    a1 = %s    a2 = %s" (Domain.self ()) out1 (get a1) (get a2)); *)
     let out2 = casn cd2 in
@@ -68,8 +65,8 @@ let thread1 (a1, a2) =
 let thread2 (a1, a2) =
   for i = 1 to nb_iter do
 (*     print_endline (sprintf "TH%d APPEL N°%d" (Domain.self ()) i); *)
-    let cd1 = [CAS (a1, WORD(1), WORD(0)) ; CAS (a2, WORD(0), WORD(1))] in
-    let cd2 = [CAS (a1, WORD(0), WORD(1)) ; CAS (a2, WORD(1), WORD(0))] in
+    let cd1 = [CAS (a1, WORD(v_y), WORD(v_x)) ; CAS (a2, WORD(v_x), WORD(v_y))] in
+    let cd2 = [CAS (a1, WORD(v_x), WORD(v_y)) ; CAS (a2, WORD(v_y), WORD(v_x))] in
     let out1 = casn cd1 in
 (*     print_endline (sprintf "TH%d OUT1 = %b    a1 = %s    a2 = %s" (Domain.self ()) out1 (get a1) (get a2)); *)
     let out2 = casn cd2 in
@@ -86,8 +83,8 @@ let thread2 (a1, a2) =
 let thread3 (a1, a2) =
   for i = 1 to nb_iter do
 (*     print_endline (sprintf "TH%d APPEL N°%d" (Domain.self ()) i); *)
-    let cd1 = [CAS (a1, WORD(0), WORD(1)) ; CAS (a2, WORD(1), WORD(0))] in
-    let cd2 = [CAS (a1, WORD(1), WORD(0)) ; CAS (a2, WORD(0), WORD(1))] in
+    let cd1 = [CAS (a1, WORD(v_x), WORD(v_y)) ; CAS (a2, WORD(v_y), WORD(v_x))] in
+    let cd2 = [CAS (a1, WORD(v_y), WORD(v_x)) ; CAS (a2, WORD(v_x), WORD(v_y))] in
     let out1 = casn cd1 in
 (*     print_endline (sprintf "TH%d OUT1 = %b    a1 = %s    a2 = %s" (Domain.self ()) out1 (get a1) (get a2)); *)
     let out2 = casn cd2 in
@@ -120,14 +117,15 @@ let thread5 (a1, a2) =
 ;;
 
 let test_casn () =
-  let a1 = ref 0 in
-  let a2 = ref 0 in
+  let a1 = ref v_x in
+  let a2 = ref v_x in
 
   Domain.spawn (fun () -> thread1 (a1, a2));
   Domain.spawn (fun () -> thread2 (a1, a2));
   Domain.spawn (fun () -> thread3 (a1, a2));
 
   Unix.sleep 15;
+  print_endline (sprintf "a1 = %s et a2 = %s" (get a1) (get a2));
   !th1_success && !th2_success && !th3_success
 ;;
 
@@ -148,11 +146,11 @@ let () =
     print_endline (sprintf "SUCCEEDED")
   else
     print_endline (sprintf "FAILED");
-  print_endline (sprintf "Test READ CASN");
-  if test_read_casn () then
-    print_endline (sprintf "SUCCEEDED")
-  else
-    print_endline (sprintf "FAILED");
+(*   print_endline (sprintf "Test READ CASN"); *)
+(*   if test_read_casn () then *)
+(*     print_endline (sprintf "SUCCEEDED") *)
+(*   else *)
+(*     print_endline (sprintf "FAILED"); *)
   print_endline (sprintf "\nEND")
 ;;
 
