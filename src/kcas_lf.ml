@@ -10,22 +10,18 @@ type 'a state =
   |WORD : 'a -> 'a state
   |RDCSS_DESC : 'a rdcss_t -> 'a state
   |CASN_DESC : casn_t -> 'a state
-and t = CAS : 'a ref * 'a state * 'a state -> t
+and t = CAS : 'a state ref * 'a state * 'a state -> t
 and status = |UNDECIDED |FAILED |SUCCEEDED
-and 'a ref = {
-  mutable content : 'a state;
-  id : int;
-}
 and 'a rdcss_t = {
-  a1 : status ref;
+  a1 : status state ref;
   o1 : status state;
-  a2 : 'a ref;
+  a2 : 'a state ref;
   o2 : 'a state;
   n2 : 'a state;
   id : int;
 }
 and casn_t = {
-  st : status ref;
+  st : status state ref;
   c_l : t list;
   id : int;
 };;
@@ -34,10 +30,7 @@ let compare_and_swap r x y =
   Obj.compare_and_swap_field (Obj.repr r) 0 (Obj.repr x) (Obj.repr y)
 ;;
 
-let ref x = {
-  content = WORD(x);
-  id = Oo.id (object end);
-};;
+let mk_ref a = ref (WORD(a));;
 
 let mk_rdcss a1 o1 a2 o2 n2 = {
   a1 = a1;
@@ -63,7 +56,7 @@ let rec st_eq s s' =
 ;;
 
 let cas1 a o n =
-  let s = a.content in
+  let s = !a in
   st_eq s o && compare_and_swap a s n
 ;;
 
@@ -75,7 +68,7 @@ let rec rdcss rd =
   if commit (CAS(rd.a2, rd.o2, RDCSS_DESC(rd))) then begin
     complete rd; rd.o2
   end else
-    let r = rd.a2.content in
+    let r = !(rd.a2) in
     match r with
     |RDCSS_DESC(rd') -> complete rd'; rdcss rd
     |_ -> if st_eq r rd.o2 then
@@ -83,14 +76,14 @@ let rec rdcss rd =
           else
             r
 and complete rd =
-  if st_eq rd.a1.content rd.o1 then
+  if st_eq !(rd.a1) rd.o1 then
     commit (CAS(rd.a2, RDCSS_DESC(rd), rd.n2))
   else
     commit (CAS(rd.a2, RDCSS_DESC(rd), rd.o2))
 ;;
 
 let rec rdcss_read a =
-  let r = a.content in
+  let r = !a in
   match r with
   |RDCSS_DESC(rd) -> complete rd; rdcss_read a
   |_ -> r
@@ -118,19 +111,19 @@ let rec casn_proceed c =
   let rec phase2 curr_c_l succ =
     match curr_c_l with
     |(CAS(a, o, n))::curr_c_l_tail -> begin
-      (match succ.content with
+      (match !succ with
        |WORD(SUCCEEDED) -> commit (CAS(a, CASN_DESC(c), n))
        |_ -> commit (CAS(a, CASN_DESC(c), o)));
       phase2 curr_c_l_tail succ
     end
-    |_ -> succ.content = WORD(SUCCEEDED)
+    |_ -> !succ = WORD(SUCCEEDED)
   in
-  match c.st.content with
+  match !(c.st) with
   |WORD(UNDECIDED) -> phase2 (phase1 c.c_l SUCCEEDED []) c.st
   |_ -> phase2 c.c_l c.st
 ;;
 
-let casn c_l = casn_proceed (mk_casn (ref UNDECIDED) c_l);;
+let casn c_l = casn_proceed (mk_casn (mk_ref UNDECIDED) c_l);;
 
 let rec casn_read a =
   let r = rdcss_read a in

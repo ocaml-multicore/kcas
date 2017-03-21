@@ -28,17 +28,18 @@ open Kcas_lf;;
 open Printf;;
 
 let nb_iter = 100000;;
-let th1_success = Pervasives.ref true;;
-let th2_success = Pervasives.ref true;;
-let th3_success = Pervasives.ref true;;
-let th4_success = Pervasives.ref true;;
-let th5_success = Pervasives.ref true;;
+let wait_time = 15;;
+let th1_success = ref true;;
+let th2_success = ref true;;
+let th3_success = ref true;;
+let th4_success = ref true;;
+let th5_success = ref true;;
 
 let v_x = 0;;
 let v_y = 1;;
 
 let get r =
-  match r.content with
+  match !r with
   |WORD(out) -> out
   |RDCSS_DESC(_) -> failwith "Error: expected WORD but a RDCSS_DESC was given !"
   |CASN_DESC(_) -> failwith "Error: expected WORD but a CASN_DESC was given !"
@@ -105,26 +106,26 @@ let thread5 (a1, a2) =
 ;;
 
 let test_casn () =
-  let a1 = ref v_x in
-  let a2 = ref v_x in
+  let a1 = mk_ref v_x in
+  let a2 = mk_ref v_x in
 
   Domain.spawn (fun () -> thread1 (a1, a2));
   Domain.spawn (fun () -> thread2 (a1, a2));
   Domain.spawn (fun () -> thread3 (a1, a2));
 
-  Unix.sleep 15;
+  Unix.sleep wait_time;
   print_endline (sprintf "a1 = %d et a2 = %d" (get a1) (get a2));
   !th1_success && !th2_success && !th3_success
 ;;
 
 let test_read_casn () =
-  let a1 = ref 0 in
-  let a2 = ref 0 in
+  let a1 = mk_ref 0 in
+  let a2 = mk_ref 0 in
 
   Domain.spawn (fun () -> thread4 (a1, a2));
   Domain.spawn (fun () -> thread5 (a1, a2));
 
-  Unix.sleep 15;
+  Unix.sleep wait_time;
   !th4_success && !th5_success
 ;;
 
