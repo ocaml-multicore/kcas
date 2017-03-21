@@ -38,35 +38,27 @@ let th5_success = ref true;;
 let v_x = 0;;
 let v_y = 1;;
 
-let get r =
-  match !r with
-  |WORD(out) -> out
-  |RDCSS_DESC(_) -> failwith "Error: expected WORD but a RDCSS_DESC was given !"
-  |CASN_DESC(_) -> failwith "Error: expected WORD but a CASN_DESC was given !"
-;;
-
 let thread1 (a1, a2) =
+  let c1 = [mk_cas a1 v_x v_y ; mk_cas a2 v_x v_y] in
+  let c2 = [mk_cas a1 v_y v_x ; mk_cas a2 v_y v_x] in
   for i = 1 to nb_iter do
-    let cd1 = [CAS (a1, WORD(v_x), WORD(v_y)) ; CAS (a2, WORD(v_x), WORD(v_y))] in
-    let cd2 = [CAS (a1, WORD(v_y), WORD(v_x)) ; CAS (a2, WORD(v_y), WORD(v_x))] in
-    let out1 = casn cd1 in
-    let out2 = casn cd2 in
+    let out1 = casn c1 in
+    let out2 = casn c2 in
     if out1 <> true || out2 <> true then begin
       print_endline (sprintf "TH%d  APPEL N°%d ECHEC OUT1 = %b    OUT2 = %b!!!!!!!!!" (Domain.self ()) i out1 out2);
       th1_success := false
     end
   done;
-  let cd1 = [CAS (a1, WORD(v_x), WORD(v_y)) ; CAS (a2, WORD(v_x), WORD(v_y))] in
-  casn cd1;
+  casn c1;
   ()
 ;;
 
 let thread2 (a1, a2) =
+  let c1 = [mk_cas a1 v_y v_x ; mk_cas a2 v_x v_y] in
+  let c2 = [mk_cas a1 v_x v_y ; mk_cas a2 v_y v_x] in
   for i = 1 to nb_iter do
-    let cd1 = [CAS (a1, WORD(v_y), WORD(v_x)) ; CAS (a2, WORD(v_x), WORD(v_y))] in
-    let cd2 = [CAS (a1, WORD(v_x), WORD(v_y)) ; CAS (a2, WORD(v_y), WORD(v_x))] in
-    let out1 = casn cd1 in
-    let out2 = casn cd2 in
+    let out1 = casn c1 in
+    let out2 = casn c2 in
     if out1 <> false || out2 <> false then begin
       print_endline (sprintf "TH%d  APPEL N°%d ECHEC OUT1 = %b    OUT2 = %b!!!!!!!!!" (Domain.self ()) i out1 out2);
       th2_success := false
@@ -75,11 +67,11 @@ let thread2 (a1, a2) =
 ;;
 
 let thread3 (a1, a2) =
+  let c1 = [mk_cas a1 v_x v_y ; mk_cas a2 v_y v_x] in
+  let c2 = [mk_cas a1 v_y v_x ; mk_cas a2 v_x v_y] in
   for i = 1 to nb_iter do
-    let cd1 = [CAS (a1, WORD(v_x), WORD(v_y)) ; CAS (a2, WORD(v_y), WORD(v_x))] in
-    let cd2 = [CAS (a1, WORD(v_y), WORD(v_x)) ; CAS (a2, WORD(v_x), WORD(v_y))] in
-    let out1 = casn cd1 in
-    let out2 = casn cd2 in
+    let out1 = casn c1 in
+    let out2 = casn c2 in
     if out1 <> false || out2 <> false then begin
       print_endline (sprintf "TH%d  APPEL N°%d ECHEC OUT1 = %b    OUT2 = %b!!!!!!!!!" (Domain.self ()) i out1 out2);
       th3_success := false
@@ -89,8 +81,8 @@ let thread3 (a1, a2) =
 
 let thread4 (a1, a2) =
   for i = 0 to nb_iter do
-    let cd = [CAS (a1, WORD(i), WORD(i+1)) ; CAS (a2, WORD(i), WORD(i+1))] in
-    let out = casn cd in
+    let c = [mk_cas a1 i (i+1) ; mk_cas a2 i (i+1)] in
+    let out = casn c in
     if out <> true then
       th4_success := false
   done
@@ -114,7 +106,7 @@ let test_casn () =
   Domain.spawn (fun () -> thread3 (a1, a2));
 
   Unix.sleep wait_time;
-  print_endline (sprintf "a1 = %d et a2 = %d" (get a1) (get a2));
+  print_endline (sprintf "a1 = %d et a2 = %d" (casn_read a1) (casn_read a2));
   !th1_success && !th2_success && !th3_success
 ;;
 

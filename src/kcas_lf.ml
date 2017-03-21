@@ -32,6 +32,8 @@ let compare_and_swap r x y =
 
 let mk_ref a = ref (WORD(a));;
 
+let mk_cas a o n = CAS(a, WORD(o), WORD(n));;
+
 let mk_rdcss a1 o1 a2 o2 n2 = {
   a1 = a1;
   o1 = o1;
