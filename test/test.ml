@@ -39,9 +39,9 @@ let v_y = 1;;
 
 let get r =
   match r.content with
-  |WORD(out) -> "WORD"
-  |RDCSS_DESC(_) -> "RDCSS"
-  |CASN_DESC(_) -> "CASN"
+  |WORD(out) -> out
+  |RDCSS_DESC(_) -> failwith "Error: expected WORD but a RDCSS_DESC was given !"
+  |CASN_DESC(_) -> failwith "Error: expected WORD but a CASN_DESC was given !"
 ;;
 
 let thread1 (a1, a2) =
@@ -59,7 +59,10 @@ let thread1 (a1, a2) =
 (*       (Domain.self ()) i out1 out2 (get a1) (get a2)); *)
       th1_success := false
     end
-  done
+  done;
+  let cd1 = [CAS (a1, WORD(v_x), WORD(v_y)) ; CAS (a2, WORD(v_x), WORD(v_y))] in
+  casn cd1;
+  ()
 ;;
 
 let thread2 (a1, a2) =
@@ -125,7 +128,7 @@ let test_casn () =
   Domain.spawn (fun () -> thread3 (a1, a2));
 
   Unix.sleep 15;
-  print_endline (sprintf "a1 = %s et a2 = %s" (get a1) (get a2));
+  print_endline (sprintf "a1 = %d et a2 = %d" (get a1) (get a2));
   !th1_success && !th2_success && !th3_success
 ;;
 
@@ -146,11 +149,11 @@ let () =
     print_endline (sprintf "SUCCEEDED")
   else
     print_endline (sprintf "FAILED");
-(*   print_endline (sprintf "Test READ CASN"); *)
-(*   if test_read_casn () then *)
-(*     print_endline (sprintf "SUCCEEDED") *)
-(*   else *)
-(*     print_endline (sprintf "FAILED"); *)
+  print_endline (sprintf "Test READ CASN");
+  if test_read_casn () then
+    print_endline (sprintf "SUCCEEDED")
+  else
+    print_endline (sprintf "FAILED");
   print_endline (sprintf "\nEND")
 ;;
 

@@ -5,7 +5,7 @@ Copyright (c) 2017, Nicolas ASSOUAD <nicolas.assouad@ens.fr>
 *)
 
 open Printf;;
-
+(*
 type state =
   |WORD of int
   |RDCSS_DESC of rdcss_t
@@ -27,18 +27,43 @@ and casn_t = {
   st : ref;
   c_l : t list;
   id : int;
-};;
-(*
+};;*)
+
+
+
+
+
+
 type 'a state =
   |WORD : 'a -> 'a state
-  |RDCSS_DESC : status ref * status state * 'a ref * 'a state * 'a state -> 'a state
-  |CASN_DESC : status ref * t list -> 'a state
+  |RDCSS_DESC : 'a rdcss_t -> 'a state
+  |CASN_DESC : casn_t -> 'a state
 and t = CAS : 'a ref * 'a state * 'a state -> t
 and status = |UNDECIDED |FAILED |SUCCEEDED
 and 'a ref = {
   mutable content : 'a state;
   id : int;
-};;*)
+}
+and 'a rdcss_t = {
+  a1 : status ref;
+  o1 : status state;
+  a2 : 'a ref;
+  o2 : 'a state;
+  n2 : 'a state;
+  id : int;
+}
+and casn_t = {
+  st : status ref;
+  c_l : t list;
+  id : int;
+};;
+
+
+
+
+
+
+
 
 let compare_and_swap r x y =
   Obj.compare_and_swap_field (Obj.repr r) 0 (Obj.repr x) (Obj.repr y)
@@ -159,8 +184,8 @@ let rec casn_proceed c =
 (*   print_endline (sprintf "TH%d: ID %d  " (Domain.self ()) st.id); *)
   let rec phase1 curr_c_l curr_st out =
     match curr_c_l with
-    |(CAS(a, o, n))::curr_c_t_tail when curr_st = 2 -> begin
-      let s = rdcss (mk_rdcss c.st (WORD(0)) a o (CASN_DESC(c))) in
+    |(CAS(a, o, n))::curr_c_t_tail when curr_st = SUCCEEDED -> begin
+      let s = rdcss (mk_rdcss c.st (WORD(UNDECIDED)) a o (CASN_DESC(c))) in
       match s with
       |CASN_DESC(c') ->
         if c.id != c'.id then begin
@@ -176,33 +201,33 @@ let rec casn_proceed c =
           phase1 curr_c_t_tail curr_st (CAS(a, o, n)::out)
         end else begin
 (*           print_endline (sprintf "TH%d: CASN STEP FAILED" (Domain.self ())); *)
-          phase1 curr_c_t_tail 1 (CAS(a, o, n)::out)
+          phase1 curr_c_t_tail FAILED (CAS(a, o, n)::out)
         end
     end
     |_ ->
 (*       print_endline (sprintf "TH%d: CASN PHASE1 FIN" (Domain.self ())); *)
-      commit (CAS(c.st, (WORD(0)), (WORD(curr_st)))); out
+      commit (CAS(c.st, (WORD(UNDECIDED)), (WORD(curr_st)))); out
   in
   let rec phase2 curr_c_l succ =
     match curr_c_l with
     |(CAS(a, o, n))::curr_c_l_tail -> begin
       (match succ.content with
-       |WORD(2) ->
+       |WORD(SUCCEEDED) ->
 (*          print_endline "ICI"; *)
          let out = commit (CAS(a, CASN_DESC(c), n)) in
-(*          print_endline (sprintf "TH%d: len = %d    out = %b" (Domain.self ()) (List.length curr_c_l) out); *)
+(*          print_endline (sprintf "TH%d: PHASE2 len = %d    out = %b" (Domain.self ()) (List.length curr_c_l) out); *)
          out
        |_ -> commit (CAS(a, CASN_DESC(c), o)));
       phase2 curr_c_l_tail succ
     end
-    |_ -> succ.content = WORD(2)
+    |_ -> succ.content = WORD(SUCCEEDED)
   in
   match c.st.content with
-  |WORD(0) -> phase2 (phase1 c.c_l 2 []) c.st
+  |WORD(UNDECIDED) -> phase2 (phase1 c.c_l SUCCEEDED []) c.st
   |_ -> phase2 c.c_l c.st
 ;;
 
-let casn c_l = casn_proceed (mk_casn (ref 0) c_l);;
+let casn c_l = casn_proceed (mk_casn (ref UNDECIDED) c_l);;
 
 let rec casn_read a =
   let r = rdcss_read a in
