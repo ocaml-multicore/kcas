@@ -29,6 +29,10 @@ val mk_cas : 'a ref -> 'a -> 'a -> t;;
 (** [mk_cas a o n] returns a new CAS value, which when performed, updates
     the reference [a] to [n] if the current content of [a] is [o] *)
 
+val set : 'a ref -> 'a -> unit;;
+(** [set r n] updates the reference [r] to value [n] directly. Not Safe to use with
+    shared memory ! *)
+
 val cas : 'a ref -> 'a -> 'a -> bool;;
 (** [cas r e u] updates the reference [r] to value [u] if the current content
     of [r] is [e]. *)

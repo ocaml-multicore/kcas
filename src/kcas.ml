@@ -83,6 +83,8 @@ let commit (CAS (r, expect, update)) =
 
 let cas r e u = commit (mk_cas r e u);;
 
+let set r n = r := WORD(n);;
+
 let rec rdcss rd =
   if commit (CAS(rd.a2, rd.o2, RDCSS_DESC(rd))) then begin
     ignore @@ complete rd; rd.o2
@@ -128,6 +130,7 @@ let rec casn_proceed c =
     |_ -> ignore @@ commit (CAS(c.st, (WORD(UNDECIDED)), (WORD(curr_st)))); out
   in
   let rec phase2 curr_c_l succ =
+    print_endline (sprintf "Domain n°%d    PHASE2" (Domain.self ()));
     match curr_c_l with
     |(CAS(a, o, n))::curr_c_l_tail -> begin
        match !succ with
@@ -155,7 +158,7 @@ let try_map r f =
   let c = get r in
   match f c with
   |None -> Aborted
-  |Some(v) -> if cas r c v then Success(c) else Failed
+  |Some(v) -> if kCAS [mk_cas r c v] then Success(c) else Failed
 ;;
 
 let map r f =

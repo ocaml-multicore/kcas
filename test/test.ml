@@ -121,7 +121,15 @@ let test_read_casn () =
   !th4_success && !th5_success
 ;;
 
-let () =
+let test_set () =
+  let a = ref 0 in
+  let v1 = get a in
+  set a 1;
+  let v2 = get a in
+  print_endline (sprintf "V1 = %d et V2 = %d" v1 v2)
+;;
+
+let main_test () =
   print_endline (sprintf "Test CASN");
   if test_casn () then
     print_endline (sprintf "SUCCEEDED")
@@ -133,6 +141,11 @@ let () =
   else
     print_endline (sprintf "FAILED");
   print_endline (sprintf "\nEND")
+;;
+
+let () =
+(*  main_test ();*)
+  test_set ();
 ;;
 
 
