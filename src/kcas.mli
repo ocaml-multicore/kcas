@@ -103,6 +103,8 @@ module type W1 = sig
   val get : 'a ref -> 'a;;
   (** Get the value of the reference. *)
 
+  val set : 'a ref -> 'a -> unit;;
+
   val cas : 'a ref -> 'a -> 'a -> bool;;
   (** [cas r e u] updates the reference [r] to value [u] if the current content
       of [r] is [e]. *)

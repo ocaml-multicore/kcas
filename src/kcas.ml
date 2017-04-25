@@ -179,6 +179,7 @@ module type W1 = sig
   type 'a ref;;
   val ref : 'a -> 'a ref;;
   val get : 'a ref -> 'a;;
+  val set : 'a ref -> 'a -> unit;;
   val cas : 'a ref -> 'a -> 'a -> bool;;
   val try_map : 'a ref -> ('a -> 'a option) -> 'a cas_result;;
   val map : 'a ref -> ('a -> 'a option) -> 'a cas_result;;
@@ -190,6 +191,7 @@ module W1 : W1 = struct
   type 'a ref = 'a Pervasives.ref;;
   let ref = Pervasives.ref;;
   let get = Pervasives.(!);;
+  let set r n = r := n;;
   let cas = compare_and_swap;;
 
   let try_map r f =
