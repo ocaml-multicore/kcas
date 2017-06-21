@@ -143,9 +143,52 @@ let main_test () =
   print_endline (sprintf "\nEND")
 ;;
 
+let make_ref n =
+  let rec loop n out =
+    if n > 0 then
+      loop (n-1) ((ref 0)::out)
+    else
+      out
+  in loop n []
+;;
+
+let make_kcas0 r_l =
+  let rec loop r_l out =
+    match r_l with
+    |h::t -> loop t ((mk_cas h 0 1)::out)
+    |[] -> out
+  in loop r_l []
+;;
+
+let make_kcas1 r_l =
+  let rec loop r_l out =
+    match r_l with
+    |h::t -> loop t ((mk_cas h 1 0)::out)
+    |[] -> out
+  in loop r_l []
+;;
+
+let test_benchmark n nb_loop =
+  let r_l = make_ref n in
+  let kcas0 = make_kcas0 r_l in
+  let kcas1 = make_kcas1 r_l in
+  let rec loop nb_loop =
+    if nb_loop > 0 then
+      if kCAS kcas0 then
+        if kCAS kcas1 then
+          loop (nb_loop-1)
+        else
+          print_endline (sprintf "FAILURE KCAS1 n°%d" nb_loop)
+      else
+        print_endline (sprintf "FAILURE KCAS0 n°%d" nb_loop)
+  in loop nb_loop;
+  print_endline "TEST SUCCEED"
+;;
+
 let () =
 (*  main_test ();*)
-  test_set ();
+(*  test_set ();*)
+  test_benchmark 1000 10000
 ;;
 
 
