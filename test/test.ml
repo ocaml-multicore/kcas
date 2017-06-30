@@ -28,7 +28,7 @@ open Kcas;;
 open Printf;;
 
 let nb_iter = 100000;;
-let wait_time = 15;;
+let wait_time = 3;;
 let th1_success = Pervasives.ref true;;
 let th2_success = Pervasives.ref true;;
 let th3_success = Pervasives.ref true;;
@@ -45,7 +45,7 @@ let thread1 (a1, a2) =
     let out1 = kCAS c1 in
     let out2 = kCAS c2 in
     if out1 <> true || out2 <> true then begin
-      print_endline (sprintf "TH%d  APPEL N°%d ECHEC OUT1 = %b    OUT2 = %b!!!!!!!!!" (Domain.self ()) i out1 out2);
+(*      print_endline (sprintf "TH%d  APPEL N°%d ECHEC OUT1 = %b    OUT2 = %b!!!!!!!!!" (Domain.self ()) i out1 out2);*)
       th1_success := false
     end
   done;
@@ -60,7 +60,7 @@ let thread2 (a1, a2) =
     let out1 = kCAS c1 in
     let out2 = kCAS c2 in
     if out1 <> false || out2 <> false then begin
-      print_endline (sprintf "TH%d  APPEL N°%d ECHEC OUT1 = %b    OUT2 = %b!!!!!!!!!" (Domain.self ()) i out1 out2);
+(*      print_endline (sprintf "TH%d  APPEL N°%d ECHEC OUT1 = %b    OUT2 = %b!!!!!!!!!" (Domain.self ()) i out1 out2);*)
       th2_success := false
     end
   done
@@ -73,7 +73,7 @@ let thread3 (a1, a2) =
     let out1 = kCAS c1 in
     let out2 = kCAS c2 in
     if out1 <> false || out2 <> false then begin
-      print_endline (sprintf "TH%d  APPEL N°%d ECHEC OUT1 = %b    OUT2 = %b!!!!!!!!!" (Domain.self ()) i out1 out2);
+(*      print_endline (sprintf "TH%d  APPEL N°%d ECHEC OUT1 = %b    OUT2 = %b!!!!!!!!!" (Domain.self ()) i out1 out2);*)
       th3_success := false
     end
   done
@@ -186,9 +186,9 @@ let test_benchmark n nb_loop =
 ;;
 
 let () =
-(*  main_test ();*)
+  main_test ()
 (*  test_set ();*)
-  test_benchmark 1000 10000
+(*  test_benchmark 1000 10000*)
 ;;
 
 

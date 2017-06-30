@@ -144,7 +144,12 @@ let rec casn_proceed c =
   |_ -> phase2 c.c_l c.st
 ;;
 
-let kCAS c_l = casn_proceed (mk_casn (ref UNDECIDED) c_l);;
+let kCAS c_l =
+(*print_endline (sprintf "TH%d <<<%dCAS" (Domain.self ()) (List.length c_l));*)
+let out = casn_proceed (mk_casn (ref UNDECIDED) c_l) in
+(*print_endline (sprintf "TH%d %dCAS %b>>>" (Domain.self ()) (List.length c_l) out);*)
+out
+;;
 
 let rec get a =
   let r = rdcss_read a in
