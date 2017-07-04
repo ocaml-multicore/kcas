@@ -27,8 +27,8 @@
 open Kcas;;
 open Printf;;
 
-let nb_iter = 100000;;
-let wait_time = 3;;
+let nb_iter = 10000;;
+let wait_time = 2;;
 let th1_success = Pervasives.ref true;;
 let th2_success = Pervasives.ref true;;
 let th3_success = Pervasives.ref true;;

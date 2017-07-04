@@ -13,25 +13,23 @@ type 'a state =
   |WORD : 'a -> 'a state
   |RDCSS_DESC : 'a rdcss_t -> 'a state
   |CASN_DESC : casn_t -> 'a state
-and t = CAS : 'a state ref * 'a state * 'a state -> t
+and 'a ref = 'a state Pervasives.ref
+and t = CAS : 'a ref * 'a state * 'a state -> t
 and status = |UNDECIDED |FAILED |SUCCEEDED
 and 'a rdcss_t = {
-  a1 : status state ref;
+  a1 : status ref;
   o1 : status state;
-  a2 : 'a state ref;
+  a2 : 'a ref;
   o2 : 'a state;
   n2 : 'a state;
   id_rdcss : int;
 }
 and casn_t = {
-  st : status state ref;
+  st : status ref;
   c_l : t list;
   id_casn : int;
-};;
-
-type 'a ref = 'a state Pervasives.ref;;
-
-type 'a cas_result =
+}
+and 'a cas_result =
   |Aborted
   |Failed
   |Success of 'a
@@ -43,9 +41,9 @@ let compare_and_swap r x y =
 
 let ref a = Pervasives.ref (WORD(a));;
 
-let get_id r = Obj.tag (Obj.repr r);;
+let equal r1 r2 = (Obj.repr r1) == (Obj.repr r2);;
 
-let is_on_ref c r = true;;
+let is_on_ref (CAS(r1, _, _)) r2 = equal r1 r2;;
 
 let mk_cas a o n = CAS(a, WORD(o), WORD(n));;
 
@@ -72,13 +70,9 @@ let rec st_eq s s' =
   |_ -> false
 ;;
 
-let cas1 a o n =
-  let s = !a in
-  st_eq s o && compare_and_swap a s n
-;;
-
 let commit (CAS (r, expect, update)) =
-  cas1 r expect update
+  let s = !r in
+  st_eq s expect && compare_and_swap r s update
 ;;
 
 let cas r e u = commit (mk_cas r e u);;
@@ -130,7 +124,6 @@ let rec casn_proceed c =
     |_ -> ignore @@ commit (CAS(c.st, (WORD(UNDECIDED)), (WORD(curr_st)))); out
   in
   let rec phase2 curr_c_l succ =
-    (*print_endline (sprintf "Domain n°%d    PHASE2" (Domain.self ()));*)
     match curr_c_l with
     |(CAS(a, o, n))::curr_c_l_tail -> begin
        match !succ with
@@ -144,19 +137,19 @@ let rec casn_proceed c =
   |_ -> phase2 c.c_l c.st
 ;;
 
-let kCAS c_l =
-(*print_endline (sprintf "TH%d <<<%dCAS" (Domain.self ()) (List.length c_l));*)
-let out = casn_proceed (mk_casn (ref UNDECIDED) c_l) in
-(*print_endline (sprintf "TH%d %dCAS %b>>>" (Domain.self ()) (List.length c_l) out);*)
-out
-;;
-
 let rec get a =
   let r = rdcss_read a in
   match r with
   |CASN_DESC(c) -> ignore @@ casn_proceed c; get a
   |WORD(out) -> out
   |_ -> assert false
+;;
+
+let kCAS c_l =
+  match c_l with
+  |[] -> true
+  |[CAS(r, o, n) as c] -> ignore @@ get r; commit c
+  |_ -> casn_proceed (mk_casn (ref UNDECIDED) c_l)
 ;;
 
 let try_map r f =
@@ -218,14 +211,3 @@ module W1 : W1 = struct
   let incr r = ignore @@ map r (fun x -> Some(x+1));;
   let decr r = ignore @@ map r (fun x -> Some(x-1));;
 end
-
-
-
-
-
-
-
-
-(*
-####
-*)

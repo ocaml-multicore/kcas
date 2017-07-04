@@ -20,8 +20,7 @@ type 'a cas_result =
 val ref : 'a -> 'a ref;;
 (** [ref x] returns a reference on a shared memory ceils containing the value [x] *)
 
-val get_id : 'a ref -> int;;
-(** Get the unique identity of the reference. *)
+val equal : 'a ref -> 'b ref -> bool;;
 
 val is_on_ref : t -> 'a ref -> bool;;
 
