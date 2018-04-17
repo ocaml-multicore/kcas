@@ -1,6 +1,6 @@
 description = "Multi-word compare-and-swap library"
 version = "%%VERSION_NUM%%"
-requires = ""
+requires = "unix"
 archive(byte) = "kcas.cma"
 archive(native) = "kcas.cmxa"
 plugin(byte) = "kcas.cma"
