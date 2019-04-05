@@ -1,0 +1,9 @@
+(test
+ (name test)
+ (libraries kcas)
+ (modules test))
+
+(test
+ (name benchmark)
+ (libraries kcas)
+ (modules benchmark))
