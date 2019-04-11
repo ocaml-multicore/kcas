@@ -1,7 +1,0 @@
-description = "Multi-word compare-and-swap library"
-version = "%%VERSION_NUM%%"
-requires = "unix"
-archive(byte) = "kcas.cma"
-archive(native) = "kcas.cmxa"
-plugin(byte) = "kcas.cma"
-plugin(native) = "kcas.cmxs"

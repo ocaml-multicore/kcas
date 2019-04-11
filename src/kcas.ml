@@ -4,8 +4,6 @@ Copyright (c) 2017, Nicolas ASSOUAD <nicolas.assouad@ens.fr>
 ########
 *)
 
-open Printf;;
-
 module type Backoff = Kcas_backoff.S;;
 module Backoff = Kcas_backoff.M;;
 
@@ -62,7 +60,7 @@ let mk_casn st c_l = {
   id_casn = Oo.id (object end);
 };;
 
-let rec st_eq s s' =
+let st_eq s s' =
   match s, s' with
   |WORD(x), WORD(x') -> x == x'
   |RDCSS_DESC(r), RDCSS_DESC(r') -> r.id_rdcss == r'.id_rdcss
@@ -148,7 +146,7 @@ let rec get a =
 let kCAS c_l =
   match c_l with
   |[] -> true
-  |[CAS(r, o, n) as c] -> ignore @@ get r; commit c
+  |[CAS(r, _, _) as c] -> ignore @@ get r; commit c
   |_ -> casn_proceed (mk_casn (ref UNDECIDED) c_l)
 ;;
 

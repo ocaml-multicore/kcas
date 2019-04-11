@@ -41,7 +41,7 @@ let v_y = 1;;
 let thread1 (a1, a2) =
   let c1 = [mk_cas a1 v_x v_y ; mk_cas a2 v_x v_y] in
   let c2 = [mk_cas a1 v_y v_x ; mk_cas a2 v_y v_x] in
-  for i = 1 to nb_iter do
+  for _ = 1 to nb_iter do
     let out1 = kCAS c1 in
     let out2 = kCAS c2 in
     if out1 <> true || out2 <> true then begin
@@ -56,7 +56,7 @@ let thread1 (a1, a2) =
 let thread2 (a1, a2) =
   let c1 = [mk_cas a1 v_y v_x ; mk_cas a2 v_x v_y] in
   let c2 = [mk_cas a1 v_x v_y ; mk_cas a2 v_y v_x] in
-  for i = 1 to nb_iter do
+  for _ = 1 to nb_iter do
     let out1 = kCAS c1 in
     let out2 = kCAS c2 in
     if out1 <> false || out2 <> false then begin
@@ -69,7 +69,7 @@ let thread2 (a1, a2) =
 let thread3 (a1, a2) =
   let c1 = [mk_cas a1 v_x v_y ; mk_cas a2 v_y v_x] in
   let c2 = [mk_cas a1 v_y v_x ; mk_cas a2 v_x v_y] in
-  for i = 1 to nb_iter do
+  for _ = 1 to nb_iter do
     let out1 = kCAS c1 in
     let out2 = kCAS c2 in
     if out1 <> false || out2 <> false then begin
@@ -89,7 +89,7 @@ let thread4 (a1, a2) =
 ;;
 
 let thread5 (a1, a2) =
-  for i = 0 to nb_iter do
+  for _ = 0 to nb_iter do
     let a = get a1 in
     let b = get a2 in
     if a > b then
@@ -101,9 +101,9 @@ let test_casn () =
   let a1 = ref v_x in
   let a2 = ref v_x in
 
-  Domain.spawn (fun () -> thread1 (a1, a2));
-  Domain.spawn (fun () -> thread2 (a1, a2));
-  Domain.spawn (fun () -> thread3 (a1, a2));
+  Domain.spawn (fun () -> thread1 (a1, a2)) |> ignore;
+  Domain.spawn (fun () -> thread2 (a1, a2)) |> ignore;
+  Domain.spawn (fun () -> thread3 (a1, a2)) |> ignore;
 
   Unix.sleep wait_time;
   print_endline (sprintf "a1 = %d et a2 = %d" (get a1) (get a2));
@@ -114,8 +114,8 @@ let test_read_casn () =
   let a1 = ref 0 in
   let a2 = ref 0 in
 
-  Domain.spawn (fun () -> thread4 (a1, a2));
-  Domain.spawn (fun () -> thread5 (a1, a2));
+  Domain.spawn (fun () -> thread4 (a1, a2)) |> ignore;
+  Domain.spawn (fun () -> thread5 (a1, a2)) |> ignore;
 
   Unix.sleep wait_time;
   !th4_success && !th5_success
