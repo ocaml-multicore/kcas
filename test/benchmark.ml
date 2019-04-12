@@ -1,19 +1,14 @@
 
 open Printf;;
 
-let print_usage_and_exit () =
-  print_endline @@ "Usage: " ^ Sys.argv.(0) ^ " <k> <num_iter>";
-  exit(0)
-;;
-
 let (k_kCAS, num_iter) =
   if Array.length Sys.argv < 3 then
-    print_usage_and_exit ()
+    (2, 1000)
   else try
     let a = int_of_string (Sys.argv.(1)) in
     let b = int_of_string (Sys.argv.(2)) in
     (a,b)
-  with Failure _ -> print_usage_and_exit ()
+  with Failure _ -> failwith "Unable to parse arguments"
 ;;
 
 let make_kCAS k =
@@ -63,7 +58,7 @@ let benchmark () =
 
 let main () =
   let n = 10 in
-  let (m,sd) = Benchmark.benchmark benchmark n in
+  let (m,_) = Benchmark.benchmark benchmark n in
   print_endline (sprintf "%f" m)
 ;;
 

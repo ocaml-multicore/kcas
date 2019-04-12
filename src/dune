@@ -1,0 +1,4 @@
+(library
+ (name kcas)
+ (libraries unix)
+ (modes native))

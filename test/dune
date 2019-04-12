@@ -1,0 +1,11 @@
+(test
+ (name test)
+ (libraries kcas)
+ (modules test)
+ (modes native))
+
+(test
+ (name benchmark)
+ (libraries kcas)
+ (modules benchmark)
+ (modes native))
