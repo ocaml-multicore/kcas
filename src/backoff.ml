@@ -32,13 +32,14 @@ module M : S = struct
 
   let create ?(max = 32) () = (max, ref 1)
 
-  let million = Int64.of_int 1_000_000
-
   let once (maxv, r) =
     let t = Random.int !r in
     r := min (2 * !r) maxv ;
     if t = 0 then ()
-    else ignore (Domain.Sync.wait_for (Int64.of_int (1_000_000 * t)))
+    else
+      ignore
+        Domain.Sync.(
+          critical_section (fun _ -> wait_for (Int64.of_int (1_000_000 * t))))
 
   let reset (_, r) = r := 1
 end
