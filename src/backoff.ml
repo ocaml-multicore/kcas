@@ -30,12 +30,13 @@ module M : S = struct
 
   let create ?(max=32) () = (max, ref 1)
 
+  let million = Int64.of_int 1_000_000
+
   let once (maxv, r) =
-    (*print_endline (Printf.sprintf "TH%d : BACKOFF ONCE" (Domain.self ()));*)
     let t = Random.int (!r) in
     r := min (2 * !r) maxv;
     if t = 0 then ()
-    else ignore (Unix.select [] [] [] (0.001 *. (float_of_int t)))
+    else Int64.(mul million (of_int t)) |> Domain.Sync.wait_for |> ignore
 
   let reset (_,r) = r := 1
 
