@@ -36,7 +36,7 @@ module M : S = struct
     let t = Random.int (!r) in
     r := min (2 * !r) maxv;
     if t = 0 then ()
-    else Int64.(mul million (of_int t)) |> Domain.Sync.wait_for |> ignore
+    else ignore (Domain.Sync.wait_for (Int64.of_int (1_000_000 * t)))
 
   let reset (_,r) = r := 1
 
