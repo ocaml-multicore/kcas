@@ -15,29 +15,30 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
 
-module type S =  sig
+module type S = sig
   type t
+
   val create : ?max:int -> unit -> t
+
   val once : t -> unit
+
   val reset : t -> unit
 end
 
 module M : S = struct
-
   type t = int * int ref
 
   let _ = Random.self_init ()
 
-  let create ?(max=32) () = (max, ref 1)
+  let create ?(max = 32) () = (max, ref 1)
 
   let million = Int64.of_int 1_000_000
 
   let once (maxv, r) =
-    let t = Random.int (!r) in
-    r := min (2 * !r) maxv;
+    let t = Random.int !r in
+    r := min (2 * !r) maxv ;
     if t = 0 then ()
     else ignore (Domain.Sync.wait_for (Int64.of_int (1_000_000 * t)))
 
-  let reset (_,r) = r := 1
-
+  let reset (_, r) = r := 1
 end
