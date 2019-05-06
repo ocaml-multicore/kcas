@@ -13,7 +13,7 @@ type 'a state =
   | RDCSS_DESC : 'a rdcss_t -> 'a state
   | CASN_DESC : casn_t -> 'a state
 
-and 'a ref = 'a state Atomic.t
+and 'a ref = {content: 'a state Atomic.t; id: int}
 
 and t = CAS : 'a ref * 'a state * 'a state -> t
 
@@ -31,7 +31,7 @@ and casn_t = {st: status ref; c_l: t list; id_casn: int}
 
 and 'a cas_result = Aborted | Failed | Success of 'a
 
-let ref a = Atomic.make (WORD a)
+let ref a = {content = Atomic.make (WORD a); id= Oo.id (object end)}
 
 let equal r1 r2 = Obj.repr r1 == Obj.repr r2
 
@@ -51,19 +51,21 @@ let st_eq s s' =
   | _ -> false
 
 let commit (CAS (r, expect, update)) =
-  let s = Atomic.get r in
-  st_eq s expect && Atomic.compare_and_set r s update
+  let s = Atomic.get r.content in
+  st_eq s expect && Atomic.compare_and_set r.content s update
 
 let cas r e u = commit (mk_cas r e u)
 
-let set r n = Atomic.set r (WORD n)
+let set r n = Atomic.set r.content (WORD n)
+
+let get_id r = r.id
 
 let rec rdcss rd =
   if commit (CAS (rd.a2, rd.o2, RDCSS_DESC rd)) then (
     ignore @@ complete rd ;
     rd.o2 )
   else
-    let r = Atomic.get rd.a2 in
+    let r = Atomic.get rd.a2.content in
     match r with
     | RDCSS_DESC rd' ->
         ignore @@ complete rd' ;
@@ -71,7 +73,8 @@ let rec rdcss rd =
     | _ -> if st_eq r rd.o2 then rdcss rd else r
 
 and complete rd =
-  if st_eq (Atomic.get rd.a1) rd.o1 then commit (CAS (rd.a2, RDCSS_DESC rd, rd.n2))
+  if st_eq (Atomic.get rd.a1.content) rd.o1 then
+    commit (CAS (rd.a2, RDCSS_DESC rd, rd.n2))
   else commit (CAS (rd.a2, RDCSS_DESC rd, rd.o2))
 
 let rec rdcss_read a =
@@ -113,12 +116,12 @@ let rec casn_proceed c =
           phase2 curr_c_l_tail succ )
     | _ -> Atomic.get succ = WORD SUCCEEDED
   in
-  match Atomic.get c.st with
-  | WORD UNDECIDED -> phase2 (phase1 c.c_l SUCCEEDED []) c.st
-  | _ -> phase2 c.c_l c.st
+  match Atomic.get c.st.content with
+  | WORD UNDECIDED -> phase2 (phase1 c.c_l SUCCEEDED []) c.st.content
+  | _ -> phase2 c.c_l c.st.content
 
 let rec get a =
-  let r = rdcss_read a in
+  let r = rdcss_read a.content in
   match r with
   | CASN_DESC c ->
       ignore @@ casn_proceed c ;
@@ -130,7 +133,7 @@ let kCAS c_l =
   match c_l with
   | [] -> true
   | [(CAS (r, _, _) as c)] ->
-      ignore @@ get r ;
+      ignore @@ get r;
       commit c
   | _ -> casn_proceed (mk_casn (ref UNDECIDED) c_l)
 

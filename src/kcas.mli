@@ -34,7 +34,10 @@ val kCAS : t list -> bool
     multi-word CAS is successful. *)
 
 val get : 'a ref -> 'a
-(** [get a] reads the value contained in the memory ceil [a]. *)
+(** [get a] reads the value contained in reference [a]. *)
+
+val get_id : 'a ref -> int
+(** [get_id a] returns the unique id of the reference [a]. *)
 
 val try_map : 'a ref -> ('a -> 'a option) -> 'a cas_result
 (** [try_map r f] invokes [f c], where [c] is the result of [get r]. If the
