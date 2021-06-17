@@ -29,11 +29,11 @@ open Printf;;
 
 let nb_iter = 10000;;
 let wait_time = 2;;
-let th1_success = Pervasives.ref true;;
-let th2_success = Pervasives.ref true;;
-let th3_success = Pervasives.ref true;;
-let th4_success = Pervasives.ref true;;
-let th5_success = Pervasives.ref true;;
+let th1_success = Stdlib.ref true;;
+let th2_success = Stdlib.ref true;;
+let th3_success = Stdlib.ref true;;
+let th4_success = Stdlib.ref true;;
+let th5_success = Stdlib.ref true;;
 
 let v_x = 0;;
 let v_y = 1;;

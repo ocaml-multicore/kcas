@@ -1,6 +1,7 @@
 (*
  * Copyright (c) 2015, Théo Laurent <theo.laurent@ens.fr>
  * Copyright (c) 2015, KC Sivaramakrishnan <sk826@cl.cam.ac.uk>
+ * Copyright (c) 2021, Sudha Parimala <sudharg247@gmail.com>
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -36,10 +37,11 @@ module M : S = struct
     let t = Random.int !r in
     r := min (2 * !r) maxv ;
     if t = 0 then ()
-    else
-      ignore
-        Domain.Sync.(
-          critical_section (fun _ -> wait_for (Int64.of_int (1_000_000 * t))))
+    else begin
+      for _ = 1 to 2048 * t do
+        Domain.Sync.cpu_relax ()
+      done
+    end
 
   let reset (_, r) = r := 1
 end
