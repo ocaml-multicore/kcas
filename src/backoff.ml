@@ -39,7 +39,7 @@ module M : S = struct
     if t = 0 then ()
     else begin
       for _ = 1 to 2048 * t do
-        Domain.Sync.cpu_relax ()
+        Domain.cpu_relax ()
       done
     end
 
