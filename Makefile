@@ -1,5 +1,10 @@
-all:
-	ocaml pkg/pkg.ml build --pinned false
+all: build test
+
+build:
+	@dune build @install
+
+test:
+	@dune runtest --force
 
 clean:
-	rm -rf _build
+	@dune clean
