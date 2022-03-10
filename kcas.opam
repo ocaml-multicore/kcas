@@ -10,8 +10,6 @@ dev-repo: "git+https://github.com/kayceesrk/kcas.git"
 bug-reports: "https://github.com/kayceesrk/kcas/issues"
 tags: []
 depends: [
-  "ocamlfind" {build}
-  "ocamlbuild" {build}
   "dune" {build} ]
 depopts: []
 build: [
