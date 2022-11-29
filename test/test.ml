@@ -186,9 +186,9 @@ let test_benchmark n nb_loop =
 ;;
 
 let () =
-  main_test ()
-(*  test_set ();*)
-(*  test_benchmark 1000 10000*)
+  main_test ();
+  test_set ();
+  test_benchmark 1000 10000
 ;;
 
 
