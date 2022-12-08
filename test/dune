@@ -4,6 +4,12 @@
  (modules test))
 
 (test
+ (name test_overlapping_loc)
+ (libraries kcas)
+ (modules test_overlapping_loc)
+ (modes native))
+
+(test
  (name benchmark)
  (libraries kcas)
  (modules benchmark))

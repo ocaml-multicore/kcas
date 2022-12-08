@@ -16,6 +16,7 @@ let make_kCAS k =
       loop (k - 1) (Kcas.mk_cas a 0 1 :: out1) (Kcas.mk_cas a 1 0 :: out2)
     else (out1, out2)
   in
+
   loop k [] []
 
 let operation1, operation2 = make_kCAS k_kCAS

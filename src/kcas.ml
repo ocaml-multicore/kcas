@@ -8,6 +8,11 @@ module type Backoff = Backoff.S
 
 module Backoff = Backoff.M
 
+module Id = struct
+  let id = Atomic.make 1
+  let get_unique () = Atomic.fetch_and_add id 1
+end
+
 type 'a state =
   | WORD : 'a -> 'a state
   | RDCSS_DESC : 'a rdcss_t -> 'a state
@@ -29,15 +34,15 @@ and 'a rdcss_t = {
 and casn_t = { st : status ref; c_l : t list; id_casn : int }
 and 'a cas_result = Aborted | Failed | Success of 'a
 
-let ref a = { content = Atomic.make (WORD a); id = Oo.id (object end) }
+let ref a = { content = Atomic.make (WORD a); id = Id.get_unique () }
 let equal r1 r2 = Obj.repr r1 == Obj.repr r2
 let is_on_ref (CAS (r1, _, _)) r2 = equal r1 r2
-let mk_cas a o n = CAS (a, WORD o, WORD n)
+let mk_cas a old_value new_value = CAS (a, WORD old_value, WORD new_value)
 
 let mk_rdcss a1 o1 a2 o2 n2 =
-  { a1; o1; a2; o2; n2; id_rdcss = Oo.id (object end) }
+  { a1; o1; a2; o2; n2; id_rdcss = Id.get_unique () }
 
-let mk_casn st c_l = { st; c_l; id_casn = Oo.id (object end) }
+let mk_casn st c_l = { st; c_l; id_casn = Id.get_unique () }
 
 let st_eq s s' =
   match (s, s') with
@@ -122,13 +127,13 @@ let rec get a =
   | WORD out -> out
   | _ -> assert false
 
-let kCAS c_l =
-  match c_l with
+let kCAS cas_list =
+  match cas_list with
   | [] -> true
-  | [ (CAS (r, _, _) as c) ] ->
-      ignore @@ get r;
+  | [ (CAS (a, _, _) as c) ] ->
+      ignore @@ get a;
       commit c
-  | _ -> casn_proceed (mk_casn (ref UNDECIDED) c_l)
+  | _ -> casn_proceed (mk_casn (ref UNDECIDED) cas_list)
 
 let try_map r f =
   let c = get r in
