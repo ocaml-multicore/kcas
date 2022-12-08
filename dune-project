@@ -1,6 +1,5 @@
 (lang dune 3.3)
 (name kcas)
-(formatting disabled)
 (generate_opam_files true)
 (source (github ocaml-multicore/kcas))
 (authors "KC Sivaramakrishnan <sk826@cl.cam.ac.uk>")

@@ -20,9 +20,7 @@ module type S = sig
   type t
 
   val create : ?max:int -> unit -> t
-
   val once : t -> unit
-
   val reset : t -> unit
 end
 
@@ -30,18 +28,16 @@ module M : S = struct
   type t = int * int ref
 
   let _ = Random.self_init ()
-
   let create ?(max = 32) () = (max, ref 1)
 
   let once (maxv, r) =
     let t = Random.int !r in
-    r := min (2 * !r) maxv ;
+    r := min (2 * !r) maxv;
     if t = 0 then ()
-    else begin
+    else
       for _ = 1 to 2048 * t do
         Domain.cpu_relax ()
       done
-    end
 
   let reset (_, r) = r := 1
 end
