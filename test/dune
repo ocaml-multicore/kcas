@@ -9,3 +9,9 @@
  (libraries kcas)
  (modules benchmark)
  (modes native))
+
+(test
+ (name example)
+ (libraries kcas)
+ (modules example)
+ (modes native))
