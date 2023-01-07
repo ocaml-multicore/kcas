@@ -71,25 +71,21 @@ let rec determine casn undetermined = function
       let state' = Atomic.get atom_state in
       if state == state' then determine casn undetermined cass_1
       else
-        let casn' = state'.casn in
-        let is_after =
-          match Atomic.get casn' with
-          | `After -> true
-          | `Before -> false
-          | `Undetermined cass' as undetermined' ->
-              determine casn' undetermined' cass'
-        in
-        let value = if is_after then state'.after else state'.before in
-        if value != state.before then finish casn undetermined `Before
-        else
+        let before = state.before in
+        let before' = state'.before and after' = state'.after in
+        if
+          (before == before' && before == after')
+          || before == if is_after state'.casn then after' else before'
+        then
           let status = Atomic.get casn in
           if status != (undetermined :> status) then status == `After
           else if Atomic.compare_and_set atom_state state' state then
             determine casn undetermined cass_1
           else determine casn undetermined cass_0
+        else finish casn undetermined `Before
   | [] -> finish casn undetermined `After
 
-let is_after casn =
+and is_after casn =
   match Atomic.get casn with
   | `Undetermined cass as undetermined -> determine casn undetermined cass
   | `After -> true
@@ -98,14 +94,17 @@ let is_after casn =
 let cas atom before after =
   let state = { before = after; after; casn = casn_after } in
   let state' = Atomic.get atom.state in
-  let value = if is_after state'.casn then state'.after else state'.before in
-  value == before && Atomic.compare_and_set atom.state state' state
+  let before' = state'.before and after' = state'.after in
+  ((before == before' && before == after')
+  || before == if is_after state'.casn then after' else before')
+  && Atomic.compare_and_set atom.state state' state
 
 let commit (T (r, expect, update)) = cas r expect update
 
 let get atom =
   let state = Atomic.get atom.state in
-  if is_after state.casn then state.after else state.before
+  let before = state.before and after = state.after in
+  if before == after || is_after state.casn then after else before
 
 let rec prepare cass casn = function
   | T (atom, before, after) :: cas_list ->
