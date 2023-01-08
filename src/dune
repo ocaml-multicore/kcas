@@ -1,5 +1,4 @@
 (library
  (name kcas)
  (public_name kcas)
- (libraries unix)
- (modes native))
+ (libraries unix))

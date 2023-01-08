@@ -1,8 +1,8 @@
-(** Type of shared memory reference *)
 type 'a ref
+(** Type of shared memory reference *)
 
-(** Type of compare and swap value *)
 type t
+(** Type of compare and swap value *)
 
 (** The type of CAS result. *)
 type 'a cas_result = Aborted | Failed | Success of 'a
@@ -11,7 +11,6 @@ val ref : 'a -> 'a ref
 (** [ref x] returns a reference on a shared memory ceils containing the value [x] *)
 
 val equal : 'a ref -> 'b ref -> bool
-
 val is_on_ref : t -> 'a ref -> bool
 
 val mk_cas : 'a ref -> 'a -> 'a -> t
@@ -59,8 +58,8 @@ val decr : int ref -> unit
 (** {2 Backoff}
     Suspend domains with exponential backoff. *)
 module type Backoff = sig
-  (** The type of backoff value *)
   type t
+  (** The type of backoff value *)
 
   val create : ?max:int -> unit -> t
   (** [create ~max:maxv ()] returns a backoff value, which when waited upon,
@@ -85,8 +84,8 @@ module Backoff : Backoff
     internal representation of a single word CAS reference is more efficient
     than that of a multi-word CAS reference. *)
 module type W1 = sig
-  (** The type of shared memory reference. *)
   type 'a ref
+  (** The type of shared memory reference. *)
 
   val ref : 'a -> 'a ref
   (** Create a new reference. *)

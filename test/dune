@@ -1,17 +1,14 @@
 (test
  (name test)
  (libraries kcas)
- (modules test)
- (modes native))
+ (modules test))
 
 (test
  (name benchmark)
  (libraries kcas)
- (modules benchmark)
- (modes native))
+ (modules benchmark))
 
 (test
  (name example)
  (libraries kcas)
- (modules example)
- (modes native))
+ (modules example))

@@ -13,35 +13,31 @@ type 'a state =
   | RDCSS_DESC : 'a rdcss_t -> 'a state
   | CASN_DESC : casn_t -> 'a state
 
-and 'a ref = {content: 'a state Atomic.t; id: int}
-
+and 'a ref = { content : 'a state Atomic.t; id : int }
 and t = CAS : 'a ref * 'a state * 'a state -> t
-
 and status = UNDECIDED | FAILED | SUCCEEDED
 
-and 'a rdcss_t =
-  { a1: status ref
-  ; o1: status state
-  ; a2: 'a ref
-  ; o2: 'a state
-  ; n2: 'a state
-  ; id_rdcss: int }
+and 'a rdcss_t = {
+  a1 : status ref;
+  o1 : status state;
+  a2 : 'a ref;
+  o2 : 'a state;
+  n2 : 'a state;
+  id_rdcss : int;
+}
 
-and casn_t = {st: status ref; c_l: t list; id_casn: int}
-
+and casn_t = { st : status ref; c_l : t list; id_casn : int }
 and 'a cas_result = Aborted | Failed | Success of 'a
 
-let ref a = {content = Atomic.make (WORD a); id= Oo.id (object end)}
-
+let ref a = { content = Atomic.make (WORD a); id = Oo.id (object end) }
 let equal r1 r2 = Obj.repr r1 == Obj.repr r2
-
 let is_on_ref (CAS (r1, _, _)) r2 = equal r1 r2
-
 let mk_cas a o n = CAS (a, WORD o, WORD n)
 
-let mk_rdcss a1 o1 a2 o2 n2 = {a1; o1; a2; o2; n2; id_rdcss= Oo.id (object end)}
+let mk_rdcss a1 o1 a2 o2 n2 =
+  { a1; o1; a2; o2; n2; id_rdcss = Oo.id (object end) }
 
-let mk_casn st c_l = {st; c_l; id_casn= Oo.id (object end)}
+let mk_casn st c_l = { st; c_l; id_casn = Oo.id (object end) }
 
 let st_eq s s' =
   match (s, s') with
@@ -55,20 +51,18 @@ let commit (CAS (r, expect, update)) =
   st_eq s expect && Atomic.compare_and_set r.content s update
 
 let cas r e u = commit (mk_cas r e u)
-
 let set r n = Atomic.set r.content (WORD n)
-
 let get_id r = r.id
 
 let rec rdcss rd =
   if commit (CAS (rd.a2, rd.o2, RDCSS_DESC rd)) then (
-    ignore @@ complete rd ;
-    rd.o2 )
+    ignore @@ complete rd;
+    rd.o2)
   else
     let r = Atomic.get rd.a2.content in
     match r with
     | RDCSS_DESC rd' ->
-        ignore @@ complete rd' ;
+        ignore @@ complete rd';
         rdcss rd
     | _ -> if st_eq r rd.o2 then rdcss rd else r
 
@@ -81,7 +75,7 @@ let rec rdcss_read a =
   let r = Atomic.get a in
   match r with
   | RDCSS_DESC rd ->
-      ignore @@ complete rd ;
+      ignore @@ complete rd;
       rdcss_read a
   | _ -> r
 
@@ -93,27 +87,26 @@ let rec casn_proceed c =
         match s with
         | CASN_DESC c' ->
             if c.id_casn != c'.id_casn then (
-              ignore @@ casn_proceed c' ;
-              phase1 curr_c_l curr_st out )
+              ignore @@ casn_proceed c';
+              phase1 curr_c_l curr_st out)
             else phase1 curr_c_t_tail curr_st (CAS (a, o, n) :: out)
         | _ ->
-            if st_eq s o then
-              phase1 curr_c_t_tail curr_st (CAS (a, o, n) :: out)
-            else phase1 curr_c_t_tail FAILED (CAS (a, o, n) :: out) )
+            if st_eq s o then phase1 curr_c_t_tail curr_st (CAS (a, o, n) :: out)
+            else phase1 curr_c_t_tail FAILED (CAS (a, o, n) :: out))
     | _ ->
-        ignore @@ commit (CAS (c.st, WORD UNDECIDED, WORD curr_st)) ;
+        ignore @@ commit (CAS (c.st, WORD UNDECIDED, WORD curr_st));
         out
   in
   let rec phase2 curr_c_l succ =
     match curr_c_l with
     | CAS (a, o, n) :: curr_c_l_tail -> (
-      match Atomic.get succ with
-      | WORD SUCCEEDED ->
-          ignore @@ commit (CAS (a, CASN_DESC c, n)) ;
-          phase2 curr_c_l_tail succ
-      | _ ->
-          ignore @@ commit (CAS (a, CASN_DESC c, o)) ;
-          phase2 curr_c_l_tail succ )
+        match Atomic.get succ with
+        | WORD SUCCEEDED ->
+            ignore @@ commit (CAS (a, CASN_DESC c, n));
+            phase2 curr_c_l_tail succ
+        | _ ->
+            ignore @@ commit (CAS (a, CASN_DESC c, o));
+            phase2 curr_c_l_tail succ)
     | _ -> Atomic.get succ = WORD SUCCEEDED
   in
   match Atomic.get c.st.content with
@@ -124,7 +117,7 @@ let rec get a =
   let r = rdcss_read a.content in
   match r with
   | CASN_DESC c ->
-      ignore @@ casn_proceed c ;
+      ignore @@ casn_proceed c;
       get a
   | WORD out -> out
   | _ -> assert false
@@ -132,7 +125,7 @@ let rec get a =
 let kCAS c_l =
   match c_l with
   | [] -> true
-  | [(CAS (r, _, _) as c)] ->
+  | [ (CAS (r, _, _) as c) ] ->
       ignore @@ get r;
       commit c
   | _ -> casn_proceed (mk_casn (ref UNDECIDED) c_l)
@@ -141,36 +134,32 @@ let try_map r f =
   let c = get r in
   match f c with
   | None -> Aborted
-  | Some v -> if kCAS [mk_cas r c v] then Success c else Failed
+  | Some v -> if kCAS [ mk_cas r c v ] then Success c else Failed
 
 let map r f =
   let b = Backoff.create () in
   let rec loop () =
-    match try_map r f with Failed -> Backoff.once b ; loop () | out -> out
+    match try_map r f with
+    | Failed ->
+        Backoff.once b;
+        loop ()
+    | out -> out
   in
   loop ()
 
 let incr r = ignore @@ map r (fun i -> Some (i + 1))
-
 let decr r = ignore @@ map r (fun i -> Some (i - 1))
 
 module type W1 = sig
   type 'a ref
 
   val ref : 'a -> 'a ref
-
   val get : 'a ref -> 'a
-
   val set : 'a ref -> 'a -> unit
-
   val cas : 'a ref -> 'a -> 'a -> bool
-
   val try_map : 'a ref -> ('a -> 'a option) -> 'a cas_result
-
   val map : 'a ref -> ('a -> 'a option) -> 'a cas_result
-
   val incr : int ref -> unit
-
   val decr : int ref -> unit
 end
 
@@ -178,11 +167,8 @@ module W1 : W1 = struct
   type 'a ref = 'a Atomic.t
 
   let ref = Atomic.make
-
   let get = Atomic.get
-
   let set r n = Atomic.set r n
-
   let cas = Atomic.compare_and_set
 
   let try_map r f =
@@ -194,11 +180,14 @@ module W1 : W1 = struct
   let map r f =
     let b = Backoff.create () in
     let rec loop () =
-      match try_map r f with Failed -> Backoff.once b ; loop () | v -> v
+      match try_map r f with
+      | Failed ->
+          Backoff.once b;
+          loop ()
+      | v -> v
     in
     loop ()
 
   let incr r = ignore @@ map r (fun x -> Some (x + 1))
-
   let decr r = ignore @@ map r (fun x -> Some (x - 1))
 end

@@ -19,9 +19,7 @@ module type S = sig
   type t
 
   val create : ?max:int -> unit -> t
-
   val once : t -> unit
-
   val reset : t -> unit
 end
 
