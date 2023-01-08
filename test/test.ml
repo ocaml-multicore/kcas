@@ -26,21 +26,31 @@
 
 let nb_iter = 10_000
 
+let assert_kcas ref expected_v = 
+  let present_v = Kcas.get ref in 
+  assert (present_v == expected_v)
+;;
+
 let test_set () =
   let a = Kcas.ref 0 in
-  let v1 = Kcas.get a in
-  assert (v1 == 0);
+  assert_kcas a 0;
   Kcas.set a 1;
-  let v2 = Kcas.get a in
-  assert (v2 == 1)
+  assert_kcas a 1
 
 let thread1 (a1, a2) =
   let c1 = [ Kcas.mk_cas a1 0 1; Kcas.mk_cas a2 0 1 ] in
   let c2 = [ Kcas.mk_cas a1 1 0; Kcas.mk_cas a2 1 0 ] in
   for _ = 1 to nb_iter do
+    assert_kcas a1 0;
+    assert_kcas a2 0;    
+    
     let out1 = Kcas.kCAS c1 in
-    let out2 = Kcas.kCAS c2 in
     assert out1;
+    
+    assert_kcas a1 1;
+    assert_kcas a2 1;
+    
+    let out2 = Kcas.kCAS c2 in
     assert out2
   done;
   ignore @@ Kcas.kCAS c1
@@ -65,19 +75,6 @@ let thread3 (a1, a2) =
     assert (not out2)
   done
 
-let thread4 (a1, a2) =
-  for i = 0 to nb_iter do
-    let c = [ Kcas.mk_cas a1 i (i + 1); Kcas.mk_cas a2 i (i + 1) ] in
-    assert (Kcas.kCAS c)
-  done
-
-let thread5 (a1, a2) =
-  for _ = 0 to nb_iter do
-    let a = Kcas.get a1 in
-    let b = Kcas.get a2 in
-    assert (a <= b)
-  done
-
 let test_casn () =
   let a1 = Kcas.ref 0 in
   let a2 = Kcas.ref 0 in
@@ -90,6 +87,19 @@ let test_casn () =
     ]
   in
   List.map Domain.spawn domains |> List.iter Domain.join
+  
+let thread4 (a1, a2) =
+  for i = 0 to nb_iter do
+    let c = [ Kcas.mk_cas a1 i (i + 1); Kcas.mk_cas a2 i (i + 1) ] in
+    assert (Kcas.kCAS c)
+  done
+
+let thread5 (a1, a2) =
+  for _ = 0 to nb_iter do
+    let a = Kcas.get a1 in
+    let b = Kcas.get a2 in
+    assert (a <= b)
+  done
 
 let test_read_casn () =
   let a1 = Kcas.ref 0 in
