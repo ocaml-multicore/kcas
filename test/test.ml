@@ -24,41 +24,64 @@
     OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
   ---------------------------------------------------------------------------*)
 
-let nb_iter = 10_000
+let nb_iter = 100_000
 
-let assert_kcas ref expected_v = 
-  let present_v = Kcas.get ref in 
+let assert_kcas ref expected_v =
+  let present_v = Kcas.get ref in
   assert (present_v == expected_v)
-;;
 
+(* test 1 *)
 let test_set () =
   let a = Kcas.ref 0 in
   assert_kcas a 0;
   Kcas.set a 1;
   assert_kcas a 1
 
+(* test 2 *)
+module Sync = struct
+  (* start barrier *)
+  let ready_workers = Atomic.make 0
+
+  let await_others () =
+    Atomic.incr ready_workers;
+    while Atomic.get ready_workers < 3 do
+      ()
+    done
+
+  (* finish var *)
+  let finished = Atomic.make false
+  let set_finished () = Atomic.set finished true
+  let is_finished () = Atomic.get finished
+end
+
 let thread1 (a1, a2) =
   let c1 = [ Kcas.mk_cas a1 0 1; Kcas.mk_cas a2 0 1 ] in
   let c2 = [ Kcas.mk_cas a1 1 0; Kcas.mk_cas a2 1 0 ] in
+
+  Sync.await_others ();
+
   for _ = 1 to nb_iter do
     assert_kcas a1 0;
-    assert_kcas a2 0;    
-    
+    assert_kcas a2 0;
+
     let out1 = Kcas.kCAS c1 in
     assert out1;
-    
+
     assert_kcas a1 1;
     assert_kcas a2 1;
-    
+
     let out2 = Kcas.kCAS c2 in
     assert out2
   done;
-  ignore @@ Kcas.kCAS c1
+  Sync.set_finished ()
 
 let thread2 (a1, a2) =
   let c1 = [ Kcas.mk_cas a1 1 0; Kcas.mk_cas a2 0 1 ] in
   let c2 = [ Kcas.mk_cas a1 0 1; Kcas.mk_cas a2 1 0 ] in
-  for _ = 1 to nb_iter do
+
+  Sync.await_others ();
+
+  while not (Sync.is_finished ()) do
     let out1 = Kcas.kCAS c1 in
     let out2 = Kcas.kCAS c2 in
     assert (not out1);
@@ -68,7 +91,10 @@ let thread2 (a1, a2) =
 let thread3 (a1, a2) =
   let c1 = [ Kcas.mk_cas a1 0 1; Kcas.mk_cas a2 1 0 ] in
   let c2 = [ Kcas.mk_cas a1 1 0; Kcas.mk_cas a2 0 1 ] in
-  for _ = 1 to nb_iter do
+
+  Sync.await_others ();
+
+  while not (Sync.is_finished ()) do
     let out1 = Kcas.kCAS c1 in
     let out2 = Kcas.kCAS c2 in
     assert (not out1);
@@ -87,7 +113,9 @@ let test_casn () =
     ]
   in
   List.map Domain.spawn domains |> List.iter Domain.join
-  
+
+(* test 3 *)
+
 let thread4 (a1, a2) =
   for i = 0 to nb_iter do
     let c = [ Kcas.mk_cas a1 i (i + 1); Kcas.mk_cas a2 i (i + 1) ] in
@@ -109,6 +137,8 @@ let test_read_casn () =
     [ (fun () -> thread4 (a1, a2)); (fun () -> thread5 (a1, a2)) ]
   in
   List.map Domain.spawn domains |> List.iter Domain.join
+
+(* test 4 *)
 
 let make_ref n =
   let rec loop n out =
@@ -141,7 +171,6 @@ let () =
   test_set ();
   test_casn ();
   test_read_casn ();
-  test_set ();
   test_stress 1000 10000
 
 (*
