@@ -30,6 +30,18 @@ let assert_kcas ref expected_v =
   let present_v = Kcas.get ref in
   assert (present_v == expected_v)
 
+module Barrier = struct
+  type t = { counter : int Atomic.t; total : int }
+
+  let make total = { counter = Atomic.make 0; total }
+
+  let await { counter; total } =
+    Atomic.incr counter;
+    while Atomic.get counter < total do
+      ()
+    done
+end
+
 (* test 1 *)
 let test_set () =
   let a = Kcas.ref 0 in
@@ -38,27 +50,11 @@ let test_set () =
   assert_kcas a 1
 
 (* test 2 *)
-module Sync = struct
-  (* start barrier *)
-  let ready_workers = Atomic.make 0
-
-  let await_others () =
-    Atomic.incr ready_workers;
-    while Atomic.get ready_workers < 3 do
-      ()
-    done
-
-  (* finish var *)
-  let finished = Atomic.make false
-  let set_finished () = Atomic.set finished true
-  let is_finished () = Atomic.get finished
-end
-
-let thread1 (a1, a2) =
+let thread1 barrier test_finished (a1, a2) () =
   let c1 = [ Kcas.mk_cas a1 0 1; Kcas.mk_cas a2 0 1 ] in
   let c2 = [ Kcas.mk_cas a1 1 0; Kcas.mk_cas a2 1 0 ] in
 
-  Sync.await_others ();
+  Barrier.await barrier;
 
   for _ = 1 to nb_iter do
     assert_kcas a1 0;
@@ -73,28 +69,28 @@ let thread1 (a1, a2) =
     let out2 = Kcas.kCAS c2 in
     assert out2
   done;
-  Sync.set_finished ()
+  Atomic.set test_finished true
 
-let thread2 (a1, a2) =
+let thread2 barrier test_finished (a1, a2) () =
   let c1 = [ Kcas.mk_cas a1 1 0; Kcas.mk_cas a2 0 1 ] in
   let c2 = [ Kcas.mk_cas a1 0 1; Kcas.mk_cas a2 1 0 ] in
 
-  Sync.await_others ();
+  Barrier.await barrier;
 
-  while not (Sync.is_finished ()) do
+  while not (Atomic.get test_finished) do
     let out1 = Kcas.kCAS c1 in
     let out2 = Kcas.kCAS c2 in
     assert (not out1);
     assert (not out2)
   done
 
-let thread3 (a1, a2) =
+let thread3 barrier test_finished (a1, a2) () =
   let c1 = [ Kcas.mk_cas a1 0 1; Kcas.mk_cas a2 1 0 ] in
   let c2 = [ Kcas.mk_cas a1 1 0; Kcas.mk_cas a2 0 1 ] in
 
-  Sync.await_others ();
+  Barrier.await barrier;
 
-  while not (Sync.is_finished ()) do
+  while not (Atomic.get test_finished) do
     let out1 = Kcas.kCAS c1 in
     let out2 = Kcas.kCAS c2 in
     assert (not out1);
@@ -102,41 +98,44 @@ let thread3 (a1, a2) =
   done
 
 let test_casn () =
+  let barrier = Barrier.make 3 in
+  let test_finished = Atomic.make false in
+
   let a1 = Kcas.ref 0 in
   let a2 = Kcas.ref 0 in
 
-  let domains =
-    [
-      (fun () -> thread1 (a1, a2));
-      (fun () -> thread2 (a1, a2));
-      (fun () -> thread3 (a1, a2));
-    ]
-  in
-  List.map Domain.spawn domains |> List.iter Domain.join
+  let domains = [ thread1; thread2; thread3 ] in
+  List.map (fun f -> Domain.spawn (f barrier test_finished (a1, a2))) domains
+  |> List.iter Domain.join
 
 (* test 3 *)
 
-let thread4 (a1, a2) =
+let thread4 barrier test_finished (a1, a2) () =
+  Barrier.await barrier;
   for i = 0 to nb_iter do
     let c = [ Kcas.mk_cas a1 i (i + 1); Kcas.mk_cas a2 i (i + 1) ] in
     assert (Kcas.kCAS c)
-  done
+  done;
+  Atomic.set test_finished true
 
-let thread5 (a1, a2) =
-  for _ = 0 to nb_iter do
+let thread5 barrier test_finished (a1, a2) () =
+  Barrier.await barrier;
+  while not (Atomic.get test_finished) do
     let a = Kcas.get a1 in
     let b = Kcas.get a2 in
     assert (a <= b)
   done
 
 let test_read_casn () =
+  let barrier = Barrier.make 2 in
+  let test_finished = Atomic.make false in
+
   let a1 = Kcas.ref 0 in
   let a2 = Kcas.ref 0 in
 
-  let domains =
-    [ (fun () -> thread4 (a1, a2)); (fun () -> thread5 (a1, a2)) ]
-  in
-  List.map Domain.spawn domains |> List.iter Domain.join
+  let domains = [ thread4; thread5 ] in
+  List.map (fun f -> Domain.spawn (f barrier test_finished (a1, a2))) domains
+  |> List.iter Domain.join
 
 (* test 4 *)
 
