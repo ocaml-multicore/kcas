@@ -135,29 +135,33 @@ let rec get a =
   | WORD out -> out
   | _ -> assert false
 
-let kCAS cas_list =
+let kCAS ?(presort = true) cas_list =
   match cas_list with
   | [] -> true
   | [ (CAS (a, _, _) as c) ] ->
       ignore @@ get a;
       commit c
   | _ ->
-      (* enforce global total order of locations (see section 5 in kCAS paper) *)
       let cas_list =
-        List.sort
-          (fun (CAS (cas_a, _, _)) (CAS (cas_b, _, _)) ->
-            Int.compare (get_id cas_a) (get_id cas_b))
-          cas_list
+        if presort then (
+          (* ensure global total order of locations (see section 5 in kCAS paper) *)
+          let sorted =
+            List.sort
+              (fun (CAS (cas_a, _, _)) (CAS (cas_b, _, _)) ->
+                Int.compare (get_id cas_a) (get_id cas_b))
+              cas_list
+          in
+          (* check for overlapping locations *)
+          List.fold_left
+            (fun previous_id (CAS (ref, _, _)) ->
+              let current_id = get_id ref in
+              if current_id = previous_id then failwith "kcas: location overlap";
+              current_id)
+            0 sorted
+          |> ignore;
+          sorted)
+        else cas_list
       in
-
-      (* check for overlapping locations *)
-      List.fold_left
-        (fun previous_id (CAS (ref, _, _)) ->
-          let current_id = get_id ref in
-          if current_id = previous_id then failwith "kcas: location overlap";
-          current_id)
-        0 cas_list
-      |> ignore;
 
       (* proceed with casn *)
       let casn = mk_casn (ref UNDECIDED) cas_list in
