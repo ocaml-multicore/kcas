@@ -6,23 +6,22 @@ let test_1 () =
   let cas_1 = Kcas.mk_cas v_1 0 1 in
   let cas_2 = Kcas.mk_cas v_1 2 3 in
 
-  assert (Kcas.kCAS [ cas_1; cas_2 ]);
-  assert (Kcas.get v_1 == 3)
+  match Kcas.kCAS [ cas_1; cas_2 ] with exception _ -> () | _ -> assert false
 
 let test_2 () =
   (* [cas_2] acts on the same location as [cas_1]
-     and has conflicting values. kCAS should be failing.
+     and has conflicting values. kCAS should fail.
 
-     It may seem fine, since the final value of v_1 matches,
-     but it's not. Both threads think they have successfully
-     CASed v_1 and may rely on that knowledge (e.g. use old
-     value as index in array).
+     It may seem innocuous, since the final value of v_1
+     matches even if the CAS succeeds. But it's not. Both
+     threads think they have successfully CASed v_1 and may
+     rely on that knowledge afterwards (e.g. use old value
+     as index in array).
   *)
   let v_1 = Kcas.ref 0 in
   let cas_1 = Kcas.mk_cas v_1 0 1 in
   let cas_2 = Kcas.mk_cas v_1 0 1 in
-  assert (Kcas.kCAS [ cas_1; cas_2 ]);
-  assert (Kcas.get v_1 == 1)
+  match Kcas.kCAS [ cas_1; cas_2 ] with exception _ -> () | _ -> assert false
 
 let test_3 () =
   (* [cas_2] acts on the same location as [cas_1].
@@ -36,7 +35,7 @@ let test_3 () =
   let v_1 = Kcas.ref 0 in
   let cas_1 = Kcas.mk_cas v_1 0 1 in
   let cas_2 = Kcas.mk_cas v_1 1 2 in
-  assert (Kcas.kCAS [ cas_1; cas_2 ])
+  match Kcas.kCAS [ cas_1; cas_2 ] with exception _ -> () | _ -> assert false
 
 let _ =
   test_1 ();
