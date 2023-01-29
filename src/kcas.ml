@@ -142,14 +142,18 @@ let rec splay x = function
 let kCAS ?presort:(_ = true) = function
   | [] -> true
   | [ t ] -> commit t
-  | cas_list ->
+  | T (atom, before, after) :: rest ->
       let casn = Atomic.make `After in
       let insert cass (T (atom, before, after)) =
         let k = atom.id in
         let l, r = splay k cass in
         CAS (atom, { before; after; casn }, l, r)
       in
-      let cass = List.fold_left insert NIL cas_list in
+      let cass =
+        List.fold_left insert
+          (CAS (atom, { before; after; casn }, NIL, NIL))
+          rest
+      in
       let undetermined = `Undetermined cass in
       (* The end result is a cyclic data structure, which is why we cannot
          initialize the [casn] atomic directly. *)
