@@ -145,9 +145,14 @@ let kCAS ?presort:(_ = true) = function
   | T (atom, before, after) :: rest ->
       let casn = Atomic.make `After in
       let insert cass (T (atom, before, after)) =
-        let k = atom.id in
-        let l, r = splay k cass in
-        CAS (atom, { before; after; casn }, l, r)
+        let x = atom.id in
+        let state = { before; after; casn } in
+        match cass with
+        | CAS (a, _, NIL, _) when x < a.id -> CAS (atom, state, NIL, cass)
+        | CAS (a, _, _, NIL) when a.id < x -> CAS (atom, state, cass, NIL)
+        | _ ->
+            let l, r = splay x cass in
+            CAS (atom, state, l, r)
       in
       let cass =
         List.fold_left insert
