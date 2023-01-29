@@ -15,9 +15,9 @@ end
 
 type 'a ref = { state : 'a state Atomic.t; id : int }
 and 'a state = { mutable before : 'a; mutable after : 'a; mutable casn : casn }
-and cas = CAS : 'a state Atomic.t * 'a state -> cas
+and cass = CAS : 'a ref * 'a state * cass * cass -> cass | NIL : cass
 and casn = status Atomic.t
-and status = [ `Undetermined of cas list | `After | `Before ]
+and status = [ `Undetermined of cass | `After | `Before ]
 
 type t = T : 'a ref * 'a * 'a -> t
 type 'a cas_result = Aborted | Failed | Success of 'a
@@ -40,18 +40,20 @@ let set atom value =
   Atomic.set atom.state { before = value; after = value; casn = casn_after }
 
 let rec release_after = function
-  | [] -> true
-  | CAS (_, state) :: cass ->
-      state.casn <- casn_after;
+  | NIL -> true
+  | CAS (_, state, lt, gt) ->
+      release_after lt |> ignore;
       state.before <- state.after;
-      release_after cass
+      state.casn <- casn_after;
+      release_after gt
 
 let rec release_before = function
-  | [] -> false
-  | CAS (_, state) :: cass ->
-      state.casn <- casn_before;
+  | NIL -> false
+  | CAS (_, state, lt, gt) ->
+      release_before lt |> ignore;
       state.after <- state.before;
-      release_before cass
+      state.casn <- casn_before;
+      release_before gt
 
 (* Note: The writes to `state.casn <- ...` above could be removed to reduce time
    at the cost of increasing space usage (by a constant factor). *)
@@ -66,10 +68,13 @@ let finish casn (`Undetermined cass as undetermined)
   then release cass status
   else Atomic.get casn == `After
 
-let rec determine casn undetermined = function
-  | CAS (atom_state, state) :: cass_1 as cass_0 ->
-      let state' = Atomic.get atom_state in
-      if state == state' then determine casn undetermined cass_1
+let rec determine casn undetermined skip = function
+  | NIL -> skip || finish casn undetermined `After
+  | CAS (atom, state, lt, gt) as eq ->
+      determine casn undetermined true lt
+      &&
+      let state' = Atomic.get atom.state in
+      if state == state' then determine casn undetermined skip gt
       else
         let before = state.before in
         let before' = state'.before and after' = state'.after in
@@ -79,15 +84,14 @@ let rec determine casn undetermined = function
         then
           let status = Atomic.get casn in
           if status != (undetermined :> status) then status == `After
-          else if Atomic.compare_and_set atom_state state' state then
-            determine casn undetermined cass_1
-          else determine casn undetermined cass_0
+          else if Atomic.compare_and_set atom.state state' state then
+            determine casn undetermined skip gt
+          else determine casn undetermined skip eq
         else finish casn undetermined `Before
-  | [] -> finish casn undetermined `After
 
 and is_after casn =
   match Atomic.get casn with
-  | `Undetermined cass as undetermined -> determine casn undetermined cass
+  | `Undetermined cass as undetermined -> determine casn undetermined false cass
   | `After -> true
   | `Before -> false
 
@@ -106,43 +110,51 @@ let get atom =
   let before = state.before and after = state.after in
   if before == after || is_after state.casn then after else before
 
-let rec prepare cass casn = function
-  | T (atom, before, after) :: cas_list ->
-      prepare (CAS (atom.state, { before; after; casn }) :: cass) casn cas_list
-  | [] -> cass
+let overlap () = failwith "kcas: location overlap" [@@inline never]
 
-let kCAS ?(presort = true) = function
+let rec splay x = function
+  | NIL -> (NIL, NIL)
+  | CAS (a, s, l, r) as t ->
+      if x < a.id then
+        match l with
+        | NIL -> (NIL, t)
+        | CAS (pa, ps, ll, lr) ->
+            if x < pa.id then
+              let lll, llr = splay x ll in
+              (lll, CAS (pa, ps, llr, CAS (a, s, lr, r)))
+            else if pa.id < x then
+              let lrl, lrr = splay x lr in
+              (CAS (pa, ps, ll, lrl), CAS (a, s, lrr, r))
+            else overlap ()
+      else if a.id < x then
+        match r with
+        | NIL -> (t, NIL)
+        | CAS (pa, ps, rl, rr) ->
+            if x < pa.id then
+              let rll, rlr = splay x rl in
+              (CAS (a, s, l, rll), CAS (pa, ps, rlr, rr))
+            else if pa.id < x then
+              let rrl, rrr = splay x rr in
+              (CAS (pa, ps, CAS (a, s, l, rl), rrl), rrr)
+            else overlap ()
+      else overlap ()
+
+let kCAS ?presort:(_ = true) = function
   | [] -> true
   | [ t ] -> commit t
   | cas_list ->
-      let cas_list =
-        if presort then (
-          (* ensure global total order of locations (see section 5 in kCAS paper) *)
-          let sorted =
-            List.sort
-              (fun (T (cas_a, _, _)) (T (cas_b, _, _)) ->
-                Int.compare (get_id cas_a) (get_id cas_b))
-              cas_list
-          in
-          (* check for overlapping locations *)
-          List.fold_left
-            (fun previous_id (T (ref, _, _)) ->
-              let current_id = get_id ref in
-              if current_id = previous_id then failwith "kcas: location overlap";
-              current_id)
-            0 sorted
-          |> ignore;
-          sorted)
-        else cas_list
-      in
-
       let casn = Atomic.make `After in
-      let cass = prepare [] casn cas_list in
+      let insert cass (T (atom, before, after)) =
+        let k = atom.id in
+        let l, r = splay k cass in
+        CAS (atom, { before; after; casn }, l, r)
+      in
+      let cass = List.fold_left insert NIL cas_list in
       let undetermined = `Undetermined cass in
       (* The end result is a cyclic data structure, which is why we cannot
          initialize the [casn] atomic directly. *)
       Atomic.set casn undetermined;
-      determine casn undetermined cass
+      determine casn undetermined false cass
 
 let try_map r f =
   let c = get r in
