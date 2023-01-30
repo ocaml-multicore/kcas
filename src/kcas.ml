@@ -66,14 +66,17 @@ let finish casn (`Undetermined cass as undetermined)
     (status : [ `Before | `After ]) =
   if Atomic.compare_and_set casn (undetermined :> status) (status :> status)
   then release cass status
-  else Atomic.get casn == `After
+  else
+    (* [fenceless_get] is safe as [compare_and_set] above has the fence. *)
+    Multicore_magic.fenceless_get casn == `After
 
 let rec determine casn undetermined skip = function
   | NIL -> skip || finish casn undetermined `After
   | CAS (atom, state, lt, gt) as eq ->
       determine casn undetermined true lt
       &&
-      let state' = Atomic.get atom.state in
+      let state' = Multicore_magic.fenceless_get atom.state in
+      (* [fenceless_get] is safe as [compare_and_set] below has the fence. *)
       if state == state' then determine casn undetermined skip gt
       else
         let before = state.before in
@@ -82,7 +85,8 @@ let rec determine casn undetermined skip = function
           (before == before' && before == after')
           || before == if is_after state'.casn then after' else before'
         then
-          let status = Atomic.get casn in
+          let status = Multicore_magic.fenceless_get casn in
+          (* [fenceless_get] is safe as [finish] has the fence. *)
           if status != (undetermined :> status) then status == `After
           else if Atomic.compare_and_set atom.state state' state then
             determine casn undetermined skip gt
@@ -90,14 +94,16 @@ let rec determine casn undetermined skip = function
         else finish casn undetermined `Before
 
 and is_after casn =
-  match Atomic.get casn with
+  match Multicore_magic.fenceless_get casn with
+  (* [fenceless_get] is safe as [determine] will have the fence. *)
   | `Undetermined cass as undetermined -> determine casn undetermined false cass
   | `After -> true
   | `Before -> false
 
 let cas atom before after =
   let state = { before = after; after; casn = casn_after } in
-  let state' = Atomic.get atom.state in
+  let state' = Multicore_magic.fenceless_get atom.state in
+  (* [fenceless_get] is safe as [compare_and_set] below has the fence. *)
   let before' = state'.before and after' = state'.after in
   ((before == before' && before == after')
   || before == if is_after state'.casn then after' else before')
@@ -162,7 +168,8 @@ let kCAS = function
       let undetermined = `Undetermined cass in
       (* The end result is a cyclic data structure, which is why we cannot
          initialize the [casn] atomic directly. *)
-      Atomic.set casn undetermined;
+      Multicore_magic.fenceless_set casn undetermined;
+      (* [fenceless_set] is safe as [determine] will have the fence. *)
       determine casn undetermined false cass
 
 let try_map r f =

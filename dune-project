@@ -9,4 +9,5 @@
 (package (name kcas)
  (synopsis "Multi-word compare-and-swap library")
  (depends 
-  (ocaml (>= 5.0))))
+  (ocaml (>= 5.0))
+  (multicore-magic (>= 1.0.0))))

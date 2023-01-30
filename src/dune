@@ -1,4 +1,4 @@
 (library
  (name kcas)
  (public_name kcas)
- (libraries unix))
+ (libraries unix multicore-magic))
