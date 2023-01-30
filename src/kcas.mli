@@ -28,16 +28,15 @@ val cas : 'a ref -> 'a -> 'a -> bool
 val commit : t -> bool
 (** [commit c] performs the CAS [c] and returns [true] if the CAS is successful. *)
 
-val kCAS : ?presort:bool -> t list -> bool
+val kCAS : t list -> bool
 (** [kCAS l] performs a lock-free multi-word CAS and returns [true] if the
     multi-word CAS is successful.
 
-    kCAS requires [ref] of provided operations to follow a global total order. 
-    To eliminate a class of bugs [kCAS] presorts provided operations, and that 
-    increases algorithm's complexity to n log n. If user is able to ensure 
-    said order in some other way, use [presort] switch to disable sorting and 
-    ordering checks, thus improving worst-case complexity to n. 
-*)
+    kCAS requires [ref] of provided operations to follow a global total order.
+    To eliminate a class of bugs [kCAS] presorts provided operations.  If the
+    operations are given in either ascending or descending order of {!get_id}
+    then the presort is done in linear time [O(n)].  Otherwise presort may take
+    linearithmic time [O(n log n)]. *)
 
 val get : 'a ref -> 'a
 (** [get a] reads the value contained in reference [a]. *)

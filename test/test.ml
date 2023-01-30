@@ -197,7 +197,6 @@ let test_presort () =
     Random.self_init ();
     Barrier.await barrier;
     for _ = 1 to n_incs do
-      (* Tested that with [~presort:false] this likely hangs *)
       while not (Kcas.kCAS (mk_inc refs)) do
         ()
       done

@@ -139,7 +139,7 @@ let rec splay x = function
             else overlap ()
       else overlap ()
 
-let kCAS ?presort:(_ = true) = function
+let kCAS = function
   | [] -> true
   | [ t ] -> commit t
   | T (atom, before, after) :: rest ->
