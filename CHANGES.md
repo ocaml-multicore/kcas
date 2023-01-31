@@ -2,6 +2,10 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.2.0
+
+* Complete redesign adding a new transaction API (@polytypic, review: @bartoszmodelski)
+
 ## 0.1.8
 
 * Fix a bug in GKMZ implementation (@polytypic, review: @bartoszmodelski)

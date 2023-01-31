@@ -1,12 +1,17 @@
+module Loc = Kcas.Loc
+module Op = Kcas.Op
+
 let test_1 () =
   (* [cas_2] acts on the same location as [cas_1]
      and has conflicting values. kCAS should be failing.
   *)
-  let v_1 = Kcas.ref 0 in
-  let cas_1 = Kcas.mk_cas v_1 0 1 in
-  let cas_2 = Kcas.mk_cas v_1 2 3 in
+  let v_1 = Loc.make 0 in
+  let cas_1 = Op.make_cas v_1 0 1 in
+  let cas_2 = Op.make_cas v_1 2 3 in
 
-  match Kcas.kCAS [ cas_1; cas_2 ] with exception _ -> () | _ -> assert false
+  match Op.atomically [ cas_1; cas_2 ] with
+  | exception _ -> ()
+  | _ -> assert false
 
 let test_2 () =
   (* [cas_2] acts on the same location as [cas_1]
@@ -18,10 +23,12 @@ let test_2 () =
      rely on that knowledge afterwards (e.g. use old value
      as index in array).
   *)
-  let v_1 = Kcas.ref 0 in
-  let cas_1 = Kcas.mk_cas v_1 0 1 in
-  let cas_2 = Kcas.mk_cas v_1 0 1 in
-  match Kcas.kCAS [ cas_1; cas_2 ] with exception _ -> () | _ -> assert false
+  let v_1 = Loc.make 0 in
+  let cas_1 = Op.make_cas v_1 0 1 in
+  let cas_2 = Op.make_cas v_1 0 1 in
+  match Op.atomically [ cas_1; cas_2 ] with
+  | exception _ -> ()
+  | _ -> assert false
 
 let test_3 () =
   (* [cas_2] acts on the same location as [cas_1].
@@ -32,10 +39,12 @@ let test_3 () =
 
      Or, perhaps, melding should be left to the user.
   *)
-  let v_1 = Kcas.ref 0 in
-  let cas_1 = Kcas.mk_cas v_1 0 1 in
-  let cas_2 = Kcas.mk_cas v_1 1 2 in
-  match Kcas.kCAS [ cas_1; cas_2 ] with exception _ -> () | _ -> assert false
+  let v_1 = Loc.make 0 in
+  let cas_1 = Op.make_cas v_1 0 1 in
+  let cas_2 = Op.make_cas v_1 1 2 in
+  match Op.atomically [ cas_1; cas_2 ] with
+  | exception _ -> ()
+  | _ -> assert false
 
 let _ =
   test_1 ();

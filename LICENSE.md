@@ -1,6 +1,7 @@
 Copyright (c) 2016, KC Sivaramakrishnan <kc@kcsrk.info>
 Copyright (c) 2017, Nicolas ASSOUAD <nicolas.assouad@ens.fr>
 Copyright (c) 2018, Sadiq Jaffer
+Copyright (c) 2023, Vesa Karvonen <vesa.a.j.k@gmail.com>
 
 Permission to use, copy, modify, and/or distribute this software for any
 purpose with or without fee is hereby granted, provided that the above
