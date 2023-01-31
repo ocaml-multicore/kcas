@@ -166,11 +166,54 @@ let test_stress n nb_loop =
     assert (Kcas.kCAS kcas1)
   done
 
+(* test 5 *)
+
+let test_presort () =
+  let n_incs = 50_000 and n_domains = 3 and n_refs = 5 in
+
+  let barrier = Barrier.make n_domains in
+
+  let refs = Array.init n_refs (fun _ -> Kcas.ref 0) in
+
+  let in_place_shuffle array =
+    let n = Array.length array in
+    for i = 0 to n - 2 do
+      let j = Random.int (n - i) + i in
+      let t = array.(i) in
+      array.(i) <- array.(j);
+      array.(j) <- t
+    done
+  in
+
+  let mk_inc refs =
+    in_place_shuffle refs;
+    let x = Kcas.get refs.(0) in
+    let y = x + 1 in
+    Array.fold_left (fun cs r -> Kcas.mk_cas r x y :: cs) [] refs
+  in
+
+  let thread () =
+    let refs = Array.copy refs in
+    Random.self_init ();
+    Barrier.await barrier;
+    for _ = 1 to n_incs do
+      while not (Kcas.kCAS (mk_inc refs)) do
+        ()
+      done
+    done
+  in
+
+  Array.make n_domains thread
+  |> Array.map Domain.spawn |> Array.iter Domain.join;
+
+  refs |> Array.iter (fun r -> assert (Kcas.get r = n_incs * n_domains))
+
 let () =
   test_set ();
   test_casn ();
   test_read_casn ();
-  test_stress 1000 10000
+  test_stress 1000 10000;
+  test_presort ()
 
 (*
   ####

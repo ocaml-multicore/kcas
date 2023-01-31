@@ -13,165 +13,163 @@ module Id = struct
   let get_unique () = Atomic.fetch_and_add id 1
 end
 
-type 'a state = WORD of 'a | RDCSS_DESC of 'a rdcss_t | CASN_DESC of casn_t
-and 'a ref = { content : 'a state Atomic.t; id : int }
-and t = CAS : 'a ref * 'a state * 'a state -> t
-and status = UNDECIDED | FAILED | SUCCEEDED
+type 'a ref = { state : 'a state Atomic.t; id : int }
+and 'a state = { mutable before : 'a; mutable after : 'a; mutable casn : casn }
+and cass = CAS : 'a ref * 'a state * cass * cass -> cass | NIL : cass
+and casn = status Atomic.t
+and status = [ `Undetermined of cass | `After | `Before ]
 
-and 'a rdcss_t = {
-  a1 : status ref; (* control value *)
-  o1 : status state; (* expected control value *)
-  a2 : 'a ref; (* data value *)
-  o2 : 'a state; (* old data *)
-  n2 : 'a state; (* new data *)
-  id_rdcss : int;
-}
+type t = T : 'a ref * 'a * 'a -> t
+type 'a cas_result = Aborted | Failed | Success of 'a
 
-and casn_t = { st : status ref; c_l : t list; id_casn : int }
-and 'a cas_result = Aborted | Failed | Success of 'a
+let casn_after = Atomic.make `After
+let casn_before = Atomic.make `Before
 
-let ref a = { content = Atomic.make (WORD a); id = Id.get_unique () }
+let ref after =
+  {
+    state = Atomic.make { before = after; after; casn = casn_after };
+    id = Id.get_unique ();
+  }
+
 let equal r1 r2 = Obj.repr r1 == Obj.repr r2
-let is_on_ref (CAS (r1, _, _)) r2 = equal r1 r2
-let mk_cas a old_value new_value = CAS (a, WORD old_value, WORD new_value)
-
-let mk_rdcss a1 o1 a2 o2 n2 =
-  { a1; o1; a2; o2; n2; id_rdcss = Id.get_unique () }
-
-let mk_casn st c_l = { st; c_l; id_casn = Id.get_unique () }
-
-let st_eq s s' =
-  match (s, s') with
-  | WORD x, WORD x' -> x == x'
-  | RDCSS_DESC r, RDCSS_DESC r' -> r.id_rdcss == r'.id_rdcss
-  | CASN_DESC c, CASN_DESC c' -> c.id_casn == c'.id_casn
-  | _ -> false
-
-let commit (CAS (r, expect, update)) =
-  let curr_value = Atomic.get r.content in
-  st_eq curr_value expect && Atomic.compare_and_set r.content curr_value update
-
-let cas r e u = commit (mk_cas r e u)
-let set r n = Atomic.set r.content (WORD n)
+let is_on_ref (T (r1, _, _)) r2 = equal r1 r2
+let mk_cas a old_value new_value = T (a, old_value, new_value)
 let get_id r = r.id
 
-let rec rdcss rd =
-  if commit (CAS (rd.a2, rd.o2, RDCSS_DESC rd)) then (
-    ignore @@ complete rd;
-    rd.o2)
-  else
-    let curr_data = Atomic.get rd.a2.content in
-    match curr_data with
-    | RDCSS_DESC rd' ->
-        ignore @@ complete rd';
-        rdcss rd
-    | WORD _ | CASN_DESC _ ->
-        if st_eq curr_data rd.o2 then rdcss rd else curr_data
+let set atom value =
+  Atomic.set atom.state { before = value; after = value; casn = casn_after }
 
-and complete rd =
-  if st_eq (Atomic.get rd.a1.content) rd.o1 then
-    commit (CAS (rd.a2, RDCSS_DESC rd, rd.n2))
-  else commit (CAS (rd.a2, RDCSS_DESC rd, rd.o2))
+let rec release_after = function
+  | NIL -> true
+  | CAS (_, state, lt, gt) ->
+      release_after lt |> ignore;
+      state.before <- state.after;
+      state.casn <- casn_after;
+      release_after gt
 
-let rec rdcss_read a =
-  let r = Atomic.get a in
-  match r with
-  | RDCSS_DESC rd ->
-      ignore @@ complete rd;
-      rdcss_read a
-  | _ -> r
+let rec release_before = function
+  | NIL -> false
+  | CAS (_, state, lt, gt) ->
+      release_before lt |> ignore;
+      state.after <- state.before;
+      state.casn <- casn_before;
+      release_before gt
 
-let rec casn_proceed c =
-  let rec phase1 curr_cas_list curr_status out =
-    match curr_cas_list with
-    | CAS (atomic, old_value, new_value) :: curr_c_t_tail
-      when curr_status = SUCCEEDED -> (
-        let s =
-          rdcss (mk_rdcss c.st (WORD UNDECIDED) atomic old_value (CASN_DESC c))
-        in
-        match s with
-        | CASN_DESC c' ->
-            if c.id_casn != c'.id_casn then (
-              ignore @@ casn_proceed c';
-              phase1 curr_cas_list curr_status out)
-            else
-              phase1 curr_c_t_tail curr_status
-                (CAS (atomic, old_value, new_value) :: out)
-        | RDCSS_DESC _ -> assert false
-        | WORD _ ->
-            if st_eq s old_value then
-              phase1 curr_c_t_tail curr_status
-                (CAS (atomic, old_value, new_value) :: out)
-            else
-              phase1 curr_c_t_tail FAILED
-                (CAS (atomic, old_value, new_value) :: out))
-    | _ ->
-        ignore @@ commit (CAS (c.st, WORD UNDECIDED, WORD curr_status));
-        out
-  in
-  let rec phase2 curr_c_l succ =
-    match curr_c_l with
-    | CAS (a, o, n) :: curr_c_l_tail ->
-        let value_to_commit =
-          match Atomic.get succ with
-          | WORD SUCCEEDED -> n
-          | WORD FAILED -> o
-          | _ -> assert false
-        in
-        ignore @@ commit (CAS (a, CASN_DESC c, value_to_commit));
-        phase2 curr_c_l_tail succ
-    | _ -> Atomic.get succ = WORD SUCCEEDED
-  in
-  match Atomic.get c.st.content with
-  | WORD UNDECIDED -> phase2 (phase1 c.c_l SUCCEEDED []) c.st.content
-  | _ -> phase2 c.c_l c.st.content
+(* Note: The writes to `state.casn <- ...` above could be removed to reduce time
+   at the cost of increasing space usage (by a constant factor). *)
 
-let rec get a =
-  let r = rdcss_read a.content in
-  match r with
-  | CASN_DESC c ->
-      ignore @@ casn_proceed c;
-      get a
-  | WORD out -> out
-  | _ -> assert false
+let release cass = function
+  | `After -> release_after cass
+  | `Before -> release_before cass
 
-let kCAS ?(presort = true) cas_list =
-  match cas_list with
+let finish casn (`Undetermined cass as undetermined)
+    (status : [ `Before | `After ]) =
+  if Atomic.compare_and_set casn (undetermined :> status) (status :> status)
+  then release cass status
+  else Atomic.get casn == `After
+
+let rec determine casn undetermined skip = function
+  | NIL -> skip || finish casn undetermined `After
+  | CAS (atom, state, lt, gt) as eq ->
+      determine casn undetermined true lt
+      &&
+      let state' = Atomic.get atom.state in
+      if state == state' then determine casn undetermined skip gt
+      else
+        let before = state.before in
+        let before' = state'.before and after' = state'.after in
+        if
+          (before == before' && before == after')
+          || before == if is_after state'.casn then after' else before'
+        then
+          let status = Atomic.get casn in
+          if status != (undetermined :> status) then status == `After
+          else if Atomic.compare_and_set atom.state state' state then
+            determine casn undetermined skip gt
+          else determine casn undetermined skip eq
+        else finish casn undetermined `Before
+
+and is_after casn =
+  match Atomic.get casn with
+  | `Undetermined cass as undetermined -> determine casn undetermined false cass
+  | `After -> true
+  | `Before -> false
+
+let cas atom before after =
+  let state = { before = after; after; casn = casn_after } in
+  let state' = Atomic.get atom.state in
+  let before' = state'.before and after' = state'.after in
+  ((before == before' && before == after')
+  || before == if is_after state'.casn then after' else before')
+  && Atomic.compare_and_set atom.state state' state
+
+let commit (T (r, expect, update)) = cas r expect update
+
+let get atom =
+  let state = Atomic.get atom.state in
+  let before = state.before and after = state.after in
+  if before == after || is_after state.casn then after else before
+
+let overlap () = failwith "kcas: location overlap" [@@inline never]
+
+let rec splay x = function
+  | NIL -> (NIL, NIL)
+  | CAS (a, s, l, r) as t ->
+      if x < a.id then
+        match l with
+        | NIL -> (NIL, t)
+        | CAS (pa, ps, ll, lr) ->
+            if x < pa.id then
+              let lll, llr = splay x ll in
+              (lll, CAS (pa, ps, llr, CAS (a, s, lr, r)))
+            else if pa.id < x then
+              let lrl, lrr = splay x lr in
+              (CAS (pa, ps, ll, lrl), CAS (a, s, lrr, r))
+            else overlap ()
+      else if a.id < x then
+        match r with
+        | NIL -> (t, NIL)
+        | CAS (pa, ps, rl, rr) ->
+            if x < pa.id then
+              let rll, rlr = splay x rl in
+              (CAS (a, s, l, rll), CAS (pa, ps, rlr, rr))
+            else if pa.id < x then
+              let rrl, rrr = splay x rr in
+              (CAS (pa, ps, CAS (a, s, l, rl), rrl), rrr)
+            else overlap ()
+      else overlap ()
+
+let kCAS = function
   | [] -> true
-  | [ (CAS (a, _, _) as c) ] ->
-      ignore @@ get a;
-      commit c
-  | _ ->
-      let cas_list =
-        if presort then (
-          (* ensure global total order of locations (see section 5 in kCAS paper) *)
-          let sorted =
-            List.sort
-              (fun (CAS (cas_a, _, _)) (CAS (cas_b, _, _)) ->
-                Int.compare (get_id cas_a) (get_id cas_b))
-              cas_list
-          in
-          (* check for overlapping locations *)
-          List.fold_left
-            (fun previous_id (CAS (ref, _, _)) ->
-              let current_id = get_id ref in
-              if current_id = previous_id then failwith "kcas: location overlap";
-              current_id)
-            0 sorted
-          |> ignore;
-          sorted)
-        else cas_list
+  | [ t ] -> commit t
+  | T (atom, before, after) :: rest ->
+      let casn = Atomic.make `After in
+      let insert cass (T (atom, before, after)) =
+        let x = atom.id in
+        let state = { before; after; casn } in
+        match cass with
+        | CAS (a, _, NIL, _) when x < a.id -> CAS (atom, state, NIL, cass)
+        | CAS (a, _, _, NIL) when a.id < x -> CAS (atom, state, cass, NIL)
+        | _ ->
+            let l, r = splay x cass in
+            CAS (atom, state, l, r)
       in
-
-      (* proceed with casn *)
-      let casn = mk_casn (ref UNDECIDED) cas_list in
-      casn_proceed casn
+      let cass =
+        List.fold_left insert
+          (CAS (atom, { before; after; casn }, NIL, NIL))
+          rest
+      in
+      let undetermined = `Undetermined cass in
+      (* The end result is a cyclic data structure, which is why we cannot
+         initialize the [casn] atomic directly. *)
+      Atomic.set casn undetermined;
+      determine casn undetermined false cass
 
 let try_map r f =
   let c = get r in
   match f c with
   | None -> Aborted
-  | Some v -> if kCAS [ mk_cas r c v ] then Success c else Failed
+  | Some v -> if cas r c v then Success c else Failed
 
 let map r f =
   let b = Backoff.create () in
