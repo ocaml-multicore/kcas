@@ -27,6 +27,7 @@
 module Loc = Kcas.Loc
 module Op = Kcas.Op
 module Tx = Kcas.Tx
+module Mode = Kcas.Mode
 module Backoff = Kcas.Backoff
 
 let nb_iter = 100_000
@@ -42,24 +43,31 @@ let test_non_linearizable () =
 
   let a = Loc.make 0 and b = Loc.make 0 in
 
-  let cass1a = [ Op.make_cas b 0 0; Op.make_cas a 0 1 ]
-  and cass1b = [ Op.make_cas b 0 0; Op.make_cas a 1 0 ]
-  and cass2a = [ Op.make_cas b 0 1; Op.make_cas a 0 0 ]
-  and cass2b = [ Op.make_cas b 1 0; Op.make_cas a 0 0 ] in
+  let cass1a = [ Op.make_cmp b 0; Op.make_cas a 0 1 ]
+  and cass1b = [ Op.make_cmp b 0; Op.make_cas a 1 0 ]
+  and cass2a = [ Op.make_cas b 0 1; Op.make_cmp a 0 ]
+  and cass2b = [ Op.make_cas b 1 0; Op.make_cmp a 0 ] in
+
+  let atomically cs =
+    if Random.bool () then
+      try Op.atomically ~mode:Mode.obstruction_free cs
+      with Mode.Interference -> false
+    else Op.atomically cs
+  in
 
   let thread1 () =
     Barrier.await barrier;
     while not !test_finished do
-      if Op.atomically cass1a then
-        while not (Op.atomically cass1b) do
+      if atomically cass1a then
+        while not (atomically cass1b) do
           assert (Loc.get a == 1 && Loc.get b == 0)
         done
     done
   and thread2 () =
     Barrier.await barrier;
     for _ = 1 to n_iter do
-      if Op.atomically cass2a then
-        while not (Op.atomically cass2b) do
+      if atomically cass2a then
+        while not (atomically cass2b) do
           assert (Loc.get a == 0 && Loc.get b == 1)
         done
     done;

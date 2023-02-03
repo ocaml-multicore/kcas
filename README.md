@@ -5,7 +5,7 @@
 # **kcas** &mdash; Multi-word compare-and-swap library
 
 **kcas** provides an implementation of atomic
-[lock-free](https://en.wikipedia.org/wiki/Non-blocking_algorithm#Lock-freedomq)
+[lock-free](https://en.wikipedia.org/wiki/Non-blocking_algorithm#Lock-freedom)
 multi-word [compare-and-swap](https://en.wikipedia.org/wiki/Compare-and-swap)
 (MCAS), which is a powerful tool for designing concurrent algorithms.
 
@@ -19,6 +19,11 @@ Features and properties:
 
 - **_Disjoint-access parallel_**: Unrelated operations progress independently,
   without interference, even if they occur at the same time.
+
+- **_Read-only compares_**: The algorithm supports
+  [obstruction-free](https://en.wikipedia.org/wiki/Non-blocking_algorithm#Obstruction-freedom)
+  read-only compare (CMP) operations that can be performed on overlapping
+  locations in parallel without interference.
 
 - **_Composable_**: Independently developed transactions can be composed with
   ease.
@@ -280,6 +285,41 @@ and
 val try_pop : 'a list Loc.t -> 'a option Tx.t = <fun>
 ```
 
+With a couple of useful list manipulation helper functions
+
+```ocaml
+# let hd_opt = function
+    | [] -> None
+    | element :: _ -> Some element
+val hd_opt : 'a list -> 'a option = <fun>
+# let tl_safe = function
+    | [] -> []
+    | _ :: rest -> rest
+val tl_safe : 'a list -> 'a list = <fun>
+```
+
+an even more concise implementation is possible using
+[`update_as`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Tx/index.html#val-update_as):
+
+```ocaml
+# let try_pop stack = Tx.update_as hd_opt stack tl_safe
+val try_pop : 'a list Loc.t -> 'a option Tx.t = <fun>
+```
+
+Above,
+[`update_as`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Tx/index.html#val-update_as)
+is used as a shorthand to both compute the result and the new value for the
+stack contents.
+
+If the stack already contained an empty list, `[]`, all of the above variations
+of `try_pop` generate a read-only CMP operation in the
+[`obstruction_free`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Mode/index.html#val-obstruction_free)
+mode. This means that multiple domains may run `try_pop` on an empty stack in
+parallel without interference. The variation using
+[`update_as`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Tx/index.html#val-update_as)
+also makes only a single access to the underlying transaction log and is likely
+to be the fastest variation.
+
 So, to use a stack, we first need to create it and then we may
 [`commit`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Tx/index.html#val-commit)
 transactions to `push` and `try_pop` elements:
@@ -343,15 +383,12 @@ element. Otherwise we return `None` as the queue was empty.
 
 ```ocaml
 # let try_dequeue queue = Tx.(
-    get queue.front >>= function
-    | element :: rest ->
-      set queue.front rest >>.
-      Some element
+    update queue.front tl_safe >>= function
+    | element :: _ -> return (Some element)
     | [] ->
-      get_as List.rev queue.back >>= function
+      exchange_as List.rev queue.back [] >>= function
       | [] -> return None
       | element :: rest ->
-        set queue.back [] >>
         set queue.front rest >>.
         Some element
   )
@@ -359,11 +396,36 @@ val try_dequeue : 'a queue -> 'a option Tx.t = <fun>
 ```
 
 Above,
-[`get_as`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Tx/index.html#val-get_as)
+[`update`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Tx/index.html#val-update)
 and
-[`>>`](<https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Tx/index.html#val-(%3E%3E)>)
-are used as convenient shorthands. In fact, many of the combined primitives and
-operators may also provide minor performance benefits.
+[`exchange_as`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Tx/index.html#val-exchange_as)
+are used as convenient shorthands and to reduce the number of accesses to the
+transaction log. If both the front and back locations already contained an empty
+list, `[]`, the above generates read-only CMP operations in the
+[`obstruction_free`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Mode/index.html#val-obstruction_free)
+mode allowing multiple domains to run `try_dequeue` on an empty queue in
+parallel without interference. Additionally, if the back contained only one
+element, no write to the front is generated.
+
+> **_Question_**: _When does a transaction generate a read-only compare against
+> a particular location?_
+>
+> First of all, the transaction must be attempted in the
+> [`obstruction_free`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Mode/index.html#val-obstruction_free)
+> mode, which is the default mode that
+> [`commit`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Tx/index.html#val-commit)
+> uses initially.
+>
+> Additionally, there must be no operation in the transaction that sets a new
+> value to the location.
+>
+> If an operation sets a location to a new value, the full original state of the
+> location is forgotten, and the transaction will then later attempt a
+> compare-and-set operation against that location even if a later operation
+> inside the transaction sets the location to its original value.
+>
+> The intention behind this approach is to strike a balance between adding
+> overhead and also supporting convenient read-only updates.
 
 So, to use a queue, we first need to create it and then we may
 [`commit`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Tx/index.html#val-commit)

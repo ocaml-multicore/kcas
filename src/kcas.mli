@@ -45,6 +45,25 @@ module Loc : sig
   (** [decr r] atomically decrements [r]. *)
 end
 
+(** Operating modes of the [k-CAS-n-CMP] algorithm. *)
+module Mode : sig
+  type t
+  (** Type of an operating mode of the [k-CAS-n-CMP] algorithm. *)
+
+  val lock_free : t
+  (** In [lock_free] mode the algorithm makes sure that at least one domain will
+      be able to make progress. *)
+
+  val obstruction_free : t
+  (** In [obstruction_free] mode the algorithm proceeds optimistically and
+      allows operations to fail due to {!Interference} from other domains that
+      might have been prevented in the {!lock_free} mode. *)
+
+  exception Interference
+  (** Exception raised when interference from other domains is detected in the
+      {!obstruction_free} mode. *)
+end
+
 (** Operations on shared memory locations. *)
 module Op : sig
   type t
@@ -55,6 +74,14 @@ module Op : sig
       memory location [r] to the [after] value and succeeds if the current
       content of [r] is the [before] value. *)
 
+  val make_cmp : 'a Loc.t -> 'a -> t
+  (** [make_cmp r expected] is an operation that succeeds if the current value
+      of the shared memory location [r] is the [expected] value. *)
+
+  val get_id : t -> int
+  (** [get_id op] returns the unique id of the shared memory reference targeted
+      by the [op]eration. *)
+
   val is_on_loc : t -> 'a Loc.t -> bool
   (** [is_on_loc op r] determines whether the target of [op] is the shared
       memory location [r]. *)
@@ -63,9 +90,11 @@ module Op : sig
   (** [atomic op] attempts to perform the given operation atomically.  Returns
       [true] on success and [false] on failure. *)
 
-  val atomically : t list -> bool
-  (** [atomically ops] attempts to perform the given operations atomically.
-      Returns [true] on success and [false] on failure.
+  val atomically : ?mode:Mode.t -> t list -> bool
+  (** [atomically ops] attempts to perform the given operations atomically.  If
+      used in {!Mode.obstruction_free} may raise {!Mode.Interference}.
+      Otherwise returns [true] on success and [false] on failure.  The default
+      for [atomically] is {!Mode.lock_free}.
 
       The algorithm requires provided operations to follow a global total order.
       To eliminate a class of bugs, the operations are sorted automatically.  If
@@ -87,15 +116,19 @@ module Tx : sig
       Transactions can be composed both sequentially (see {!let*}) and
       conditionally (see {!(<|>)} and {!forget}).
 
-      Transactions are performed in two phases:
+      Transactions are performed in two or three phases:
 
       1. The first phase essentially records a log of operations based on the
       {!get} and {!set} accesses of shared memory locations.
 
       2. The second phase attempts to perform the operations atomically.
 
-      Either phase may fail.  In particular, the first phase is allowed to raise
-      exceptions to signal failure.
+      3. In {!Mode.obstruction_free} a third phase verifies all read-only
+      operations.
+
+      Each phase may fail.  In particular, the first phase is allowed to raise
+      exceptions to signal failure.  Failure on the third phase raises
+      {!Mode.Interference}.
 
       Here is an example of unconditionally {!commit}ting a transaction that
       swaps the values of the two shared memory locations [x_loc] and [y_loc]
@@ -186,6 +219,9 @@ module Tx : sig
   val exchange : 'a Loc.t -> 'a -> 'a t
   (** [exchange r v] is equivalent to [update r (fun _ -> v)]. *)
 
+  val exchange_as : ('a -> 'b) -> 'a Loc.t -> 'a -> 'b t
+  (** [exchange_as g r v] is equivalent to [update r (fun _ -> v) |> map g]. *)
+
   val return : 'a -> 'a t
   (** [return v] is a transactional operation whose result is the value [v]. *)
 
@@ -264,14 +300,21 @@ module Tx : sig
       transaction to forget any accesses made during the forgotten part of a
       transaction. *)
 
-  val attempt : 'a t -> 'a
+  val attempt : ?mode:Mode.t -> 'a t -> 'a
   (** [attempt tx] attempts to atomically perform the given transaction over
-      shared memory locations.  Either raises [Exit] on failure to commit the
-      transaction or returns the result of the transaction. *)
+      shared memory locations.  If used in {!Mode.obstruction_free} may raise
+      {!Mode.Interference}.  Otherwise either raises [Exit] on failure to commit
+      the transaction or returns the result of the transaction.  The default for
+      [attempt] is {!Mode.lock_free}. *)
 
-  val commit : ?backoff:Backoff.t -> 'a t -> 'a
-  (** [commit tx] repeats [attempt tx] until it does not raise [Exit] and then
-      either returns or raises whatever [attempt tx] returned or raised.
+  val commit : ?backoff:Backoff.t -> ?mode:Mode.t -> 'a t -> 'a
+  (** [commit tx] repeats [attempt tx] until it does not raise [Exit] or
+      {!Mode.Interference} and then either returns or raises whatever attempt
+      returned or raised.
+
+      The default for [commit] is {!Mode.obstruction_free}.  However, after
+      enough attempts have failed during the verification step, [commit]
+      switches to {!Mode.lock_free}.
 
       Note that, aside from using exponential backoff to reduce contention, the
       transaction mechanism has no way to intelligently wait until shared memory

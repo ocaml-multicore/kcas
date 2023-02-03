@@ -13,12 +13,13 @@ let is_empty q =
 
 let push_front q x = Tx.modify q.front @@ List.cons x
 let push_back q x = Tx.modify q.back @@ List.cons x
+let tl_safe = function [] -> [] | _ :: xs -> xs
 
 let pop_front q =
   Tx.(
-    get q.front >>= function
-    | x :: xs -> set q.front xs >>. x
+    update q.front tl_safe >>= function
+    | x :: _ -> return x
     | [] -> (
-        q.back |> get_as List.rev >>= function
+        exchange_as List.rev q.back [] >>= function
         | [] -> forget
-        | x :: xs -> set q.back [] >> set q.front xs >>. x))
+        | x :: xs -> set q.front xs >>. x))

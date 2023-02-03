@@ -10,69 +10,101 @@ module Id = struct
   let get_unique () = Atomic.fetch_and_add id 1
 end
 
+type determined = [ `After | `Before ]
+
 type 'a loc = { state : 'a state Atomic.t; id : int }
 and 'a state = { mutable before : 'a; mutable after : 'a; mutable casn : casn }
 and cass = CASN : 'a loc * 'a state * cass * cass -> cass | NIL : cass
 and casn = status Atomic.t
-and status = [ `Undetermined of cass | `After | `Before ]
+and status = [ `Undetermined of cass | determined ]
+
+let is_cmp casn state = state.casn != casn [@@inline]
+
+module Mode = struct
+  type t = determined
+
+  let lock_free = (`After :> t)
+  let obstruction_free = (`Before :> t)
+
+  exception Interference
+end
 
 let casn_after = Atomic.make `After
 let casn_before = Atomic.make `Before
 
-let rec release_after = function
+let rec release_after casn = function
   | NIL -> true
   | CASN (_, state, lt, gt) ->
-      release_after lt |> ignore;
-      state.before <- state.after;
-      state.casn <- casn_after;
-      release_after gt
+      release_after casn lt |> ignore;
+      if not (is_cmp casn state) then (
+        state.before <- state.after;
+        state.casn <- casn_after);
+      release_after casn gt
 
-let rec release_before = function
+let rec release_before casn = function
   | NIL -> false
   | CASN (_, state, lt, gt) ->
-      release_before lt |> ignore;
-      state.after <- state.before;
-      state.casn <- casn_before;
-      release_before gt
+      release_before casn lt |> ignore;
+      if not (is_cmp casn state) then (
+        state.after <- state.before;
+        state.casn <- casn_before);
+      release_before casn gt
 
-(* Note: The writes to `state.casn <- ...` above could be removed to reduce time
-   at the cost of increasing space usage (by a constant factor). *)
+let release casn cass = function
+  | `After -> release_after casn cass
+  | `Before -> release_before casn cass
 
-let release cass = function
-  | `After -> release_after cass
-  | `Before -> release_before cass
+let rec verify casn = function
+  | NIL -> `After
+  | CASN (atom, desired, lt, gt) -> (
+      match verify casn lt with
+      | `After ->
+          if is_cmp casn desired && Atomic.get atom.state != desired then
+            `Before
+          else verify casn gt
+      | `Before -> `Before)
 
-let finish casn (`Undetermined cass as undetermined)
-    (status : [ `Before | `After ]) =
+let finish casn (`Undetermined cass as undetermined) (status : determined) =
   if Atomic.compare_and_set casn (undetermined :> status) (status :> status)
-  then release cass status
+  then release casn cass status
   else Atomic.get casn == `After
 
-let rec determine casn undetermined skip = function
-  | NIL -> skip || finish casn undetermined `After
-  | CASN (loc, desired, lt, gt) as eq ->
-      determine casn undetermined true lt
-      &&
-      let current = Atomic.get loc.state in
-      if desired == current then determine casn undetermined skip gt
-      else
-        let expected = desired.before in
-        if
-          expected == current.after
-          && (current.casn == casn_after || is_after current.casn)
-          || expected == current.before
-             && (current.casn == casn_before || not (is_after current.casn))
-        then
-          let status = Atomic.get casn in
-          if status != (undetermined :> status) then status == `After
-          else if Atomic.compare_and_set loc.state current desired then
-            determine casn undetermined skip gt
-          else determine casn undetermined skip eq
-        else finish casn undetermined `Before
+let exit _ = raise Exit [@@inline never]
+
+let rec determine casn action = function
+  | NIL -> action
+  | CASN (loc, desired, lt, gt) as eq -> (
+      match determine casn action lt with
+      | `Before -> `Before
+      | (`After | `Verify) as action ->
+          let current = Atomic.get loc.state in
+          if desired == current then
+            let action = if is_cmp casn desired then `Verify else action in
+            determine casn action gt
+          else
+            let matches_expected () =
+              let expected = desired.before in
+              expected == current.after
+              && (current.casn == casn_after || is_after current.casn)
+              || expected == current.before
+                 && (current.casn == casn_before || not (is_after current.casn))
+            in
+            if (not (is_cmp casn desired)) && matches_expected () then
+              match Atomic.get casn with
+              | `Undetermined _ ->
+                  if Atomic.compare_and_set loc.state current desired then
+                    determine casn action gt
+                  else determine casn action eq
+              | #determined -> exit ()
+            else `Before)
 
 and is_after casn =
   match Atomic.get casn with
-  | `Undetermined cass as undetermined -> determine casn undetermined false cass
+  | `Undetermined cass as undetermined -> (
+      match determine casn `After cass with
+      | `Verify -> finish casn undetermined (verify casn cass)
+      | #determined as status -> finish casn undetermined status
+      | exception Exit -> Atomic.get casn == `After)
   | `After -> true
   | `Before -> false
 
@@ -81,7 +113,16 @@ let determine_for_owner casn cass =
   (* The end result is a cyclic data structure, which is why we cannot
      initialize the [casn] atomic directly. *)
   Atomic.set casn undetermined;
-  determine casn undetermined false cass
+  match determine casn `After cass with
+  | `Verify ->
+      (* We only want to [raise Interference] in case it is the verify step that
+         fails.  The idea is that in [lock_free] mode the attempt might have
+         succeeded as the compared locations would have been set in [lock_free]
+         mode preventing interference.  If failure happens before the verify
+         step then the [lock_free] mode would have likely also failed. *)
+      finish casn undetermined (verify casn cass) || raise Mode.Interference
+  | #determined as status -> finish casn undetermined status
+  | exception Exit -> Atomic.get casn == `After
   [@@inline]
 
 let overlap () = failwith "kcas: location overlap" [@@inline never]
@@ -133,6 +174,10 @@ let rec update_no_alloc backoff loc state set_after =
     let backoff = Backoff.once backoff in
     update_no_alloc backoff loc state set_after
 
+let is_obstruction_free casn =
+  Atomic.get casn == (Mode.obstruction_free :> status)
+  [@@inline]
+
 let cas loc before state =
   let state' = Atomic.get loc.state in
   let before' = state'.before and after' = state'.after in
@@ -140,8 +185,6 @@ let cas loc before state =
   || before == if is_after state'.casn then after' else before')
   && Atomic.compare_and_set loc.state state' state
   [@@inline]
-
-let cmp_state casn before = { before; after = before; casn } [@@inline]
 
 module Loc = struct
   type 'a t = 'a loc
@@ -194,58 +237,60 @@ module Op = struct
   type t = CAS : 'a Loc.t * 'a * 'a -> t
 
   let make_cas loc before after = CAS (loc, before, after) [@@inline]
+  let make_cmp loc expected = CAS (loc, expected, expected) [@@inline]
 
   let is_on_loc op loc =
     match op with CAS (loc', _, _) -> Obj.magic loc' == loc
     [@@inline]
 
-  let atomic = function
-    | CAS (loc, before, after) -> Loc.compare_and_set loc before after
+  let get_id = function CAS (loc, _, _) -> loc.id [@@inline]
 
-  let atomically = function
+  let atomic = function
+    | CAS (loc, before, after) ->
+        if before == after then Loc.get loc == before
+        else Loc.compare_and_set loc before after
+
+  let atomically ?(mode = Mode.lock_free) = function
     | [] -> true
     | [ op ] -> atomic op
     | first :: rest ->
-        let casn = Atomic.make `After in
-        let insert cass = function
-          | CAS (loc, before, after) -> insert cass loc { before; after; casn }
+        let casn = Atomic.make (mode :> status) in
+        let rec run cass = function
+          | [] -> determine_for_owner casn cass
+          | CAS (loc, before, after) :: rest ->
+              if before == after && is_obstruction_free casn then
+                let state = Atomic.get loc.state in
+                before == eval state && run (insert cass loc state) rest
+              else run (insert cass loc { before; after; casn }) rest
         in
-        let cass =
-          match first with
-          | CAS (loc, before, after) ->
-              CASN (loc, { before; after; casn }, NIL, NIL)
-        in
-        let cass = List.fold_left insert cass rest in
-        determine_for_owner casn cass
+        let (CAS (loc, before, after)) = first in
+        if before == after && is_obstruction_free casn then
+          let state = Atomic.get loc.state in
+          before == eval state && run (CASN (loc, state, NIL, NIL)) rest
+        else run (CASN (loc, { before; after; casn }, NIL, NIL)) rest
 end
 
-let get_as0 g loc casn l r =
+let update_as0 g loc f casn l r =
   let state = Atomic.get loc.state in
   let before = eval state in
-  let state = cmp_state casn before in
+  let after = f before in
+  let state =
+    if before == after && is_obstruction_free casn then state
+    else { before; after; casn }
+  in
   ((casn, CASN (loc, state, l, r)), g before)
-  [@@inline]
-
-let get_as g loc (casn, cass) =
-  match cass with
-  | NIL -> get_as0 g loc casn NIL NIL
-  | _ -> (
-      match splay loc.id cass with
-      | l, Miss, r -> get_as0 g loc casn l r
-      | l, Hit (_loc', state'), r ->
-          let state = Obj.magic state' in
-          ((casn, CASN (loc, state, l, r)), g state.after))
-  [@@inline]
-
-let update_as0 g loc f casn l r =
-  let before = Loc.get loc in
-  ((casn, CASN (loc, { before; after = f before; casn }, l, r)), g before)
   [@@inline]
 
 let update_as g loc f casn state' l r =
   let state = Obj.magic state' in
-  let current = state.after in
-  ((casn, CASN (loc, { state with after = f current }, l, r)), g current)
+  if is_cmp casn state then
+    let before = eval state in
+    let after = f before in
+    let state = if before == after then state else { before; after; casn } in
+    ((casn, CASN (loc, state, l, r)), g before)
+  else
+    let current = state.after in
+    ((casn, CASN (loc, { state with after = f current }, l, r)), g current)
   [@@inline]
 
 let update_as g loc f (casn, cass) =
@@ -259,15 +304,39 @@ let update_as g loc f (casn, cass) =
       | l, Hit (_loc', state'), r -> update_as g loc f casn state' l r)
   [@@inline]
 
+let attempt (mode : Mode.t) tx =
+  let casn = Atomic.make (mode :> status) in
+  match tx (casn, NIL) with
+  | (_, NIL), result -> result
+  | (_, CASN (loc, state, NIL, NIL)), result ->
+      if is_cmp casn state then result
+      else
+        let before = state.before in
+        state.before <- state.after;
+        if cas loc before state then result else exit ()
+  | (_, cass), result ->
+      if determine_for_owner casn cass then result else exit ()
+
+let rec commit backoff mode tx =
+  match attempt mode tx with
+  | result -> result
+  | exception Mode.Interference ->
+      let backoff = Backoff.once backoff in
+      commit backoff Mode.lock_free tx
+  | exception Exit ->
+      let backoff = Backoff.once backoff in
+      commit backoff mode tx
+
 module Tx = struct
   type log = casn * cass
   type 'a t = log -> log * 'a
 
-  let get loc log = get_as Fun.id loc log
-  let get_as f loc log = get_as f loc log
+  let get loc log = update_as Fun.id loc Fun.id log
+  let get_as f loc log = update_as f loc Fun.id log
   let set loc after log = update_as ignore loc (fun _ -> after) log
   let update loc f log = update_as Fun.id loc f log
   let modify loc f log = update_as ignore loc f log
+  let exchange_as g loc after log = update_as g loc (fun _ -> after) log
   let exchange loc after log = update_as Fun.id loc (fun _ -> after) log
   let update_as g loc f log = update_as g loc f log
   let return value log = (log, value)
@@ -303,25 +372,9 @@ module Tx = struct
     match xt log with log, x -> xyt x log | exception e -> eyt e log
 
   let ( <|> ) lhs rhs log = try lhs log with Exit -> rhs log
-  let forget _ = raise Exit
+  let forget = exit
+  let attempt ?(mode = Mode.lock_free) tx = attempt mode tx
 
-  let attempt xt =
-    let casn = Atomic.make `After in
-    match xt (casn, NIL) with
-    | (_, NIL), result -> result
-    | (_, CASN (atom, state, NIL, NIL)), result ->
-        let before = state.before in
-        state.before <- state.after;
-        if cas atom before state then result else raise Exit
-    | (_, cass), result ->
-        if determine_for_owner casn cass then result else raise Exit
-
-  let rec commit backoff xt =
-    match attempt xt with
-    | result -> result
-    | exception Exit ->
-        let backoff = Backoff.once backoff in
-        commit backoff xt
-
-  let commit ?(backoff = Backoff.default) xt = commit backoff xt
+  let commit ?(backoff = Backoff.default) ?(mode = Mode.obstruction_free) tx =
+    commit backoff mode tx
 end
