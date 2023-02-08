@@ -42,6 +42,39 @@ module Barrier = struct
     done
 end
 
+let test_non_linearizable () =
+  let barrier = Barrier.make 2
+  and n_iter = 1_000_000
+  and test_finished = ref false in
+
+  let a = Kcas.ref 0 and b = Kcas.ref 0 in
+
+  let cass1a = [ Kcas.mk_cas b 0 0; Kcas.mk_cas a 0 1 ]
+  and cass1b = [ Kcas.mk_cas b 0 0; Kcas.mk_cas a 1 0 ]
+  and cass2a = [ Kcas.mk_cas b 0 1; Kcas.mk_cas a 0 0 ]
+  and cass2b = [ Kcas.mk_cas b 1 0; Kcas.mk_cas a 0 0 ] in
+
+  let thread1 () =
+    Barrier.await barrier;
+    while not !test_finished do
+      if Kcas.kCAS cass1a then
+        while not (Kcas.kCAS cass1b) do
+          assert (Kcas.get a == 1 && Kcas.get b == 0)
+        done
+    done
+  and thread2 () =
+    Barrier.await barrier;
+    for _ = 1 to n_iter do
+      if Kcas.kCAS cass2a then
+        while not (Kcas.kCAS cass2b) do
+          assert (Kcas.get a == 0 && Kcas.get b == 1)
+        done
+    done;
+    test_finished := true
+  in
+
+  [ thread2; thread1 ] |> List.map Domain.spawn |> List.iter Domain.join
+
 (* test 1 *)
 let test_set () =
   let a = Kcas.ref 0 in
@@ -209,6 +242,7 @@ let test_presort () =
   refs |> Array.iter (fun r -> assert (Kcas.get r = n_incs * n_domains))
 
 let () =
+  test_non_linearizable ();
   test_set ();
   test_casn ();
   test_read_casn ();

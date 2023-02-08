@@ -70,21 +70,22 @@ let finish casn (`Undetermined cass as undetermined)
 
 let rec determine casn undetermined skip = function
   | NIL -> skip || finish casn undetermined `After
-  | CAS (atom, state, lt, gt) as eq ->
+  | CAS (atom, desired, lt, gt) as eq ->
       determine casn undetermined true lt
       &&
-      let state' = Atomic.get atom.state in
-      if state == state' then determine casn undetermined skip gt
+      let current = Atomic.get atom.state in
+      if desired == current then determine casn undetermined skip gt
       else
-        let before = state.before in
-        let before' = state'.before and after' = state'.after in
+        let expected = desired.before in
         if
-          (before == before' && before == after')
-          || before == if is_after state'.casn then after' else before'
+          expected == current.after
+          && (current.casn == casn_after || is_after current.casn)
+          || expected == current.before
+             && (current.casn == casn_before || not (is_after current.casn))
         then
           let status = Atomic.get casn in
           if status != (undetermined :> status) then status == `After
-          else if Atomic.compare_and_set atom.state state' state then
+          else if Atomic.compare_and_set atom.state current desired then
             determine casn undetermined skip gt
           else determine casn undetermined skip eq
         else finish casn undetermined `Before
