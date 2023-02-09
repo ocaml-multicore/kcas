@@ -28,6 +28,11 @@
  (modules tx_benchmark))
 
 (test
+ (name tx_parallel_cmp_bench)
+ (libraries kcas barrier)
+ (modules tx_parallel_cmp_bench))
+
+(test
  (name example)
  (libraries kcas)
  (modules example))
