@@ -25,4 +25,13 @@ the source interfaces. It can be consulted [online][doc].
 
 ## Use 
 
-See [example.ml](test/example.ml) for a simple example. 
+See [example.ml](test/example.ml) for a simple example.
+
+## Development
+
+### Make a new release
+
+1. Update [CHANGES.md](CHANGES.md).
+2. Run `dune-release tag VERSION` to create a tag for the new `VERSION`.
+3. Run `dune-release` to publish the new `VERSION`.
+4. Run `./update-gh-pages-for-tag VERSION` to update the online documentation.
