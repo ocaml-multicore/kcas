@@ -4,6 +4,11 @@
  (modules test))
 
 (test
+ (name tx_test)
+ (libraries kcas)
+ (modules tx_test tx_linked_queue tx_two_stack_queue tx_stack))
+
+(test
  (name test_overlapping_loc)
  (libraries kcas)
  (modules test_overlapping_loc))
@@ -12,6 +17,11 @@
  (name benchmark)
  (libraries kcas)
  (modules benchmark))
+
+(test
+ (name tx_benchmark)
+ (libraries kcas)
+ (modules tx_benchmark))
 
 (test
  (name example)

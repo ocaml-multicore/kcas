@@ -2,6 +2,7 @@
  * Copyright (c) 2015, Théo Laurent <theo.laurent@ens.fr>
  * Copyright (c) 2015, KC Sivaramakrishnan <sk826@cl.cam.ac.uk>
  * Copyright (c) 2021, Sudha Parimala <sudharg247@gmail.com>
+ * Copyright (c) 2023, Vesa Karvonen <vesa.a.j.k@gmail.com>
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -16,28 +17,37 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
 
-module type S = sig
-  type t
+type t = int
 
-  val create : ?max:int -> unit -> t
-  val once : t -> unit
-  val reset : t -> unit
-end
+let bits = 5
+let max_wait_log = 30 (* [Random.bits] returns 30 random bits. *)
+let mask = (1 lsl bits) - 1
 
-module M : S = struct
-  type t = int * int ref
+let create ?(lower_wait_log = 4) ?(upper_wait_log = 17) () =
+  assert (
+    0 <= lower_wait_log
+    && lower_wait_log <= upper_wait_log
+    && upper_wait_log <= max_wait_log);
+  (upper_wait_log lsl (bits * 2))
+  lor (lower_wait_log lsl bits) lor lower_wait_log
 
-  let _ = Random.self_init ()
-  let create ?(max = 32) () = (max, ref 1)
+let get_upper_wait_log backoff = backoff lsr (bits * 2)
+let get_lower_wait_log backoff = (backoff lsr bits) land mask
+let get_wait_log backoff = backoff land mask
 
-  let once (maxv, r) =
-    let t = Random.int !r in
-    r := min (2 * !r) maxv;
-    if t = 0 then ()
-    else
-      for _ = 1 to 2048 * t do
-        Domain.cpu_relax ()
-      done
+let reset backoff =
+  let lower_wait_log = get_lower_wait_log backoff in
+  backoff land lnot mask lor lower_wait_log
 
-  let reset (_, r) = r := 1
-end
+let once backoff =
+  let wait_log = get_wait_log backoff in
+  let wait_mask = (1 lsl wait_log) - 1 in
+  let t = Random.bits () land wait_mask in
+  for _ = 0 to t do
+    Domain.cpu_relax ()
+  done;
+  let upper_wait_log = get_upper_wait_log backoff in
+  let next_wait_log = Int.min upper_wait_log (wait_log + 1) in
+  backoff lxor wait_log lor next_wait_log
+
+let default = create ()

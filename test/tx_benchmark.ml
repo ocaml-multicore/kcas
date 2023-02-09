@@ -1,6 +1,6 @@
 open Printf
 module Loc = Kcas.Loc
-module Op = Kcas.Op
+module Tx = Kcas.Tx
 
 let k_kCAS, num_iter =
   if Array.length Sys.argv < 3 then (2, 1000)
@@ -12,14 +12,18 @@ let k_kCAS, num_iter =
     with Failure _ -> failwith "Unable to parse arguments"
 
 let make_kCAS k =
-  let rec loop k out1 out2 =
-    if k > 0 then
-      let a = Loc.make 0 in
-      loop (k - 1) (Op.make_cas a 0 1 :: out1) (Op.make_cas a 1 0 :: out2)
-    else (out1, out2)
+  let rs = List.init k (fun _ -> Loc.make 0) in
+  let rec incs = function
+    | [] -> failwith "bug"
+    | [ r ] -> Tx.(modify r (( + ) 1))
+    | r :: rs -> Tx.(modify r (( + ) 1) >> incs rs)
   in
-
-  loop k [] []
+  let rec decs = function
+    | [] -> failwith "bug"
+    | [ r ] -> Tx.(modify r (( + ) (-1)))
+    | r :: rs -> Tx.(modify r (( + ) (-1)) >> decs rs)
+  in
+  (incs rs, decs rs)
 
 let operation1, operation2 = make_kCAS k_kCAS
 
@@ -48,8 +52,8 @@ end
 let benchmark () =
   let rec loop i =
     if i > 0 then (
-      ignore @@ Op.atomically operation1;
-      ignore @@ Op.atomically operation2;
+      ignore @@ Tx.commit operation1;
+      ignore @@ Tx.commit operation2;
       loop (i - 1))
   in
   loop num_iter
