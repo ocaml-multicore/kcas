@@ -1,6 +1,10 @@
+(library
+ (name barrier)
+ (modules barrier))
+
 (test
  (name test)
- (libraries kcas)
+ (libraries kcas barrier)
  (modules test))
 
 (test

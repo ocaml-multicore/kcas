@@ -35,18 +35,6 @@ let assert_kcas loc expected_v =
   let present_v = Loc.get loc in
   assert (present_v == expected_v)
 
-module Barrier = struct
-  type t = { counter : int Atomic.t; total : int }
-
-  let make total = { counter = Atomic.make 0; total }
-
-  let await { counter; total } =
-    Atomic.incr counter;
-    while Atomic.get counter < total do
-      ()
-    done
-end
-
 let test_non_linearizable () =
   let barrier = Barrier.make 2
   and n_iter = 1_000_000
