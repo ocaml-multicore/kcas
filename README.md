@@ -380,6 +380,14 @@ val a_queue : int queue = {front = <abstr>; back = <abstr>}
 - : int option = None
 ```
 
+> **_Beware_**: Using two stacks for a queue is easy to implement and performs
+> well in many cases. Unfortunately it has one major weakness. The problem is
+> that it may take a relatively long time to reverse the back of a queue. This
+> can cause
+> [starvation](<https://en.wikipedia.org/wiki/Starvation_(computer_science)>) as
+> producers may then be able to always complete their transactions before
+> consumers and the back of the queue might grow without bound.
+
 #### Composing transactions
 
 The main benefit of the
