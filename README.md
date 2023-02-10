@@ -175,10 +175,9 @@ to the given `target` stack:
         Op.make_cas source old_source rest;
         Op.make_cas target old_target (elem::old_target)
       ] in
-      if not (Op.atomically ops) then begin
+      if not (Op.atomically ops) then
         let backoff = Backoff.once backoff in
         move ~backoff source target
-      end
 val move : ?backoff:Backoff.t -> 'a list Loc.t -> 'a list Loc.t -> unit =
   <fun>
 ```
