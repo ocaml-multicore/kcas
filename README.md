@@ -169,11 +169,11 @@ to the given `target` stack:
                target =
     match Loc.get source with
     | [] -> raise Exit
-    | (elem::rest) as source' ->
-      let target' = Loc.get target in
+    | (elem::rest) as old_source ->
+      let old_target = Loc.get target in
       let ops = [
-        Op.make_cas source source' rest;
-        Op.make_cas target target' (elem::target')
+        Op.make_cas source old_source rest;
+        Op.make_cas target old_target (elem::old_target)
       ] in
       if not (Op.atomically ops) then begin
         let backoff = Backoff.once backoff in
