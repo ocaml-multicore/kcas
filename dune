@@ -1,0 +1,5 @@
+(mdx
+ (package kcas)
+ (deps
+  (package kcas))
+ (files README.md))

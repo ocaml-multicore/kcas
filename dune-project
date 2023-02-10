@@ -9,4 +9,6 @@
 (package (name kcas)
  (synopsis "Multi-word compare-and-swap library")
  (depends 
-  (ocaml (>= 5.0))))
+  (ocaml (>= 5.0))
+  (mdx (and (>= 1.10.0) :with-test))))
+(using mdx 0.2)
