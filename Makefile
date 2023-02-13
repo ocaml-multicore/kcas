@@ -1,4 +1,6 @@
-all: build test
+.PHONY: all build test bench
+
+all: build 
 
 build:
 	@dune build @install
@@ -8,3 +10,6 @@ test:
 
 clean:
 	@dune clean
+
+bench:
+	@dune exec -- ./bench/main.exe
