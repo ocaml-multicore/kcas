@@ -11,7 +11,7 @@ let make_kCAS k =
   loop k [] []
 
 let benchmark ~num_iter ~num_ops () =
-  let operation1, operation2 = make_kCAS num_ops in 
+  let operation1, operation2 = make_kCAS num_ops in
   let rec loop i =
     if i > 0 then (
       ignore @@ Op.atomically operation1;
@@ -21,5 +21,5 @@ let benchmark ~num_iter ~num_ops () =
   loop num_iter
 
 let run ~num_iter ~num_ops () =
-  let n = 10 in 
-   Benchmark.run (benchmark ~num_iter ~num_ops) n 
+  let n = 10 in
+  Benchmark.run (benchmark ~num_iter ~num_ops) n

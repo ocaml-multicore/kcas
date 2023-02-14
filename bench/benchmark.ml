@@ -32,9 +32,9 @@ let run f n =
   let r = run [] (n + 1) in
   summarize (discount_first_run r)
 
-
-let as_json name (_, `Median median, `Stddev stddev) = 
-    Printf.sprintf {|
+let as_json name (_, `Median median, `Stddev stddev) =
+  Printf.sprintf
+    {|
      {
       "name": "%s",
       "metrics": [
@@ -52,4 +52,5 @@ let as_json name (_, `Median median, `Stddev stddev) =
         } 
       ] 
     }
-    |} name median stddev 
+    |}
+    name median stddev
