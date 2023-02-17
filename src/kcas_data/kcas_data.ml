@@ -58,6 +58,10 @@ module Stack = Stack
 
 module Promise = Promise
 
+(** {1 Linked data structures} *)
+
+module Dllist = Dllist
+
 (** {1 Utilities} *)
 
 module Accumulator = Accumulator
