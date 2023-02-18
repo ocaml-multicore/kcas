@@ -42,6 +42,8 @@ is distributed under the [ISC license](LICENSE.md).
     - [A transactional lock-free queue](#a-transactional-lock-free-queue)
     - [Composing transactions](#composing-transactions)
     - [About transactions](#about-transactions)
+  - [Programming with explicit transaction log passing](#programming-with-explicit-transaction-log-passing)
+    - [A transactional lock-free leftist heap](#a-transactional-lock-free-leftist-heap)
 - [Development](#development)
 
 ## A quick tour
@@ -96,6 +98,14 @@ Perform transactions over them:
 - : unit = ()
 ```
 
+Explicitly pass a transaction log through a computation:
+
+```ocaml
+# Xt.commit { tx = fun ~xt ->
+    Xt.set ~xt a (Xt.get ~xt b) }
+- : unit = ()
+```
+
 And get the answer:
 
 ```ocaml
@@ -112,10 +122,13 @@ The API of **kcas** is divided into submodules. The main modules are
 
 - [`Op`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Op/index.html),
   providing an interface for _primitive operations_ over multiple shared memory
-  locations, and
+  locations,
 
 - [`Tx`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Tx/index.html),
-  providing _composable transactions_ over shared memory locations.
+  providing _composable transactions_ over shared memory locations, and
+
+- [`Xt`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html),
+  providing _explicit transaction log passing_ over shared memory locations.
 
 The following sections discuss each of the above in turn.
 
@@ -132,9 +145,10 @@ In other words, an application that uses
 [`Atomic`](https://v2.ocaml.org/api/Atomic.html), but then needs to perform
 atomic operations over multiple atomic locations, could theoretically just
 rebind `module Atomic = Loc` and then use the
-[`Op`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Op/index.html)
+[`Op`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Op/index.html),
+[`Tx`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Tx/index.html),
 and/or
-[`Tx`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Tx/index.html) APIs
+[`Xt`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html) APIs
 to perform operations over multiple locations. This should not be done
 just-in-case, however, as, even though **kcas** is efficient, it does naturally
 have higher overhead than the Stdlib
@@ -448,7 +462,8 @@ val a_queue : int queue = {front = <abstr>; back = <abstr>}
 > can cause
 > [starvation](<https://en.wikipedia.org/wiki/Starvation_(computer_science)>) as
 > producers may then be able to always complete their transactions before
-> consumers and the back of the queue might grow without bound.
+> consumers and the back of the queue might grow without bound. _Can you see a
+> way to avoid this problem?_
 
 #### Composing transactions
 
@@ -510,6 +525,205 @@ mechanism is used, but otherwise
 will essentially perform a
 [busy-wait](https://en.wikipedia.org/wiki/Busy_waiting), which should usually be
 avoided.
+
+### Programming with explicit transaction log passing
+
+The [`Xt`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html)
+module provides an API that allows transactions to be implemented by explicitly
+passing a mutable transaction log, which allows convenient use of all the
+ordinary sequential control flow structures of OCaml.
+
+> At the moment it is unclear whether both of the
+> [`Xt`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html) and
+> the [`Tx`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Tx/index.html)
+> APIs will be supported in the future. They provide roughly the same expressive
+> power as witnessed by the conversions
+> [`of_tx`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-of_tx)
+> and
+> [`to_tx`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-to_tx).
+> Feedback on this question is welcome!
+
+#### A transactional lock-free leftist heap
+
+Let's implement something a bit more complicated,
+[a leftist heap](https://en.wikipedia.org/wiki/Leftist_tree), which is a kind of
+priority queue.
+
+> The implementation here is adapted from the book _Data Structures and
+> Algorithm Analysis in C (2nd ed.)_ by Mark Allen Weiss.
+
+First we define a data type to represent the spine of a leftist heap:
+
+```ocaml
+# type 'v leftist =
+    [ `Null
+    | `Node of 'v leftist Loc.t
+             * int Loc.t
+             * 'v
+             * 'v leftist Loc.t ]
+type 'v leftist =
+    [ `Node of 'v leftist Loc.t * int Loc.t * 'v * 'v leftist Loc.t | `Null ]
+```
+
+To create a leftist heap we
+[`make`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Loc/index.html#val-make)
+a location with an empty spine:
+
+```ocaml
+# let leftist () : _ leftist Loc.t = Loc.make `Null
+val leftist : unit -> 'a leftist Loc.t = <fun>
+```
+
+We then define an auxiliary function `npl_of` to get the null path length of a
+leftist heap:
+
+```ocaml
+# let npl_of ~xt : _ leftist -> int = function
+    | `Null -> 0
+    | `Node (_, npl, _, _) -> Xt.get ~xt npl
+val npl_of : xt:'a Xt.t -> 'b leftist -> int = <fun>
+```
+
+Notice the `~xt` parameter. It refers to the transaction log being passed
+explicitly. Above we pass it to
+[`get`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-get)
+to record an operation in the log.
+
+The core operation of leftist heaps is that of merging two leftist heaps:
+
+```ocaml
+# let rec merge ~xt ~lt h1 h2 =
+    match h1, h2 with
+    | `Null, h2 -> h2
+    | h1, `Null -> h1
+    | (`Node (_, _, v1, _) as h1),
+      (`Node (_, _, v2, _) as h2) ->
+      let (`Node (h1l, npl, _, h1r) as h1), h2 =
+        if lt v1 v2 then h1, h2 else h2, h1 in
+      let l = Xt.get ~xt h1l in
+      if l == `Null then
+        Xt.set ~xt h1l h2
+      else begin
+        let r = merge ~xt ~lt (Xt.get ~xt h1r) h2 in
+        match npl_of ~xt l, npl_of ~xt r with
+        | l_npl, r_npl when l_npl < r_npl ->
+          Xt.set ~xt h1l r;
+          Xt.set ~xt h1r l;
+          Xt.set ~xt npl (l_npl + 1)
+        | _, r_npl ->
+          Xt.set ~xt h1r r;
+          Xt.set ~xt npl (r_npl + 1)
+      end;
+      h1
+val merge :
+  xt:'a Xt.t ->
+  lt:('b -> 'b -> bool) -> 'b leftist -> 'b leftist -> 'b leftist = <fun>
+```
+
+Again, `merge` passes the `~xt` parameter explicitly to the
+[`get`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-get)
+and
+[`set`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-set)
+operations to record them in the log.
+
+The `merge` operation can be used to implement both insertion to
+
+```ocaml
+# let insert ~xt ~lt h x =
+    let h1 = `Node (
+        Loc.make `Null,
+        Loc.make 1,
+        x,
+        Loc.make `Null
+      ) in
+    Xt.set ~xt h (merge ~xt ~lt h1 (Xt.get ~xt h))
+val insert :
+  xt:'a Xt.t -> lt:('b -> 'b -> bool) -> 'b leftist Loc.t -> 'b -> unit =
+  <fun>
+```
+
+and deletion from
+
+```ocaml
+# let delete_min_opt ~xt ~lt h =
+    match Xt.get ~xt h with
+    | `Null -> None
+    | `Node (h1, _, x, h2) ->
+        Xt.set ~xt h
+          (merge ~xt ~lt (Xt.get ~xt h1) (Xt.get ~xt h2));
+        Some x
+val delete_min_opt :
+  xt:'a Xt.t -> lt:('b -> 'b -> bool) -> 'b leftist Loc.t -> 'b option =
+  <fun>
+```
+
+a leftist heap.
+
+Let's then first pick an ordering
+
+```ocaml
+# let lt = (>)
+val lt : 'a -> 'a -> bool = <fun>
+```
+
+and create a leftist heap:
+
+```ocaml
+# let a_heap : int leftist Loc.t = leftist ()
+val a_heap : int leftist Loc.t = <abstr>
+```
+
+To populate the heap we need to define a transaction passing function and pass
+it to
+[`commit`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-commit):
+
+```ocaml
+# Xt.commit { tx = fun ~xt ->
+    List.iter (insert ~xt ~lt a_heap) [3; 1; 4; 1; 5] }
+- : unit = ()
+```
+
+Notice that we could simply use `List.iter` from the Stdlib to iterate over a
+list of elements.
+
+> The
+> [`{ tx = ... }`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#type-tx)
+> wrapper is used to ensure that the transaction function is polymorphic with
+> respect to the log. This way the type system makes it difficult to
+> accidentally leak the log as described in the paper
+> [Lazy Functional State Threads](https://dl.acm.org/doi/10.1145/178243.178246).
+
+Let's then define a transaction passing function to remove all elements from a
+heap
+
+```ocaml
+# let remove_all ~xt ~lt h =
+    let xs = ref [] in
+    while match delete_min_opt ~xt ~lt h with
+          | None -> false
+          | Some x -> xs := x :: !xs; true do
+      ()
+    done;
+    List.rev !xs
+val remove_all :
+  xt:'a Xt.t -> lt:('b -> 'b -> bool) -> 'b leftist Loc.t -> 'b list = <fun>
+```
+
+and use it
+
+```ocaml
+# Xt.commit { tx = remove_all ~lt a_heap }
+- : int list = [5; 4; 3; 1; 1]
+```
+
+on the heap we populated earlier.
+
+Notice how we were able to use a `while` loop, rather than recursion, in
+`remove_all`.
+
+> This leftist tree implementation is unlikely to be the best performing
+> lock-free heap implementation, but it was pretty straightforward to implement
+> using k-CAS based on a textbook imperative implementation.
 
 ## Development
 

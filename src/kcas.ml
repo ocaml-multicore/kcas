@@ -378,3 +378,95 @@ module Tx = struct
   let commit ?(backoff = Backoff.default) ?(mode = Mode.obstruction_free) tx =
     commit backoff mode tx
 end
+
+module Xt = struct
+  type 'x t = { casn : casn; mutable cass : cass }
+
+  let update0 loc f xt l r =
+    let state = Atomic.get loc.state in
+    let before = eval state in
+    let after = f before in
+    let state =
+      if before == after && is_obstruction_free xt.casn then state
+      else { before; after; casn = xt.casn }
+    in
+    xt.cass <- CASN (loc, state, l, r);
+    before
+    [@@inline]
+
+  let update loc f xt state' l r =
+    let state = Obj.magic state' in
+    if is_cmp xt.casn state then (
+      let before = eval state in
+      let after = f before in
+      let state =
+        if before == after then state else { before; after; casn = xt.casn }
+      in
+      xt.cass <- CASN (loc, state, l, r);
+      before)
+    else
+      let current = state.after in
+      xt.cass <- CASN (loc, { state with after = f current }, l, r);
+      current
+    [@@inline]
+
+  let update loc f xt =
+    let x = loc.id in
+    match xt.cass with
+    | NIL -> update0 loc f xt NIL NIL
+    | CASN (a, _, NIL, _) as cass when x < a.id -> update0 loc f xt NIL cass
+    | CASN (a, _, _, NIL) as cass when a.id < x -> update0 loc f xt cass NIL
+    | CASN (loc', state', l, r) when Obj.magic loc' == loc ->
+        update loc f xt state' l r
+    | cass -> (
+        match splay x cass with
+        | l, Miss, r -> update0 loc f xt l r
+        | l, Hit (_loc', state'), r -> update loc f xt state' l r)
+    [@@inline]
+
+  let get ~xt loc = update loc Fun.id xt
+  let set ~xt loc after = update loc (fun _ -> after) xt |> ignore
+  let modify ~xt loc f = update loc f xt |> ignore
+  let exchange ~xt loc after = update loc (fun _ -> after) xt
+  let update ~xt loc f = update loc f xt
+
+  type 'a tx = { tx : 'x. xt:'x t -> 'a }
+
+  let call { tx } = tx [@@inline]
+
+  let attempt (mode : Mode.t) tx =
+    let xt = { casn = Atomic.make (mode :> status); cass = NIL } in
+    let result = tx ~xt in
+    match xt.cass with
+    | NIL -> result
+    | CASN (loc, state, NIL, NIL) ->
+        if is_cmp xt.casn state then result
+        else
+          let before = state.before in
+          state.before <- state.after;
+          if cas loc before state then result else exit ()
+    | cass -> if determine_for_owner xt.casn cass then result else exit ()
+
+  let rec commit backoff mode tx =
+    match attempt mode tx with
+    | result -> result
+    | exception Mode.Interference ->
+        commit (Backoff.once backoff) Mode.lock_free tx
+    | exception Exit -> commit (Backoff.once backoff) mode tx
+
+  let commit ?(backoff = Backoff.default) ?(mode = Mode.obstruction_free) tx =
+    commit backoff mode tx.tx
+    [@@inline]
+
+  let attempt ?(mode = Mode.lock_free) tx = attempt mode tx.tx [@@inline]
+
+  let of_tx tx ~xt =
+    let (_, cass), x = tx (xt.casn, xt.cass) in
+    xt.cass <- cass;
+    x
+
+  let to_tx tx (casn, cass) =
+    let xt = { casn; cass } in
+    let x = tx.tx ~xt in
+    ((xt.casn, xt.cass), x)
+end

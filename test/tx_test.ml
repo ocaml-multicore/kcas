@@ -1,5 +1,17 @@
-module Tx = Kcas.Tx
-module Q = Tx_two_stack_queue
+open Kcas
+
+module Q = struct
+  include Xt_three_stack_queue
+
+  let is_empty q = Xt.to_tx { tx = is_empty q }
+  let push_back q x = Xt.to_tx { tx = push_back q x }
+  let push_front q x = Xt.to_tx { tx = push_front q x }
+
+  let pop_front q =
+    Xt.to_tx { tx = pop_front_opt q }
+    |> Tx.map @@ function None -> raise Exit | Some x -> x
+end
+
 module P = Tx_linked_queue
 module S = Tx_stack
 
