@@ -61,7 +61,10 @@ module Mode : sig
 
   exception Interference
   (** Exception raised when interference from other domains is detected in the
-      {!obstruction_free} mode. *)
+      {!obstruction_free} mode.  Interference may happen when some location is
+      accessed by both a compare-and-set and a (read-only) compare operation.
+      It is not necessary for the compare-and-set to actually change the logical
+      value of the location. *)
 end
 
 (** Operations on shared memory locations. *)
