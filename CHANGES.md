@@ -2,6 +2,10 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.2.1
+
+* New k-CAS-n-CMP algorithm extending the GKMZ algorithm (@polytypic, review: @bartoszmodelski)
+
 ## 0.2.0
 
 * Complete redesign adding a new transaction API (@polytypic, review: @bartoszmodelski)
