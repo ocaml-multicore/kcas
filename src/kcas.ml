@@ -294,12 +294,17 @@ let update_as g loc f casn state' l r =
   [@@inline]
 
 let update_as g loc f (casn, cass) =
+  let x = loc.id in
   match cass with
   | NIL -> update_as0 g loc f casn NIL NIL
+  | CASN (a, _, NIL, _) as cass when x < a.id ->
+      update_as0 g loc f casn NIL cass
+  | CASN (a, _, _, NIL) as cass when a.id < x ->
+      update_as0 g loc f casn cass NIL
   | CASN (loc', state', l, r) when Obj.magic loc' == loc ->
       update_as g loc f casn state' l r
   | _ -> (
-      match splay loc.id cass with
+      match splay x cass with
       | l, Miss, r -> update_as0 g loc f casn l r
       | l, Hit (_loc', state'), r -> update_as g loc f casn state' l r)
   [@@inline]
