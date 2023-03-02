@@ -384,6 +384,15 @@ module Xt : sig
   val exchange : xt:'x t -> 'a Loc.t -> 'a -> 'a
   (** [exchange ~xt r v] is equivalent to [update ~xt r (fun _ -> v)]. *)
 
+  val fetch_and_add : xt:'c t -> int Loc.t -> int -> int
+  (** [fetch_and_add ~xt r n] is equivalent to [update ~xt r ((+) n)]. *)
+
+  val incr : xt:'x t -> int Loc.t -> unit
+  (** [incr ~xt r] is equivalent to [fetch_and_add ~xt r 1 |> ignore]. *)
+
+  val decr : xt:'x t -> int Loc.t -> unit
+  (** [decr ~xt r] is equivalent to [fetch_and_add ~xt r (-1) |> ignore]. *)
+
   (** {1 Performing accesses} *)
 
   type 'a tx = { tx : 'x. xt:'x t -> 'a }

@@ -437,6 +437,9 @@ module Xt = struct
   let set ~xt loc after = update loc (fun _ -> after) xt |> ignore
   let modify ~xt loc f = update loc f xt |> ignore
   let exchange ~xt loc after = update loc (fun _ -> after) xt
+  let fetch_and_add ~xt loc n = update loc (( + ) n) xt
+  let incr ~xt loc = fetch_and_add ~xt loc 1 |> ignore
+  let decr ~xt loc = fetch_and_add ~xt loc (-1) |> ignore
   let update ~xt loc f = update loc f xt
 
   type 'a tx = { tx : 'x. xt:'x t -> 'a }
