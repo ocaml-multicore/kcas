@@ -35,7 +35,7 @@ let casn_before = Atomic.make `Before
 let rec release_after casn = function
   | NIL -> true
   | CASN (_, state, lt, gt) ->
-      release_after casn lt |> ignore;
+      if lt != NIL then release_after casn lt |> ignore;
       if not (is_cmp casn state) then (
         state.before <- state.after;
         state.casn <- casn_after);
@@ -44,7 +44,7 @@ let rec release_after casn = function
 let rec release_before casn = function
   | NIL -> false
   | CASN (_, state, lt, gt) ->
-      release_before casn lt |> ignore;
+      if lt != NIL then release_before casn lt |> ignore;
       if not (is_cmp casn state) then (
         state.after <- state.before;
         state.casn <- casn_before);
@@ -57,12 +57,16 @@ let release casn cass = function
 let rec verify casn = function
   | NIL -> `After
   | CASN (atom, desired, lt, gt) -> (
-      match verify casn lt with
-      | `After ->
-          if is_cmp casn desired && Atomic.get atom.state != desired then
-            `Before
-          else verify casn gt
-      | `Before -> `Before)
+      if lt == NIL then
+        if is_cmp casn desired && Atomic.get atom.state != desired then `Before
+        else verify casn gt
+      else
+        match verify casn lt with
+        | `After ->
+            if is_cmp casn desired && Atomic.get atom.state != desired then
+              `Before
+            else verify casn gt
+        | `Before -> `Before)
 
 let finish casn (`Undetermined cass as undetermined) (status : determined) =
   if Atomic.compare_and_set casn (undetermined :> status) (status :> status)
@@ -74,7 +78,7 @@ let exit _ = raise Exit [@@inline never]
 let rec determine casn action = function
   | NIL -> action
   | CASN (loc, desired, lt, gt) as eq -> (
-      match determine casn action lt with
+      match if lt != NIL then determine casn action lt else action with
       | `Before -> `Before
       | (`After | `Verify) as action ->
           let current = Atomic.get loc.state in
