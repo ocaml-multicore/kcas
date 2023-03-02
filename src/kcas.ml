@@ -20,8 +20,10 @@ let fenceless_set = Atomic.set
 module Backoff = Backoff
 
 module Id = struct
-  let id = Atomic.make 1
-  let get_unique () = Atomic.fetch_and_add id 1
+  let neg_id = Atomic.make Int.min_int
+  let neg_id () = Atomic.fetch_and_add neg_id 1
+  let nat_id = Atomic.make 0
+  let nat_id () = Atomic.fetch_and_add nat_id 1
 end
 
 module Action : sig
@@ -347,8 +349,8 @@ let rec exchange_no_alloc backoff loc state =
     resume_awaiters before state'.awaiters
   else exchange_no_alloc (Backoff.once backoff) loc state
 
-let is_obstruction_free casn =
-  fenceless_get casn == (Mode.obstruction_free :> status)
+let is_obstruction_free casn loc =
+  fenceless_get casn == (Mode.obstruction_free :> status) && 0 <= loc.id
   [@@inline]
 
 let cas loc before state =
@@ -367,8 +369,11 @@ let dec x = x - 1
 module Loc = struct
   type 'a t = 'a loc
 
-  let make after =
-    let state = new_state after and id = Id.get_unique () in
+  let make ?(mode = Mode.obstruction_free) after =
+    let state = new_state after
+    and id =
+      if mode == Mode.obstruction_free then Id.nat_id () else Id.neg_id ()
+    in
     make_loc state id
 
   let get_id loc = loc.id [@@inline]
@@ -381,6 +386,10 @@ module Loc = struct
     | exception Retry.Later ->
         block loc before;
         get_as f loc
+
+  let get_mode loc =
+    if loc.id < 0 then Mode.lock_free else Mode.obstruction_free
+    [@@inline]
 
   let compare_and_set loc before after =
     let state = new_state after in
@@ -455,7 +464,7 @@ module Op = struct
         let rec run cass = function
           | [] -> determine_for_owner casn cass
           | CAS (loc, before, after) :: rest ->
-              if before == after && is_obstruction_free casn then
+              if before == after && is_obstruction_free casn loc then
                 let state = fenceless_get (as_atomic loc) in
                 before == eval state && run (insert cass loc state) rest
               else
@@ -464,7 +473,7 @@ module Op = struct
                   rest
         in
         let (CAS (loc, before, after)) = first in
-        if before == after && is_obstruction_free casn then
+        if before == after && is_obstruction_free casn loc then
           let state = fenceless_get (as_atomic loc) in
           before == eval state
           && run (CASN { loc; state; lt = NIL; gt = NIL; awaiters = [] }) rest
@@ -507,7 +516,7 @@ module Xt = struct
     let before = eval state in
     let after = f before in
     let state =
-      if before == after && is_obstruction_free xt.casn then state
+      if before == after && is_obstruction_free xt.casn loc then state
       else { before; after; casn = xt.casn; awaiters = [] }
     in
     xt.cass <- CASN { loc; state; lt; gt; awaiters = [] };

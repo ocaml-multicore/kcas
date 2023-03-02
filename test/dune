@@ -68,3 +68,9 @@
  (libraries kcas)
  (modules threads)
  (package kcas))
+
+(test
+ (name loc_modes)
+ (libraries kcas barrier)
+ (modules loc_modes)
+ (package kcas))
