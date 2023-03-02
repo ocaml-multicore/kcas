@@ -1,12 +1,34 @@
 module Backoff : module type of Backoff
 (** Randomized exponential backoff mechanism. *)
 
+(** Operating modes of the [k-CAS-n-CMP] algorithm. *)
+module Mode : sig
+  type t
+  (** Type of an operating mode of the [k-CAS-n-CMP] algorithm. *)
+
+  val lock_free : t
+  (** In [lock_free] mode the algorithm makes sure that at least one domain will
+      be able to make progress. *)
+
+  val obstruction_free : t
+  (** In [obstruction_free] mode the algorithm proceeds optimistically and
+      allows operations to fail due to {!Interference} from other domains that
+      might have been prevented in the {!lock_free} mode. *)
+
+  exception Interference
+  (** Exception raised when interference from other domains is detected in the
+      {!obstruction_free} mode.  Interference may happen when some location is
+      accessed by both a compare-and-set and a (read-only) compare operation.
+      It is not necessary for the compare-and-set to actually change the logical
+      value of the location. *)
+end
+
 (** Shared memory locations. *)
 module Loc : sig
   type 'a t
   (** Type of shared memory locations. *)
 
-  val make : 'a -> 'a t
+  val make : ?mode_val:Mode.t ->'a -> 'a t
   (** [make initial] creates a new shared memory location with the [initial]
       value. *)
 
@@ -45,27 +67,7 @@ module Loc : sig
   (** [decr r] atomically decrements [r]. *)
 end
 
-(** Operating modes of the [k-CAS-n-CMP] algorithm. *)
-module Mode : sig
-  type t
-  (** Type of an operating mode of the [k-CAS-n-CMP] algorithm. *)
 
-  val lock_free : t
-  (** In [lock_free] mode the algorithm makes sure that at least one domain will
-      be able to make progress. *)
-
-  val obstruction_free : t
-  (** In [obstruction_free] mode the algorithm proceeds optimistically and
-      allows operations to fail due to {!Interference} from other domains that
-      might have been prevented in the {!lock_free} mode. *)
-
-  exception Interference
-  (** Exception raised when interference from other domains is detected in the
-      {!obstruction_free} mode.  Interference may happen when some location is
-      accessed by both a compare-and-set and a (read-only) compare operation.
-      It is not necessary for the compare-and-set to actually change the logical
-      value of the location. *)
-end
 
 (** Operations on shared memory locations. *)
 module Op : sig
