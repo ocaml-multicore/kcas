@@ -12,7 +12,7 @@ end
 
 type determined = [ `After | `Before ]
 
-type 'a loc = { state : 'a state Atomic.t; id : int }
+type 'a loc = { state : 'a state Atomic.t; id : int ; lock_mode : determined }
 and 'a state = { mutable before : 'a; mutable after : 'a; mutable casn : casn }
 and cass = CASN : 'a loc * 'a state * cass * cass -> cass | NIL : cass
 and casn = status Atomic.t
@@ -174,8 +174,8 @@ let rec update_no_alloc backoff loc state set_after =
     let backoff = Backoff.once backoff in
     update_no_alloc backoff loc state set_after
 
-let is_obstruction_free casn =
-  Atomic.get casn == (Mode.obstruction_free :> status)
+let is_obstruction_free casn loc =
+  Atomic.get casn == (Mode.obstruction_free :> status) && loc.lock_mode = Mode.lock_free
   [@@inline]
 
 let cas loc before state =
@@ -189,8 +189,8 @@ let cas loc before state =
 module Loc = struct
   type 'a t = 'a loc
 
-  let make after =
-    { state = Atomic.make @@ new_state after; id = Id.get_unique () }
+  let make ?(mode_val = Mode.lock_free) after =
+    { state = Atomic.make @@ new_state after; id = Id.get_unique () ; lock_mode = mode_val }
 
   let get_id loc = loc.id [@@inline]
 
@@ -258,13 +258,13 @@ module Op = struct
         let rec run cass = function
           | [] -> determine_for_owner casn cass
           | CAS (loc, before, after) :: rest ->
-              if before == after && is_obstruction_free casn then
+              if before == after && is_obstruction_free casn loc then
                 let state = Atomic.get loc.state in
                 before == eval state && run (insert cass loc state) rest
               else run (insert cass loc { before; after; casn }) rest
         in
         let (CAS (loc, before, after)) = first in
-        if before == after && is_obstruction_free casn then
+        if before == after && is_obstruction_free casn loc then
           let state = Atomic.get loc.state in
           before == eval state && run (CASN (loc, state, NIL, NIL)) rest
         else run (CASN (loc, { before; after; casn }, NIL, NIL)) rest
@@ -275,7 +275,7 @@ let update_as0 g loc f casn l r =
   let before = eval state in
   let after = f before in
   let state =
-    if before == after && is_obstruction_free casn then state
+    if before == after && is_obstruction_free casn loc then state
     else { before; after; casn }
   in
   ((casn, CASN (loc, state, l, r)), g before)
