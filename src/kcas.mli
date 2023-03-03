@@ -5,6 +5,7 @@ module Backoff : module type of Backoff
 module Mode : sig
   type t
   (** Type of an operating mode of the [k-CAS-n-CMP] algorithm. *)
+
   val lock_free : t
   (** In [lock_free] mode the algorithm makes sure that at least one domain will
       be able to make progress. *)
