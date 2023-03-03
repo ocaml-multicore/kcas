@@ -28,7 +28,7 @@ module Loc : sig
   type 'a t
   (** Type of shared memory locations. *)
 
-  val make : ?mode_val:Mode.t ->'a -> 'a t
+  val make : ?mode_val:Mode.t -> 'a -> 'a t
   (** [make initial] creates a new shared memory location with the [initial]
       value. *)
 
@@ -66,8 +66,6 @@ module Loc : sig
   val decr : ?backoff:Backoff.t -> int t -> unit
   (** [decr r] atomically decrements [r]. *)
 end
-
-
 
 (** Operations on shared memory locations. *)
 module Op : sig
@@ -325,4 +323,3 @@ module Tx : sig
       transaction mechanism has no way to intelligently wait until shared memory
       locations are modified by other domains. *)
 end
-
