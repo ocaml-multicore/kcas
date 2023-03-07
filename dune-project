@@ -7,7 +7,7 @@
 (homepage "https://github.com/ocaml-multicore/kcas")
 (license "ISC")
 (package (name kcas)
- (synopsis "Multi-word compare-and-swap library")
+ (synopsis "Multi-word compare-and-set library")
  (depends 
   (ocaml (>= 5.0))
   (mdx (and (>= 1.10.0) :with-test))))

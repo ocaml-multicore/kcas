@@ -2,11 +2,11 @@
 &middot; <sub><sup>(The API was redesigned in version 0.2.0. See
 [API reference for version 0.1.8](https://ocaml-multicore.github.io/kcas/0.1.8/kcas/Kcas/index.html).)</sup></sub>
 
-# **kcas** &mdash; Multi-word compare-and-swap library
+# **kcas** &mdash; Multi-word compare-and-set library
 
 **kcas** provides an implementation of atomic
 [lock-free](https://en.wikipedia.org/wiki/Non-blocking_algorithm#Lock-freedom)
-multi-word [compare-and-swap](https://en.wikipedia.org/wiki/Compare-and-swap)
+multi-word [compare-and-set](https://en.wikipedia.org/wiki/Compare-and-swap)
 (MCAS), which is a powerful tool for designing concurrent algorithms.
 
 Features and properties:
