@@ -395,7 +395,7 @@ module Xt : sig
 
   (** {1 Performing accesses} *)
 
-  type 'a tx = { tx : 'x. xt:'x t -> 'a }
+  type 'a tx = { tx : 'x. xt:'x t -> 'a } [@@unboxed]
   (** Type of a transaction function that is polymorphic with respect to an
       explicit transaction log.  The universal quantification helps to ensure
       that the transaction log cannot accidentally escape. *)

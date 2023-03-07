@@ -442,7 +442,7 @@ module Xt = struct
   let decr ~xt loc = fetch_and_add ~xt loc (-1) |> ignore
   let update ~xt loc f = update loc f xt
 
-  type 'a tx = { tx : 'x. xt:'x t -> 'a }
+  type 'a tx = { tx : 'x. xt:'x t -> 'a } [@@unboxed]
 
   let call { tx } = tx [@@inline]
 
