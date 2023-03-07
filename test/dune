@@ -36,3 +36,8 @@
  (name example)
  (libraries kcas)
  (modules example))
+
+ (test
+   (name loc_modes) 
+   (libraries kcas) 
+   (modules loc_modes))
