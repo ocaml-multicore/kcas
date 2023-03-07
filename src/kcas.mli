@@ -28,9 +28,13 @@ module Loc : sig
   type 'a t
   (** Type of shared memory locations. *)
 
-  val make : ?mode_val:Mode.t -> 'a -> 'a t
+  val make : ?mode:Mode.t -> 'a -> 'a t
   (** [make initial] creates a new shared memory location with the [initial]
       value. *)
+       
+  val get_mode : 'a t -> Mode.t
+  (** [get_mode r] returns the operating mode of the shared memory location
+      [r]. *)
 
   val get_id : 'a t -> int
   (** [get_id r] returns the unique id of the shared memory location [r]. *)

@@ -190,15 +190,16 @@ let cas loc before state =
 module Loc = struct
   type 'a t = 'a loc
 
-  let make ?(mode_val = Mode.obstruction_free) after =
+  let make ?(mode = Mode.obstruction_free) after =
     {
       state = Atomic.make @@ new_state after;
       id = Id.get_unique ();
-      mode = mode_val;
+      mode = mode;
     }
 
   let get_id loc = loc.id [@@inline]
-
+  
+  let get_mode loc = loc.mode [@@inline]
   let get loc =
     let state = Atomic.get loc.state in
     let before = state.before and after = state.after in
