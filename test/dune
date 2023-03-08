@@ -37,7 +37,7 @@
  (libraries kcas)
  (modules example))
 
- (test
+(executable
    (name loc_modes) 
    (libraries kcas) 
    (modules loc_modes))
