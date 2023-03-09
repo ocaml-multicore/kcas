@@ -740,6 +740,12 @@ that it allows developing lock-free algorithms compositionally. In the following
 sections we discuss a number of basic tips and approaches for making best use of
 k-CAS.
 
+> The examples in this section use the
+> [`Xt`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html)
+> module, but essentially the same advice applies when using the
+> [`Tx`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Tx/index.html)
+> module.
+
 ### Minimize accesses
 
 Accesses of shared memory locations inside transactions consult the transaction
