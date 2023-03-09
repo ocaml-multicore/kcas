@@ -791,6 +791,19 @@ we can reduce that to three:
 
 The above will likely perform slightly better.
 
+> **_Question_**: _How does one count the number of accesses to the transaction
+> log?_
+>
+> It is simple. Basically all of the access operations perform only a single
+> access to the log. For simplicity, the documentation is written as if
+> [`get`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-get)
+> and
+> [`set`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-set)
+> were primitive, but all operations are actually implemented in terms of a more
+> general operation similar to
+> [`update`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-update),
+> that only performs a single access to the transaction log.
+
 #### Log updates optimistically and abort
 
 Transactional write accesses to shared memory locations are only attempted after
@@ -806,7 +819,7 @@ location to specified target location:
 # let transfer amount ~source ~target =
     let tx ~xt =
       if amount <= Xt.get ~xt source then begin
-        Xt.set ~xt source (Xt.get ~xt source + amount);
+        Xt.set ~xt source (Xt.get ~xt source - amount);
         Xt.set ~xt target (Xt.get ~xt target + amount)
       end
     in
