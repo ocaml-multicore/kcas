@@ -5,8 +5,8 @@ module Backoff : module type of Backoff
 
 (** {1 Individual locations}
 
-    Individual shared memory locations are manipulated through the {!Loc} module
-    that is essentially compatible with the Stdlib [Atomic] module. *)
+    Individual shared memory locations can be manipulated through the {!Loc}
+    module that is essentially compatible with the Stdlib [Atomic] module. *)
 
 (** Shared memory locations. *)
 module Loc : sig
@@ -138,6 +138,27 @@ module Op : sig
       [O(n)] and does not increase the time complexity of the algorithm.
       Otherwise sorting may take linearithmic time [O(n*log(n))]. *)
 end
+
+(** {2 Composable transactions on multiple locations}
+
+    The {!Tx} and {!Xt} modules provide two different ways to implement
+    composable transactions over shared memory locations.  Using either of those
+    one essentially declares a transaction that specifies how to access shared
+    memory locations.  To actually perform the accesses one then separately
+    commits the transaction.
+
+    Accesses of shared memory locations inside either form of transaction should
+    generally use the access operations, such as {!Tx.get} and {!Xt.get},
+    provided by the corresponding module.  Transactions should also generally
+    not perform arbitrary side-effects, because when a transaction is committed
+    it may be attempted multiple times meaning that the side-effects are also
+    performed multiple times.
+
+    {b WARNING}: Operations provided by the {!Loc} module for accessing
+    individual shared memory locations are not transactional.  There are cases
+    where it can be advantageous to perform operations along with a transaction
+    that do not get recorded into the transaction log, but doing so requires one
+    to reason about the potential parallel interleavings of operations. *)
 
 (** Transactions on shared memory locations. *)
 module Tx : sig
