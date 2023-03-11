@@ -870,6 +870,8 @@ expensive computations after the transactions.
 Consider the following example of computing the size of a stack:
 
 ```ocaml
+# let a_stack = Loc.make [2; 3]
+val a_stack : int list Loc.t = <abstr>
 # let n_elems =
     let tx ~xt =
       Xt.get ~xt a_stack
