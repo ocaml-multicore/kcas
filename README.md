@@ -1072,6 +1072,14 @@ meticulously examine both `queue.middle` and `queue.back`, if necessary. If we
 don't do that, then it is possible that we incorrectly report the queue as being
 empty.
 
+Also, as should be clear, the side-effect performed by calling
+`back_to_middle queue` is committed immediately every time it is called
+regardless of the outcome of the transaction attempt. This is safe, because
+`back_to_middle queue` does not logically change the state of the queue. It
+merely performs a helping step, that is invisible to outside observers, towards
+advancing the internal state of the queue. This is a common pattern in lock-free
+algorithms.
+
 As subtle as these kinds of lock-free algorithms are, this approach avoids the
 potential starvation problems as now consumers do not attempt a slow transaction
 to race against producers. Rather, the consumers perform quick adversarial races
