@@ -1,32 +1,41 @@
-(* Location is in obstruction_free mode
-   Each Thread increments the value at a and reads a in a loop*)
+(* This example is a simple test of the lock-free mode of Kcas.One thread reads each location whereas the other thread increments the value at each location.
+   Using sleep*)
 
 module Loc = Kcas.Loc
 module Mode = Kcas.Mode
 module Tx = Kcas.Tx
 
-let a = Loc.make ~mode:Mode.obstruction_free 4
-let read_loc loc = Tx.(return @@ Loc.get loc)
-let incr_loc loc v = Tx.(return @@ Loc.fetch_and_add loc v)
-let loop_count = 750
+let loop_count = try int_of_string Sys.argv.(1) with _ -> 150
+
+let mode =
+  try if Sys.argv.(2) = "lock-free" then Some Mode.lock_free else None
+  with _ -> None
+(* ... *)
+
+let a = Loc.make ?mode 4
+let read loc = Tx.get loc
+
+let incr loc v =
+  Tx.(
+    let* v' = Tx.get loc in
+    Tx.set loc (v' + v))
+
 let sleep_time = 0.01
 
 let thread1 () =
   for _ = 1 to loop_count do
-    let alp = incr_loc a 1 in
+    let alp = incr a 1 in
 
-    let _ = Printf.printf "%d 1 i\n" @@ Tx.commit alp in
-
-    Unix.sleepf sleep_time
+    Unix.sleepf sleep_time;
+    Tx.commit alp
   done
 
 let thread2 () =
   for _ = 1 to loop_count do
-    let beta = read_loc a in
+    let beta = read a in
 
-    let () = Printf.printf "%d 2 r\n" @@ Tx.commit beta in
-
-    Unix.sleepf sleep_time
+    Unix.sleepf sleep_time;
+    Printf.printf "%d" @@ Tx.commit beta
   done
 
 let _ = [ thread1; thread2 ] |> List.map Domain.spawn |> List.iter Domain.join

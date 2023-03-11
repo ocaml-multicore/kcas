@@ -12,7 +12,7 @@ end
 
 type determined = [ `After | `Before ]
 
-type 'a loc = { state : 'a state Atomic.t; id : int; mode : determined }
+type 'a loc = { state : 'a state Atomic.t; id : int }
 and 'a state = { mutable before : 'a; mutable after : 'a; mutable casn : casn }
 and cass = CASN : 'a loc * 'a state * cass * cass -> cass | NIL : cass
 and casn = status Atomic.t
@@ -175,8 +175,7 @@ let rec update_no_alloc backoff loc state set_after =
     update_no_alloc backoff loc state set_after
 
 let is_obstruction_free casn loc =
-  Atomic.get casn == (Mode.obstruction_free :> status)
-  && loc.mode == Mode.obstruction_free
+  Atomic.get casn == (Mode.obstruction_free :> status) && loc.id mod 2 == 0
   [@@inline]
 
 let cas loc before state =
@@ -193,13 +192,17 @@ module Loc = struct
   let make ?(mode = Mode.obstruction_free) after =
     {
       state = Atomic.make @@ new_state after;
-      id = Id.get_unique ();
-      mode = mode;
+      id =
+        (if mode == Mode.obstruction_free then Id.get_unique () * 2
+        else (Id.get_unique () * 2) + 1);
     }
 
-  let get_id loc = loc.id [@@inline]
-  
-  let get_mode loc = loc.mode [@@inline]
+  let get_id loc = loc.id / 2 [@@inline]
+
+  let get_mode loc =
+    if loc.id mod 2 == 1 then Mode.lock_free else Mode.obstruction_free
+    [@@inline]
+
   let get loc =
     let state = Atomic.get loc.state in
     let before = state.before and after = state.after in
