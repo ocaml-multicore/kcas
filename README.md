@@ -50,6 +50,7 @@ is distributed under the [ISC license](LICENSE.md).
     - [Log updates optimistically and abort](#log-updates-optimistically-and-abort)
   - [Postcompute](#postcompute)
   - [Race to cooperate](#race-to-cooperate)
+    - [Understanding transactions](#understanding-transactions)
     - [A three-stack lock-free queue](#a-three-stack-lock-free-queue)
     - [A rehashable lock-free hash table](#a-rehashable-lock-free-hash-table)
 - [Development](#development)
@@ -919,6 +920,55 @@ often possible to split the transaction into two:
 1. A quick transaction that adversarially races against others.
 2. A slower transaction that others will then cooperate to complete.
 
+This lock-free algorithm design technique and the examples in the following
+subsections are more advanced than the basic techniques described previously. To
+understand and reason about these examples it is necessary to have a good
+understanding of how transactions work.
+
+#### Understanding transactions
+
+We have previously casually talked about "transactions". Let's sharpen our
+understanding of transactions.
+
+In **kcas**, a _transaction_ is essentially a function that can be called to
+prepare a specification of an operation or operations, in the form of a
+_transaction log_, that can then be _attempted to be performed atomically_ by
+the underlying k-CAS-n-CMP algorithm provided by **kcas**.
+
+In other words, and simplifying a bit, when an explicit attempt is made to
+perform a transaction, it basically proceeds in phases:
+
+1. The first phase records a log of operations to access shared memory
+   locations.
+
+2. The second phase attempts to perform the operations atomically.
+
+Either of the phases may fail. The first phase, which is under the control of
+the transaction function, may raise an exception to abort the attempt. The
+second phase fails when the accesses recorded in the transaction log are found
+to be inconsistent with the contents of the shared memory locations. That
+happens when the shared memory locations are mutated outside of the accesses
+specified in the transaction log regardless of who made those mutations.
+
+A transaction is not itself atomic and the construction of a transaction log, by
+recording accesses of shared memory locations to the log, does not logically
+mutate any shared memory locations.
+
+When a transaction is (unconditionally) _committed_, rather than merely
+_attempted_ (once), the commit mechanism keeps on retrying until an attempt
+succeeds or the transaction function raises an exception (other than `Exit` or
+`Interference`) that the commit mechanism does not handle.
+
+Each attempt or retry calls the transaction function again. This means that any
+_side-effects_ within the transaction function are also performed again.
+
+In previous sections we have used transactions as a coarse-grained mechanism to
+encompass all shared memory accesses of the algorithm being implemented. This
+makes it easy to reason about the effects of committing a transaction as the
+accesses are then all performed as a single atomic operation. In the following
+examples we will use our deeper understanding of transactions to implement more
+fine-grained algorithms.
+
 #### A three-stack lock-free queue
 
 Recall the [two-stack queue](#a-transactional-lock-free-queue) discussed
@@ -976,8 +1026,9 @@ For the quick transaction we introduce a helper function:
 val back_to_middle : 'a queue -> unit = <fun>
 ```
 
-Note that the above uses the `Not_found` exception to abort the transaction in
-case the `back` is empty or the `middle` already contains elements.
+Note that the above uses `exchange` to optimistically record shared memory
+accesses and then uses the `Not_found` exception to abort the transaction in
+case the optimistic accesses turn out to be unnecessary or incorrect.
 
 The `dequeue` operation then runs the quick transaction to move elements from
 the `back` to the `middle` before examining the `middle`:
@@ -1001,9 +1052,30 @@ the `back` to the `middle` before examining the `middle`:
 val dequeue : xt:'a Xt.t -> 'b queue -> 'b option = <fun>
 ```
 
-This approach avoids the potential starvation problems as now consumers do not
-attempt a slow transaction to race against producers. Rather, the consumers
-cooperatively race to complete the slow transaction.
+There are a number of subtle implementation details above that deserve
+attention.
+
+First of all, notice that `dequeue` calls `back_to_middle queue` before
+accessing `queue.middle` and `queue.back`. If the call `back_to_middle queue`
+would be made after accessing `queue.middle` or `queue.back`, then those
+accesses would be recorded in the transaction log `xt` and the log would be
+inconsistent after `back_to_middle queue` mutates the locations. This would
+cause the transaction attempt to fail and we want to avoid such doomed attempts.
+
+Another subtle, but important, detail is that despite calling
+`back_to_middle queue` to move `queue.back` to `queue.middle`, it would be
+incorrect to assume that `queue.back` would be empty or that `queue.middle`
+would be non-empty. That is because we must assume other domains may be
+performing operations on the queue simultaneously. Another domain may have
+pushed new elements to the `queue.back` or emptied `queue.middle`. Therefore we
+meticulously examine both `queue.middle` and `queue.back`, if necessary. If we
+don't do that, then it is possible that we incorrectly report the queue as being
+empty.
+
+As subtle as these kinds of lock-free algorithms are, this approach avoids the
+potential starvation problems as now consumers do not attempt a slow transaction
+to race against producers. Rather, the consumers perform quick adversarial races
+against producers and then cooperatively race to complete the slow transaction.
 
 > The three-stack queue presented in this section seems to perform reasonably
 > well, should not suffer from most concurrency problems, and can be used
@@ -1149,7 +1221,7 @@ well allow those also during rehashes:
 val find : xt:'a Xt.t -> ('b, 'c) hashtbl -> 'b -> 'c = <fun>
 ```
 
-Then we use a similar trick as with the three stack queue. We use a quick
+Then we use a similar trick as with the three-stack queue. We use a quick
 adversarial transaction to switch a hash table to the rehashing state in case a
 rehash seems necessary:
 
@@ -1189,6 +1261,12 @@ need to rehash:
       rehash ~xt hashtbl.basic new_capacity
 val maybe_rehash : xt:'a Xt.t -> ('b, 'c) hashtbl -> int -> unit = <fun>
 ```
+
+Similarly to the previous example of
+[a three-stack queue](#a-three-stack-lock-free-queue), a subtle, but important
+detail is that the call to `prepare_rehash` is made before accessing
+`hashtbl.pending`. This way the transaction log is not poisoned and there is
+chance for the operation to succeed on the first attempt.
 
 After switching to the rehashing state, all mutators will then cooperatively
 race to perform the rehash.
