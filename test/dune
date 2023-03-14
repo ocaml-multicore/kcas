@@ -47,7 +47,3 @@
    (libraries kcas barrier) 
    (modules tx_loc_modes2))
 
-(executable 
-   (name tx_loc_modes3) 
-   (libraries kcas barrier) 
-   (modules tx_loc_modes3))

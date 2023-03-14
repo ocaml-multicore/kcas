@@ -193,14 +193,14 @@ module Loc = struct
     {
       state = Atomic.make @@ new_state after;
       id =
-        (if mode == Mode.obstruction_free then Id.get_unique () * 2
-        else (Id.get_unique () * 2) + 1);
+        (if mode == Mode.obstruction_free then Id.get_unique ()
+        else Id.get_unique () * -1);
     }
 
-  let get_id loc = loc.id / 2 [@@inline]
+  let get_id loc = loc.id [@@inline]
 
   let get_mode loc =
-    if loc.id mod 2 == 1 then Mode.lock_free else Mode.obstruction_free
+    if loc.id < 0 then Mode.lock_free else Mode.obstruction_free
     [@@inline]
 
   let get loc =
