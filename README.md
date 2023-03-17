@@ -2,11 +2,11 @@
 &middot; <sub><sup>(The API was redesigned in version 0.2.0. See
 [API reference for version 0.1.8](https://ocaml-multicore.github.io/kcas/0.1.8/kcas/Kcas/index.html).)</sup></sub>
 
-# **kcas** &mdash; Multi-word compare-and-swap library
+# **kcas** &mdash; Multi-word compare-and-set library
 
 **kcas** provides an implementation of atomic
 [lock-free](https://en.wikipedia.org/wiki/Non-blocking_algorithm#Lock-freedom)
-multi-word [compare-and-swap](https://en.wikipedia.org/wiki/Compare-and-swap)
+multi-word [compare-and-set](https://en.wikipedia.org/wiki/Compare-and-swap)
 (MCAS), which is a powerful tool for designing concurrent algorithms.
 
 Features and properties:
@@ -44,6 +44,15 @@ is distributed under the [ISC license](LICENSE.md).
     - [About transactions](#about-transactions)
   - [Programming with explicit transaction log passing](#programming-with-explicit-transaction-log-passing)
     - [A transactional lock-free leftist heap](#a-transactional-lock-free-leftist-heap)
+- [Designing lock-free algorithms with k-CAS](#designing-lock-free-algorithms-with-k-cas)
+  - [Minimize accesses](#minimize-accesses)
+    - [Prefer compound accesses](#prefer-compound-accesses)
+    - [Log updates optimistically and abort](#log-updates-optimistically-and-abort)
+  - [Postcompute](#postcompute)
+  - [Race to cooperate](#race-to-cooperate)
+    - [Understanding transactions](#understanding-transactions)
+    - [A three-stack lock-free queue](#a-three-stack-lock-free-queue)
+    - [A rehashable lock-free hash table](#a-rehashable-lock-free-hash-table)
 - [Development](#development)
 
 ## A quick tour
@@ -724,6 +733,609 @@ Notice how we were able to use a `while` loop, rather than recursion, in
 > This leftist tree implementation is unlikely to be the best performing
 > lock-free heap implementation, but it was pretty straightforward to implement
 > using k-CAS based on a textbook imperative implementation.
+
+## Designing lock-free algorithms with k-CAS
+
+The key benefit of k-CAS, or k-CAS-n-CMP, and transactions in particular, is
+that it allows developing lock-free algorithms compositionally. In the following
+sections we discuss a number of basic tips and approaches for making best use of
+k-CAS.
+
+> The examples in this section use the
+> [`Xt`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html)
+> module, but essentially the same advice applies when using the
+> [`Tx`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Tx/index.html)
+> module.
+
+### Minimize accesses
+
+Accesses of shared memory locations inside transactions consult the transaction
+log. While the log is optimized, it still adds overhead. For best performance it
+can be advantageous to minimize the number of accesses.
+
+#### Prefer compound accesses
+
+For best performance it can be advantageous to use compound accesses such as
+[`update`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-update),
+[`exchange`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-exchange),
+and
+[`modify`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-modify)
+instead of
+[`get`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-get)
+and
+[`set`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-set),
+because the compound accesses only consult the transaction log once.
+
+Consider the following example that swaps the values of the shared memory
+locations `a` and `b`:
+
+```ocaml
+# Xt.commit { tx = fun ~xt ->
+    let a_val = Xt.get ~xt a
+    and b_val = Xt.get ~xt b in
+    Xt.set ~xt a b_val;
+    Xt.set ~xt b a_val }
+- : unit = ()
+```
+
+The above performs four accesses. Using
+[`exchange`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-exchange)
+we can reduce that to three:
+
+```ocaml
+# Xt.commit { tx = fun ~xt ->
+    let a_val = Xt.get ~xt a in
+    let b_val = Xt.exchange ~xt b a_val in
+    Xt.set ~xt a b_val }
+- : unit = ()
+```
+
+The above will likely perform slightly better.
+
+> **_Question_**: _How does one count the number of accesses to the transaction
+> log?_
+>
+> It is simple. Basically all of the access operations perform only a single
+> access to the log. For simplicity, the documentation is written as if
+> [`get`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-get)
+> and
+> [`set`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-set)
+> were primitive, but all operations are actually implemented in terms of a more
+> general operation similar to
+> [`update`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-update),
+> that only performs a single access to the transaction log.
+
+#### Log updates optimistically and abort
+
+Transactional write accesses to shared memory locations are only attempted after
+the transaction log construction finishes successfully. Therefore it is entirely
+safe to optimistically log updates against shared memory locations, validate
+them during the log construction, and abort the transaction in case validation
+fails.
+
+Consider the following function to transfer an amount from specified source
+location to specified target location:
+
+```ocaml
+# let transfer amount ~source ~target =
+    let tx ~xt =
+      if amount <= Xt.get ~xt source then begin
+        Xt.set ~xt source (Xt.get ~xt source - amount);
+        Xt.set ~xt target (Xt.get ~xt target + amount)
+      end
+    in
+    Xt.commit { tx }
+val transfer : int -> source:int Loc.t -> target:int Loc.t -> unit = <fun>
+```
+
+The above first examine the source location and then updates both source and
+target. In a successful case it makes a total of five accesses. Using compound
+accesses and optimistic updates we can reduce that to just two accesses:
+
+```ocaml
+# let transfer amount ~source ~target =
+    let tx ~xt =
+      if Xt.fetch_and_add ~xt source (-amount) < amount then
+        raise Not_found;
+      Xt.fetch_and_add ~xt target amount |> ignore
+    in
+    try Xt.commit { tx } with Not_found -> ()
+val transfer : int -> source:int Loc.t -> target:int Loc.t -> unit = <fun>
+```
+
+Note that we raise the Stdlib `Not_found` exception to abort the transaction. As
+we can see
+
+```ocaml
+# Loc.get a, Loc.get b
+- : int * int = (52, 52)
+# transfer 100 ~source:a ~target:b
+- : unit = ()
+# Loc.get a, Loc.get b
+- : int * int = (52, 52)
+# transfer 10 ~source:a ~target:b
+- : unit = ()
+# Loc.get a, Loc.get b
+- : int * int = (42, 62)
+```
+
+the updates are only done in case of success.
+
+### Postcompute
+
+The more time a transaction takes, the more likely it is to suffer from
+interference or even starvation. For best performance it is important to keep
+transactions as short as possible. In particular, when possible, perform
+expensive computations after the transactions.
+
+Consider the following example of computing the size of a stack:
+
+```ocaml
+# let a_stack = Loc.make [2; 3]
+val a_stack : int list Loc.t = <abstr>
+# let n_elems =
+    let tx ~xt =
+      Xt.get ~xt a_stack
+      |> List.length
+    in
+    Xt.commit { tx }
+val n_elems : int = 2
+```
+
+The problem is that the computation of the list length is potentially expensive
+and opens a potentially long time window for other domains to interfere.
+
+In this case we can trivially move the list length computation outside of the
+transaction:
+
+```ocaml
+# let n_elems =
+    Xt.commit { tx = Xt.get a_stack }
+    |> List.length
+val n_elems : int = 2
+```
+
+As a more general approach, one could e.g. use closures to move compute after
+transactions:
+
+```ocaml
+# let n_elems =
+    let tx ~xt =
+      let xs = Xt.get ~xt a_stack in
+      fun () -> List.length xs
+    in
+    Xt.commit { tx } ()
+val n_elems : int = 2
+```
+
+### Race to cooperate
+
+Sometimes it is necessary to perform slower transactions that access many shared
+memory locations or need to perform expensive computations during the
+transaction. As mentioned previously, such transactions are more likely to
+suffer from interference or even starvation as other transactions race to make
+conflicting mutations to shared memory locations. To avoid such problems, it is
+often possible to split the transaction into two:
+
+1. A quick transaction that adversarially races against others.
+2. A slower transaction that others will then cooperate to complete.
+
+This lock-free algorithm design technique and the examples in the following
+subsections are more advanced than the basic techniques described previously. To
+understand and reason about these examples it is necessary to have a good
+understanding of how transactions work.
+
+#### Understanding transactions
+
+We have previously casually talked about "transactions". Let's sharpen our
+understanding of transactions.
+
+In **kcas**, a _transaction_ is essentially a function that can be called to
+prepare a specification of an operation or operations, in the form of a
+_transaction log_, that can then be _attempted to be performed atomically_ by
+the underlying k-CAS-n-CMP algorithm provided by **kcas**.
+
+In other words, and simplifying a bit, when an explicit attempt is made to
+perform a transaction, it basically proceeds in phases:
+
+1. The first phase records a log of operations to access shared memory
+   locations.
+
+2. The second phase attempts to perform the operations atomically.
+
+Either of the phases may fail. The first phase, which is under the control of
+the transaction function, may raise an exception to abort the attempt. The
+second phase fails when the accesses recorded in the transaction log are found
+to be inconsistent with the contents of the shared memory locations. That
+happens when the shared memory locations are mutated outside of the accesses
+specified in the transaction log regardless of who made those mutations.
+
+A transaction is not itself atomic and the construction of a transaction log, by
+recording accesses of shared memory locations to the log, does not logically
+mutate any shared memory locations.
+
+When a transaction is (unconditionally) _committed_, rather than merely
+_attempted_ (once), the commit mechanism keeps on retrying until an attempt
+succeeds or the transaction function raises an exception (other than `Exit` or
+`Interference`) that the commit mechanism does not handle.
+
+Each attempt or retry calls the transaction function again. This means that any
+_side-effects_ within the transaction function are also performed again.
+
+In previous sections we have used transactions as a coarse-grained mechanism to
+encompass all shared memory accesses of the algorithm being implemented. This
+makes it easy to reason about the effects of committing a transaction as the
+accesses are then all performed as a single atomic operation. In the following
+examples we will use our deeper understanding of transactions to implement more
+fine-grained algorithms.
+
+#### A three-stack lock-free queue
+
+Recall the [two-stack queue](#a-transactional-lock-free-queue) discussed
+earlier. The problem is that the `try_dequeue` operation `rev`erses the `back`
+of the queue and that can be relatively expensive. One way to avoid that problem
+is to introduce a third "middle" stack, or shared memory location, to the queue
+and quickly move the back to the middle stack.
+
+First we redefine the `queue` type to include a `middle` location:
+
+```ocaml
+# type 'a queue = {
+    back : 'a list Loc.t;
+    middle : 'a list Loc.t;
+    front : 'a list Loc.t;
+  }
+type 'a queue = {
+  back : 'a list Loc.t;
+  middle : 'a list Loc.t;
+  front : 'a list Loc.t;
+}
+```
+
+And adjust the `queue` constructor function accordingly:
+
+```ocaml
+# let queue () =
+    let back = Loc.make []
+    and middle = Loc.make []
+    and front = Loc.make [] in
+    { back; middle; front }
+val queue : unit -> 'a queue = <fun>
+```
+
+The `enqueue` operation remains essentially the same:
+
+```ocaml
+# let enqueue ~xt queue elem =
+    Xt.modify ~xt queue.back @@ List.cons elem
+val enqueue : xt:'a Xt.t -> 'b queue -> 'b -> unit = <fun>
+```
+
+For the quick transaction we introduce a helper function:
+
+```ocaml
+# let back_to_middle queue =
+    let tx ~xt =
+      match Xt.exchange ~xt queue.back [] with
+      | [] -> raise Not_found
+      | xs ->
+        if Xt.exchange ~xt queue.middle xs != [] then
+          raise Not_found
+    in
+    try Xt.commit { tx } with Not_found -> ()
+val back_to_middle : 'a queue -> unit = <fun>
+```
+
+Note that the above uses `exchange` to optimistically record shared memory
+accesses and then uses the `Not_found` exception to abort the transaction in
+case the optimistic accesses turn out to be unnecessary or incorrect.
+
+The `dequeue` operation then runs the quick transaction to move elements from
+the `back` to the `middle` before examining the `middle`:
+
+```ocaml
+# let dequeue ~xt queue =
+    match Xt.update ~xt queue.front tl_safe with
+    | x :: _ -> Some x
+    | [] ->
+      back_to_middle queue;
+      match Xt.exchange ~xt queue.middle [] |> List.rev with
+      | x :: xs ->
+        Xt.set ~xt queue.front xs;
+        Some x
+      | [] ->
+        match Xt.exchange ~xt queue.back [] |> List.rev with
+        | x :: xs ->
+          Xt.set ~xt queue.front xs;
+          Some x
+        | [] -> None
+val dequeue : xt:'a Xt.t -> 'b queue -> 'b option = <fun>
+```
+
+There are a number of subtle implementation details above that deserve
+attention.
+
+First of all, notice that `dequeue` calls `back_to_middle queue` before
+accessing `queue.middle` and `queue.back`. If the call `back_to_middle queue`
+would be made after accessing `queue.middle` or `queue.back`, then those
+accesses would be recorded in the transaction log `xt` and the log would be
+inconsistent after `back_to_middle queue` mutates the locations. This would
+cause the transaction attempt to fail and we want to avoid such doomed attempts.
+
+Another subtle, but important, detail is that despite calling
+`back_to_middle queue` to move `queue.back` to `queue.middle`, it would be
+incorrect to assume that `queue.back` would be empty or that `queue.middle`
+would be non-empty. That is because we must assume other domains may be
+performing operations on the queue simultaneously. Another domain may have
+pushed new elements to the `queue.back` or emptied `queue.middle`. Therefore we
+meticulously examine both `queue.middle` and `queue.back`, if necessary. If we
+don't do that, then it is possible that we incorrectly report the queue as being
+empty.
+
+Also, as should be clear, the side-effect performed by calling
+`back_to_middle queue` is committed immediately every time it is called
+regardless of the outcome of the transaction attempt. This is safe, because
+`back_to_middle queue` does not logically change the state of the queue. It
+merely performs a helping step, that is invisible to outside observers, towards
+advancing the internal state of the queue. This is a common pattern in lock-free
+algorithms.
+
+As subtle as these kinds of lock-free algorithms are, this approach avoids the
+potential starvation problems as now consumers do not attempt a slow transaction
+to race against producers. Rather, the consumers perform quick adversarial races
+against producers and then cooperatively race to complete the slow transaction.
+
+> The three-stack queue presented in this section seems to perform reasonably
+> well, should not suffer from most concurrency problems, and can be used
+> compositionally.
+
+#### A rehashable lock-free hash table
+
+The previous example of adding a `middle` stack to the queue may seem like a
+special case. Let's implement a simple lock-free hash table and, along the way,
+examine a simple general way to replace a slow transaction with a quick
+adversarial transaction and a slow cooperative transaction.
+
+The difficulty with hash tables is rehashing. Let's ignore that for now and
+implement a hash table without rehashing. For further simplicity, let's just use
+separate chaining. Here is a type for such a basic hash table:
+
+```ocaml
+# type ('k, 'v) basic_hashtbl = {
+    size: int Loc.t;
+    data: ('k * 'v Loc.t) list Loc.t array Loc.t;
+  }
+type ('k, 'v) basic_hashtbl = {
+  size : int Loc.t;
+  data : ('k * 'v Loc.t) list Loc.t array Loc.t;
+}
+```
+
+The basic hash table constructor just allocates all the locations:
+
+```ocaml
+# let basic_hashtbl () = {
+    size = Loc.make 0;
+    data = Loc.make (Array.init 4 (fun _ -> Loc.make []))
+  }
+val basic_hashtbl : unit -> ('a, 'b) basic_hashtbl = <fun>
+```
+
+Note that we (intentionally) used a very small capacity for the `data` table. In
+a real implementation you'd probably want to have a bigger minimum capacity (and
+might e.g. want to use a prime number).
+
+Before tackling the basic operations, let's implement a helper function for
+accessing the association list location corresponding to specified key:
+
+```ocaml
+# let access ~xt basic_hashtbl key =
+    let data = Xt.get ~xt basic_hashtbl.data in
+    let n = Array.length data in
+    let i = Hashtbl.hash key mod n in
+    data.(i)
+val access :
+  xt:'a Xt.t -> ('b, 'c) basic_hashtbl -> 'd -> ('b * 'c Loc.t) list Loc.t =
+  <fun>
+```
+
+Now, to find an element, we access the association list and try to find the
+key-value -pair:
+
+```ocaml
+# let find ~xt hashtbl key =
+    let assoc_loc = access ~xt hashtbl key in
+    Xt.get ~xt (List.assoc key (Xt.get ~xt assoc_loc))
+val find : xt:'a Xt.t -> ('b, 'c) basic_hashtbl -> 'b -> 'c = <fun>
+```
+
+When replacing (or adding) the value corresponding to a key, we need to take
+care to update the size when necessary:
+
+```ocaml
+# let replace ~xt hashtbl key value =
+    let assoc_loc = access ~xt hashtbl key in
+    let assoc = Xt.get ~xt assoc_loc in
+    try
+      let value_loc = List.assoc key assoc in
+      Xt.set ~xt value_loc value
+    with Not_found ->
+      Xt.set ~xt assoc_loc ((key, Loc.make value) :: assoc);
+      Xt.incr ~xt hashtbl.size
+val replace : xt:'a Xt.t -> ('b, 'c) basic_hashtbl -> 'b -> 'c -> unit =
+  <fun>
+```
+
+Removing an association also involves making sure that the size is updated
+correctly:
+
+```ocaml
+# let remove ~xt hashtbl key =
+    let assoc_loc = access ~xt hashtbl key in
+    let rec loop ys = function
+      | ((key', _) as y) :: xs ->
+        if key <> key' then
+          loop (y :: ys) xs
+        else begin
+          Xt.set ~xt assoc_loc (List.rev_append ys xs);
+          Xt.decr ~xt hashtbl.size
+        end
+      | [] -> ()
+    in
+    loop [] (Xt.get ~xt assoc_loc)
+val remove : xt:'a Xt.t -> ('b, 'c) basic_hashtbl -> 'b -> unit = <fun>
+```
+
+Now, the problem with the above is the lack of rehashing. As more associations
+are added, performance deteriorates. We could implement a naive rehashing
+operation:
+
+```ocaml
+let rehash ~xt hashtbl new_capacity =
+  let new_data = Array.init new_capacity (fun _ -> Loc.make []) in
+  Xt.exchange ~xt hashtbl.data new_data
+  |> Array.iter (fun assoc_loc ->
+     Xt.get ~xt assoc_loc
+     |> List.iter (fun ((key, _) as bucket) ->
+        let i = Hashtbl.hash key mod new_capacity in
+        Xt.modify ~xt new_data.(i) (List.cons bucket)));
+```
+
+But that involves reading all the bucket locations. Any mutation that adds or
+removes an association would cause such a rehash to fail.
+
+To avoid taking on such adversarial races, we can use a level of indirection:
+
+```ocaml
+# type ('k, 'v) hashtbl = {
+    pending: [`Nothing | `Rehash of int] Loc.t;
+    basic: ('k, 'v) basic_hashtbl;
+  }
+type ('k, 'v) hashtbl = {
+  pending : [ `Nothing | `Rehash of int ] Loc.t;
+  basic : ('k, 'v) basic_hashtbl;
+}
+```
+
+The idea is that a hash table is either considered to be normally accessible or
+in the middle of being rehashed. It is easy to use this approach even when there
+are many different slow operations.
+
+Finding an element does not require mutating any locations, so we might just as
+well allow those also during rehashes:
+
+```ocaml
+# let find ~xt hashtbl key = find ~xt hashtbl.basic key
+val find : xt:'a Xt.t -> ('b, 'c) hashtbl -> 'b -> 'c = <fun>
+```
+
+Then we use a similar trick as with the three-stack queue. We use a quick
+adversarial transaction to switch a hash table to the rehashing state in case a
+rehash seems necessary:
+
+```ocaml
+# let prepare_rehash hashtbl delta =
+    let tx ~xt =
+      match Xt.get ~xt hashtbl.pending with
+      | `Rehash _ -> ()
+      | `Nothing ->
+        let size = Int.max 1 (Xt.get ~xt hashtbl.basic.size + delta) in
+        let capacity = Array.length (Xt.get ~xt hashtbl.basic.data) in
+        if capacity < size * 4 then
+          Xt.set ~xt hashtbl.pending (`Rehash (capacity * 2))
+        else if size * 8 < capacity then
+          Xt.set ~xt hashtbl.pending (`Rehash (capacity / 2))
+        else
+          raise Not_found
+    in
+    try Xt.commit { tx } with Not_found -> ()
+val prepare_rehash : ('a, 'b) hashtbl -> int -> unit = <fun>
+```
+
+Note again that while the rehash logic allows some slack in the capacity, a real
+implementation would likely use a bigger minimum capacity and perhaps avoid
+using powers of two.
+
+Before we mutate a hash table, we will then call a helper to check whether we
+need to rehash:
+
+```ocaml
+# let maybe_rehash ~xt hashtbl delta =
+    prepare_rehash hashtbl delta;
+    match Xt.get ~xt hashtbl.pending with
+    | `Nothing -> ()
+    | `Rehash new_capacity ->
+      Xt.set ~xt hashtbl.pending `Nothing;
+      rehash ~xt hashtbl.basic new_capacity
+val maybe_rehash : xt:'a Xt.t -> ('b, 'c) hashtbl -> int -> unit = <fun>
+```
+
+Similarly to the previous example of
+[a three-stack queue](#a-three-stack-lock-free-queue), a subtle, but important
+detail is that the call to `prepare_rehash` is made before accessing
+`hashtbl.pending`. This way the transaction log is not poisoned and there is
+chance for the operation to succeed on the first attempt.
+
+After switching to the rehashing state, all mutators will then cooperatively
+race to perform the rehash.
+
+We can now just implement the replace
+
+```ocaml
+# let replace ~xt hashtbl key value =
+    maybe_rehash ~xt hashtbl (+1);
+    replace ~xt hashtbl.basic key value
+val replace : xt:'a Xt.t -> ('b, 'c) hashtbl -> 'b -> 'c -> unit = <fun>
+```
+
+and remove
+
+```ocaml
+# let remove ~xt hashtbl key =
+    maybe_rehash ~xt hashtbl (-1);
+    remove ~xt hashtbl.basic key
+val remove : xt:'a Xt.t -> ('b, 'c) hashtbl -> 'b -> unit = <fun>
+```
+
+operations with rehashing.
+
+After creating a constructor function
+
+```ocaml
+# let hashtbl () = {
+    pending = Loc.make `Nothing;
+    basic = basic_hashtbl ();
+  }
+val hashtbl : unit -> ('a, 'b) hashtbl = <fun>
+```
+
+for hash tables, we are ready to take it out for a spin:
+
+```ocaml
+# let a_hashtbl : (string, int) hashtbl = hashtbl ()
+val a_hashtbl : (string, int) hashtbl =
+  {pending = <abstr>; basic = {size = <abstr>; data = <abstr>}}
+# let assoc = [
+    ("Intro", 101);
+    ("Answer", 42);
+    ("OCaml", 5);
+    ("Year", 2023)
+  ]
+val assoc : (string * int) list =
+  [("Intro", 101); ("Answer", 42); ("OCaml", 5); ("Year", 2023)]
+# assoc
+  |> List.iter @@ fun (key, value) ->
+     Xt.commit { tx = replace a_hashtbl key value }
+- : unit = ()
+# assoc
+  |> List.iter @@ fun (key, _) ->
+     Xt.commit { tx = remove a_hashtbl key }
+- : unit = ()
+```
+
+What we have here is a lock-free hash table with rehashing that should not be
+highly prone to starvation. In other respects this is a fairly naive hash table
+implementation. You might want to think about various ways to improve upon it.
 
 ## Development
 
