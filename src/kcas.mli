@@ -1,5 +1,12 @@
+(** {1 Auxiliary modules} *)
+
 module Backoff : module type of Backoff
 (** Randomized exponential backoff mechanism. *)
+
+(** {1 Individual locations}
+
+    Individual shared memory locations are manipulated through the {!Loc} module
+    that is essentially compatible with the Stdlib [Atomic] module. *)
 
 (** Shared memory locations. *)
 module Loc : sig
@@ -45,6 +52,30 @@ module Loc : sig
   (** [decr r] atomically decrements [r]. *)
 end
 
+(** {1 Manipulating multiple locations atomically}
+
+    Multiple shared memory locations can be manipulated atomically using either
+
+    - {!Op}, to specify a list of primitive operations to perform,
+    - {!Tx}, to specify a composable transaction, or
+    - {!Xt}, to explicitly pass a transaction log to record accesses.
+
+    Atomic operations over multiple shared memory locations are performed in two
+    or three phases:
+
+    1. The first phase essentially records a list or log of operations to access
+    shared memory locations.
+
+    2. The second phase attempts to perform the operations atomically.
+
+    3. In {!Mode.obstruction_free} a third phase verifies all read-only
+    operations.
+
+    Each phase may fail.  In particular, in the first phase, as no changes to
+    shared memory have yet been attempted, it is safe, for example, to raise
+    exceptions to signal failure.  Failure on the third phase raises
+    {!Mode.Interference}. *)
+
 (** Operating modes of the [k-CAS-n-CMP] algorithm. *)
 module Mode : sig
   type t
@@ -52,12 +83,13 @@ module Mode : sig
 
   val lock_free : t
   (** In [lock_free] mode the algorithm makes sure that at least one domain will
-      be able to make progress. *)
+      be able to make progress by performing read-only operations as read-write
+      operations. *)
 
   val obstruction_free : t
   (** In [obstruction_free] mode the algorithm proceeds optimistically and
-      allows operations to fail due to {!Interference} from other domains that
-      might have been prevented in the {!lock_free} mode. *)
+      allows read-only operations to fail due to {!Interference} from other
+      domains that might have been prevented in the {!lock_free} mode. *)
 
   exception Interference
   (** Exception raised when interference from other domains is detected in the
@@ -118,20 +150,6 @@ module Tx : sig
 
       Transactions can be composed both sequentially (see {!let*}) and
       conditionally (see {!(<|>)} and {!forget}).
-
-      Transactions are performed in two or three phases:
-
-      1. The first phase essentially records a log of operations based on the
-      {!get} and {!set} accesses of shared memory locations.
-
-      2. The second phase attempts to perform the operations atomically.
-
-      3. In {!Mode.obstruction_free} a third phase verifies all read-only
-      operations.
-
-      Each phase may fail.  In particular, the first phase is allowed to raise
-      exceptions to signal failure.  Failure on the third phase raises
-      {!Mode.Interference}.
 
       Here is an example of unconditionally {!commit}ting a transaction that
       swaps the values of the two shared memory locations [x_loc] and [y_loc]
@@ -198,6 +216,8 @@ module Tx : sig
       choice of whether accesses should, should not, or may be safely forgotten
       depends on what the desired semantics are for the transaction. *)
 
+  (** {1 Access combinators} *)
+
   val get : 'a Loc.t -> 'a t
   (** [get r] accesses the shared memory location [r] inside the transaction
       and results in the current value of [r] inside the transaction. *)
@@ -224,6 +244,8 @@ module Tx : sig
 
   val exchange_as : ('a -> 'b) -> 'a Loc.t -> 'a -> 'b t
   (** [exchange_as g r v] is equivalent to [update r (fun _ -> v) |> map g]. *)
+
+  (** {1 Sequencing combinators} *)
 
   val return : 'a -> 'a t
   (** [return v] is a transactional operation whose result is the value [v]. *)
@@ -283,6 +305,8 @@ module Tx : sig
            (* continue successfully *)
       ]} *)
 
+  (** {1 Conditional transactions} *)
+
   val ( <|> ) : 'a t -> 'a t -> 'a t
   (** [l_tx <|> r_tx] is a left-biased choice between the two transactions
       [l_tx] and [r_tx].
@@ -303,6 +327,8 @@ module Tx : sig
       transaction to forget any accesses made during the forgotten part of a
       transaction. *)
 
+  (** {1 Performing transactions} *)
+
   val attempt : ?mode:Mode.t -> 'a t -> 'a
   (** [attempt tx] attempts to atomically perform the given transaction over
       shared memory locations.  If used in {!Mode.obstruction_free} may raise
@@ -322,4 +348,93 @@ module Tx : sig
       Note that, aside from using exponential backoff to reduce contention, the
       transaction mechanism has no way to intelligently wait until shared memory
       locations are modified by other domains. *)
+end
+
+(** Explicit transaction log passing on shared memory locations. *)
+module Xt : sig
+  type 'x t
+  (** Type of an explicit transaction log on shared memory locations.
+
+      Note that a transaction log itself is not domain-safe and should generally
+      only be used by a single domain.  If a new domain is spawned inside a
+      function recording shared memory accesses to a log and the new domain also
+      records accesses to the log it may become inconsistent. *)
+
+  (** {1 Recording accesses}
+
+      Accesses of shared memory locations using an explicit transaction log
+      first ensure that the initial value of the shared memory location is
+      recorded in the log and then act on the current value of the shared memory
+      location as recorded in the log. *)
+
+  val get : xt:'x t -> 'a Loc.t -> 'a
+  (** [get ~xt r] returns the current value of the shared memory location [r] in
+      the explicit transaction log [xt]. *)
+
+  val set : xt:'x t -> 'a Loc.t -> 'a -> unit
+  (** [set ~xt r v] records the current value of the shared memory location [r]
+      to be the given value [v] in the explicit transaction log [xt]. *)
+
+  val update : xt:'x t -> 'a Loc.t -> ('a -> 'a) -> 'a
+  (** [update ~xt r f] is equivalent to [let x = get ~xt r in set ~xt r (f x);
+      x] with the limitation that [f] must not and is not allowed to record
+      accesses to the transaction log. *)
+
+  val modify : xt:'x t -> 'a Loc.t -> ('a -> 'a) -> unit
+  (** [modify ~xt r f] is equivalent to [let x = get ~xt r in set ~xt r (f x)]
+      with the limitation that [f] must not and is not allowed to record
+      accesses to the transaction log. *)
+
+  val exchange : xt:'x t -> 'a Loc.t -> 'a -> 'a
+  (** [exchange ~xt r v] is equivalent to [update ~xt r (fun _ -> v)]. *)
+
+  val fetch_and_add : xt:'c t -> int Loc.t -> int -> int
+  (** [fetch_and_add ~xt r n] is equivalent to [update ~xt r ((+) n)]. *)
+
+  val incr : xt:'x t -> int Loc.t -> unit
+  (** [incr ~xt r] is equivalent to [fetch_and_add ~xt r 1 |> ignore]. *)
+
+  val decr : xt:'x t -> int Loc.t -> unit
+  (** [decr ~xt r] is equivalent to [fetch_and_add ~xt r (-1) |> ignore]. *)
+
+  (** {1 Performing accesses} *)
+
+  type 'a tx = { tx : 'x. xt:'x t -> 'a } [@@unboxed]
+  (** Type of a transaction function that is polymorphic with respect to an
+      explicit transaction log.  The universal quantification helps to ensure
+      that the transaction log cannot accidentally escape. *)
+
+  val call : 'a tx -> xt:'x t -> 'a
+  (** [call ~xt tx] is equivalent to [tx.Xt.tx ~xt]. *)
+
+  val attempt : ?mode:Mode.t -> 'a tx -> 'a
+  (** [attempt tx] attempts to atomically perform the transaction over shared
+      memory locations recorded by calling [tx] with a fresh explicit
+      transaction log.  If used in {!Mode.obstruction_free} may raise
+      {!Mode.Interference}.  Otherwise either raises [Exit] on failure to commit
+      the transaction or returns the result of the transaction.  The default for
+      [attempt] is {!Mode.lock_free}. *)
+
+  val commit : ?backoff:Backoff.t -> ?mode:Mode.t -> 'a tx -> 'a
+  (** [commit tx] repeats [attempt tx] until it does not raise [Exit] or
+      {!Mode.Interference} and then either returns or raises whatever attempt
+      returned or raised.
+
+      The default for [commit] is {!Mode.obstruction_free}.  However, after
+      enough attempts have failed during the verification step, [commit]
+      switches to {!Mode.lock_free}.
+
+      Note that, aside from using exponential backoff to reduce contention, the
+      transaction mechanism has no way to intelligently wait until shared memory
+      locations are modified by other domains. *)
+
+  (** {1 Conversions} *)
+
+  val of_tx : 'a Tx.t -> xt:'x t -> 'a
+  (** [of_tx tx] converts the given {!Tx} transaction [tx] to an explicit log
+      passing function. *)
+
+  val to_tx : 'a tx -> 'a Tx.t
+  (** [to_tx tx] converts the given explicit log passing function [tx] to a
+      {!Tx} transaction. *)
 end

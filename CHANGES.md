@@ -2,6 +2,10 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.2.2
+
+* New explicit transaction log passing API based on idea by @gasche (@polytypic, review: @samoht and @lyrm)
+
 ## 0.2.1
 
 * New k-CAS-n-CMP algorithm extending the GKMZ algorithm (@polytypic, review: @bartoszmodelski)

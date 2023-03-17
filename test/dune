@@ -2,6 +2,16 @@
  (name barrier)
  (modules barrier))
 
+(library
+ (name tx_linked_queue)
+ (libraries kcas)
+ (modules tx_linked_queue))
+
+(library
+ (name xt_three_stack_queue)
+ (libraries kcas)
+ (modules xt_three_stack_queue))
+
 (test
  (name test)
  (libraries kcas barrier)
@@ -9,8 +19,13 @@
 
 (test
  (name tx_test)
- (libraries kcas)
- (modules tx_test tx_linked_queue tx_two_stack_queue tx_stack))
+ (libraries kcas tx_linked_queue xt_three_stack_queue)
+ (modules tx_test tx_stack))
+
+(test
+ (name xt_test)
+ (libraries kcas tx_linked_queue xt_three_stack_queue)
+ (modules xt_test xt_stack))
 
 (test
  (name test_overlapping_loc)
@@ -31,6 +46,11 @@
  (name tx_parallel_cmp_bench)
  (libraries kcas barrier)
  (modules tx_parallel_cmp_bench))
+
+(test
+ (name xt_parallel_cmp_bench)
+ (libraries kcas barrier)
+ (modules xt_parallel_cmp_bench))
 
 (test
  (name example)
