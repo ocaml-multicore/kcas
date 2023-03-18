@@ -957,7 +957,8 @@ mutate any shared memory locations.
 When a transaction is (unconditionally) _committed_, rather than merely
 _attempted_ (once), the commit mechanism keeps on retrying until an attempt
 succeeds or the transaction function raises an exception (other than `Exit` or
-`Interference`) that the commit mechanism does not handle.
+[`Interference`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Mode/index.html#exception-Interference))
+that the commit mechanism does not handle.
 
 Each attempt or retry calls the transaction function again. This means that any
 _side-effects_ within the transaction function are also performed again.
@@ -1026,9 +1027,11 @@ For the quick transaction we introduce a helper function:
 val back_to_middle : 'a queue -> unit = <fun>
 ```
 
-Note that the above uses `exchange` to optimistically record shared memory
-accesses and then uses the `Not_found` exception to abort the transaction in
-case the optimistic accesses turn out to be unnecessary or incorrect.
+Note that the above uses
+[`exchange`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-exchange)
+to optimistically record shared memory accesses and then uses the `Not_found`
+exception to abort the transaction in case the optimistic accesses turn out to
+be unnecessary or incorrect.
 
 The `dequeue` operation then runs the quick transaction to move elements from
 the `back` to the `middle` before examining the `middle`:
