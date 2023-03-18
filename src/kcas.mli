@@ -397,8 +397,8 @@ module Xt : sig
       to be the given value [v] in the explicit transaction log [xt]. *)
 
   val update : xt:'x t -> 'a Loc.t -> ('a -> 'a) -> 'a
-  (** [update ~xt r f] is equivalent to [let x = get ~xt r in set ~xt r (f x);
-      x] with the limitation that [f] must not and is not allowed to record
+  (** [update ~xt r f] is equivalent to [let x = get ~xt r in set ~xt r (f x); x]
+      with the limitation that [f] must not and is not allowed to record
       accesses to the transaction log. *)
 
   val modify : xt:'x t -> 'a Loc.t -> ('a -> 'a) -> unit
