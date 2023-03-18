@@ -345,8 +345,17 @@ module Tx = struct
   let set loc after log = update_as ignore loc (fun _ -> after) log
   let update loc f log = update_as Fun.id loc f log
   let modify loc f log = update_as ignore loc f log
+
+  let compare_and_swap loc before after log =
+    update_as Fun.id loc
+      (fun actual -> if actual == before then after else actual)
+      log
+
   let exchange_as g loc after log = update_as g loc (fun _ -> after) log
   let exchange loc after log = update_as Fun.id loc (fun _ -> after) log
+  let fetch_and_add loc n log = update_as Fun.id loc (( + ) n) log
+  let incr loc log = update_as ignore loc (( + ) 1) log
+  let decr loc log = update_as ignore loc (( + ) (-1)) log
   let update_as g loc f log = update_as g loc f log
   let return value log = (log, value)
   let delay uxt log = uxt () log
@@ -443,6 +452,10 @@ module Xt = struct
   let get ~xt loc = update loc Fun.id xt
   let set ~xt loc after = update loc (fun _ -> after) xt |> ignore
   let modify ~xt loc f = update loc (protect xt f) xt |> ignore
+
+  let compare_and_swap ~xt loc before after =
+    update loc (fun actual -> if actual == before then after else actual) xt
+
   let exchange ~xt loc after = update loc (fun _ -> after) xt
   let fetch_and_add ~xt loc n = update loc (( + ) n) xt
   let incr ~xt loc = fetch_and_add ~xt loc 1 |> ignore

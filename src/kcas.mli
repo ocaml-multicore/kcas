@@ -266,6 +266,23 @@ module Tx : sig
   val exchange_as : ('a -> 'b) -> 'a Loc.t -> 'a -> 'b t
   (** [exchange_as g r v] is equivalent to [update r (fun _ -> v) |> map g]. *)
 
+  val compare_and_swap : 'a Loc.t -> 'a -> 'a -> 'a t
+  (** [compare_and_swap r before after] is equivalent to
+
+      {[
+        update r @@ fun actual ->
+        if actual == before then after else actual
+      ]} *)
+
+  val fetch_and_add : int Loc.t -> int -> int t
+  (** [fetch_and_add r n] is equivalent to [update r ((+) n)]. *)
+
+  val incr : int Loc.t -> unit t
+  (** [incr r] is equivalent to [modify r ((+) 1)]. *)
+
+  val decr : int Loc.t -> unit t
+  (** [decr r] is equivalent to [modify r ((+) (-1))]. *)
+
   (** {1 Sequencing combinators} *)
 
   val return : 'a -> 'a t
@@ -408,6 +425,14 @@ module Xt : sig
 
   val exchange : xt:'x t -> 'a Loc.t -> 'a -> 'a
   (** [exchange ~xt r v] is equivalent to [update ~xt r (fun _ -> v)]. *)
+
+  val compare_and_swap : xt:'x t -> 'a Loc.t -> 'a -> 'a -> 'a
+  (** [compare_and_swap ~xt r before after] is equivalent to
+
+      {[
+        update ~xt r @@ fun actual ->
+        if actual == before then after else actual
+      ]} *)
 
   val fetch_and_add : xt:'c t -> int Loc.t -> int -> int
   (** [fetch_and_add ~xt r n] is equivalent to [update ~xt r ((+) n)]. *)
