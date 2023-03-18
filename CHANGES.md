@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## 0.2.3
 
+* Add support for post commit actions to transactions (@polytypic)
 * Bring `Xt` and `Tx` access combinators to parity and add `compare_and_swap` (@polytypic)
 
 ## 0.2.2

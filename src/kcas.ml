@@ -10,6 +10,26 @@ module Id = struct
   let get_unique () = Atomic.fetch_and_add id 1
 end
 
+module Action : sig
+  type t
+
+  val noop : t
+  val append : (unit -> unit) -> t -> t
+  val run : t -> 'a -> 'a
+end = struct
+  type t = unit -> unit
+
+  let noop = Fun.id
+
+  let append action t = if t == noop then action else fun x -> action (t x)
+    [@@inline]
+
+  let run t x =
+    t ();
+    x
+    [@@inline]
+end
+
 type determined = [ `After | `Before ]
 
 type 'a loc = { state : 'a state Atomic.t; id : int }
@@ -274,7 +294,7 @@ module Op = struct
         else run (CASN (loc, { before; after; casn }, NIL, NIL)) rest
 end
 
-let update_as0 g loc f casn l r =
+let update_as0 g loc f casn post_commit l r =
   let state = Atomic.get loc.state in
   let before = eval state in
   let after = f before in
@@ -282,49 +302,52 @@ let update_as0 g loc f casn l r =
     if before == after && is_obstruction_free casn then state
     else { before; after; casn }
   in
-  ((casn, CASN (loc, state, l, r)), g before)
+  ((casn, CASN (loc, state, l, r), post_commit), g before)
   [@@inline]
 
-let update_as g loc f casn state' l r =
+let update_as g loc f casn post_commit state' l r =
   let state = Obj.magic state' in
   if is_cmp casn state then
     let before = eval state in
     let after = f before in
     let state = if before == after then state else { before; after; casn } in
-    ((casn, CASN (loc, state, l, r)), g before)
+    ((casn, CASN (loc, state, l, r), post_commit), g before)
   else
     let current = state.after in
-    ((casn, CASN (loc, { state with after = f current }, l, r)), g current)
+    ( (casn, CASN (loc, { state with after = f current }, l, r), post_commit),
+      g current )
   [@@inline]
 
-let update_as g loc f (casn, cass) =
+let update_as g loc f (casn, cass, post_commit) =
   let x = loc.id in
   match cass with
-  | NIL -> update_as0 g loc f casn NIL NIL
+  | NIL -> update_as0 g loc f casn post_commit NIL NIL
   | CASN (a, _, NIL, _) as cass when x < a.id ->
-      update_as0 g loc f casn NIL cass
+      update_as0 g loc f casn post_commit NIL cass
   | CASN (a, _, _, NIL) as cass when a.id < x ->
-      update_as0 g loc f casn cass NIL
+      update_as0 g loc f casn post_commit cass NIL
   | CASN (loc', state', l, r) when Obj.magic loc' == loc ->
-      update_as g loc f casn state' l r
+      update_as g loc f casn post_commit state' l r
   | _ -> (
       match splay x cass with
-      | l, Miss, r -> update_as0 g loc f casn l r
-      | l, Hit (_loc', state'), r -> update_as g loc f casn state' l r)
+      | l, Miss, r -> update_as0 g loc f casn post_commit l r
+      | l, Hit (_loc', state'), r ->
+          update_as g loc f casn post_commit state' l r)
   [@@inline]
 
 let attempt (mode : Mode.t) tx =
   let casn = Atomic.make (mode :> status) in
-  match tx (casn, NIL) with
-  | (_, NIL), result -> result
-  | (_, CASN (loc, state, NIL, NIL)), result ->
-      if is_cmp casn state then result
+  match tx (casn, NIL, Action.noop) with
+  | (_, NIL, post_commit), result -> Action.run post_commit result
+  | (_, CASN (loc, state, NIL, NIL), post_commit), result ->
+      if is_cmp casn state then Action.run post_commit result
       else
         let before = state.before in
         state.before <- state.after;
-        if cas loc before state then result else exit ()
-  | (_, cass), result ->
-      if determine_for_owner casn cass then result else exit ()
+        if cas loc before state then Action.run post_commit result else exit ()
+  | (_, cass, post_commit), result ->
+      if determine_for_owner casn cass then Action.run post_commit result
+      else exit ()
 
 let rec commit backoff mode tx =
   match attempt mode tx with
@@ -337,7 +360,7 @@ let rec commit backoff mode tx =
       commit backoff mode tx
 
 module Tx = struct
-  type log = casn * cass
+  type log = casn * cass * Action.t
   type 'a t = log -> log * 'a
 
   let get loc log = update_as Fun.id loc Fun.id log
@@ -359,6 +382,9 @@ module Tx = struct
   let update_as g loc f log = update_as g loc f log
   let return value log = (log, value)
   let delay uxt log = uxt () log
+
+  let post_commit action (casn, cass, post_commit) =
+    ((casn, cass, Action.append action post_commit), ())
 
   let ( let* ) xt xyt log =
     let log, x = xt log in
@@ -398,7 +424,11 @@ module Tx = struct
 end
 
 module Xt = struct
-  type 'x t = { casn : casn; mutable cass : cass }
+  type 'x t = {
+    casn : casn;
+    mutable cass : cass;
+    mutable post_commit : Action.t;
+  }
 
   let update0 loc f xt l r =
     let state = Atomic.get loc.state in
@@ -462,22 +492,34 @@ module Xt = struct
   let decr ~xt loc = fetch_and_add ~xt loc (-1) |> ignore
   let update ~xt loc f = update loc (protect xt f) xt
 
+  let post_commit ~xt action =
+    xt.post_commit <- Action.append action xt.post_commit
+
   type 'a tx = { tx : 'x. xt:'x t -> 'a } [@@unboxed]
 
   let call { tx } = tx [@@inline]
 
   let attempt (mode : Mode.t) tx =
-    let xt = { casn = Atomic.make (mode :> status); cass = NIL } in
+    let xt =
+      let casn = Atomic.make (mode :> status)
+      and cass = NIL
+      and post_commit = Action.noop in
+      { casn; cass; post_commit }
+    in
     let result = tx ~xt in
     match xt.cass with
-    | NIL -> result
+    | NIL -> Action.run xt.post_commit result
     | CASN (loc, state, NIL, NIL) ->
-        if is_cmp xt.casn state then result
+        if is_cmp xt.casn state then Action.run xt.post_commit result
         else
           let before = state.before in
           state.before <- state.after;
-          if cas loc before state then result else exit ()
-    | cass -> if determine_for_owner xt.casn cass then result else exit ()
+          if cas loc before state then Action.run xt.post_commit result
+          else exit ()
+    | cass ->
+        if determine_for_owner xt.casn cass then
+          Action.run xt.post_commit result
+        else exit ()
 
   let rec commit backoff mode tx =
     match attempt mode tx with
@@ -493,12 +535,13 @@ module Xt = struct
   let attempt ?(mode = Mode.lock_free) tx = attempt mode tx.tx [@@inline]
 
   let of_tx tx ~xt =
-    let (_, cass), x = tx (xt.casn, xt.cass) in
+    let (_, cass, post_commit), x = tx (xt.casn, xt.cass, xt.post_commit) in
     xt.cass <- cass;
+    xt.post_commit <- post_commit;
     x
 
-  let to_tx tx (casn, cass) =
-    let xt = { casn; cass } in
+  let to_tx tx (casn, cass, post_commit) =
+    let xt = { casn; cass; post_commit } in
     let x = tx.tx ~xt in
-    ((xt.casn, xt.cass), x)
+    ((xt.casn, xt.cass, xt.post_commit), x)
 end

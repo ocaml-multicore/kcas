@@ -343,6 +343,12 @@ module Tx : sig
            (* continue successfully *)
       ]} *)
 
+  (** {1 Post commit actions} *)
+
+  val post_commit : (unit -> unit) -> unit t
+  (** [post_commit action] adds the [action] to be performed after the
+      transaction has been performed successfully. *)
+
   (** {1 Conditional transactions} *)
 
   val ( <|> ) : 'a t -> 'a t -> 'a t
@@ -442,6 +448,12 @@ module Xt : sig
 
   val decr : xt:'x t -> int Loc.t -> unit
   (** [decr ~xt r] is equivalent to [fetch_and_add ~xt r (-1) |> ignore]. *)
+
+  (** {1 Post commit actions} *)
+
+  val post_commit : xt:'x t -> (unit -> unit) -> unit
+  (** [post_commit ~xt action] adds the [action] to be performed after the
+      transaction has been performed successfully. *)
 
   (** {1 Performing accesses} *)
 

@@ -44,6 +44,7 @@ is distributed under the [ISC license](LICENSE.md).
     - [About transactions](#about-transactions)
   - [Programming with explicit transaction log passing](#programming-with-explicit-transaction-log-passing)
     - [A transactional lock-free leftist heap](#a-transactional-lock-free-leftist-heap)
+    - [A composable Michael-Scott style queue](#a-composable-michael-scott-style-queue)
 - [Designing lock-free algorithms with k-CAS](#designing-lock-free-algorithms-with-k-cas)
   - [Minimize accesses](#minimize-accesses)
     - [Prefer compound accesses](#prefer-compound-accesses)
@@ -733,6 +734,141 @@ Notice how we were able to use a `while` loop, rather than recursion, in
 > This leftist tree implementation is unlikely to be the best performing
 > lock-free heap implementation, but it was pretty straightforward to implement
 > using k-CAS based on a textbook imperative implementation.
+
+#### A composable Michael-Scott style queue
+
+One of the most famous lock-free algorithms is
+[the Michael-Scott queue](https://www.cs.rochester.edu/~scott/papers/1996_PODC_queues.pdf).
+Perhaps its characteristic feature is that the tail pointer of the queue is
+allowed to momentarily fall behind and that operations on the queue perform
+cooperative CASes to update the tail. The tail pointer can be seen as an
+optimization &mdash; whether it points to the true tail or not does not change
+the logical state of the queue. Let's implement a composable queue that allows
+the tail to momentarily lag behind.
+
+First we define a type for nodes:
+
+```ocaml
+# type 'a node = Nil | Node of 'a * 'a node Loc.t
+type 'a node = Nil | Node of 'a * 'a node Loc.t
+```
+
+A queue is then a pair of pointers to the head and tail of a queue:
+
+```ocaml
+# type 'a queue = {
+    head : 'a node Loc.t Loc.t;
+    tail : 'a node Loc.t Atomic.t;
+  }
+type 'a queue = {
+  head : 'a node Loc.t Loc.t;
+  tail : 'a node Loc.t Atomic.t;
+}
+```
+
+Note that we used an `Atomic.t` for the tail. We do not need to operate on the
+tail transactionally.
+
+To create a queue we allocate a shared memory location for the pointer to the
+first node to be enqueued and make both the head and tail point to the location:
+
+```ocaml
+# let queue () =
+    let next = Loc.make Nil in
+    { head = Loc.make next; tail = Atomic.make next }
+val queue : unit -> 'a queue = <fun>
+```
+
+To dequeue a node, only the head of the queue is examined. If the location
+pointed to by the head points to a node we update the head to point to the
+location pointing to the next node:
+
+```ocaml
+# let try_dequeue ~xt { head; _ } =
+    let old_head = Xt.get ~xt head in
+    match Xt.get ~xt old_head with
+    | Nil -> None
+    | Node (value, next) ->
+      Xt.set ~xt head next;
+      Some value
+val try_dequeue : xt:'a Xt.t -> 'b queue -> 'b option = <fun>
+```
+
+To enqueue a value into the queue, only the tail of the queue needs to be
+examined. We allocate a new location for the new tail and a node. We then need
+to find the true tail of the queue and update it to point to the new node. The
+reason we need to find the true tail is that we explicitly allow the tail to
+momentarily fall behind. We then add a post commit action to the transaction to
+update the tail after the transaction has been successfully committed:
+
+```ocaml
+# let enqueue ~xt { tail; _ } value =
+    let new_tail = Loc.make Nil in
+    let new_node = Node (value, new_tail) in
+    let rec find_and_set_tail old_tail =
+      match Xt.compare_and_swap ~xt old_tail Nil new_node with
+      | Nil -> ()
+      | Node (_, old_tail) ->
+        find_and_set_tail old_tail in
+    let old_tail = Atomic.get tail in
+    find_and_set_tail old_tail;
+    Xt.post_commit ~xt @@ fun () ->
+    let rec fix_tail old_tail new_tail =
+      if Atomic.compare_and_set tail old_tail new_tail then
+        match Loc.get new_tail with
+        | Nil -> ()
+        | Node (_, new_new_tail) ->
+          fix_tail new_tail new_new_tail in
+    fix_tail old_tail new_tail
+val enqueue : xt:'a Xt.t -> 'b queue -> 'b -> unit = <fun>
+```
+
+The post commit action, registered using
+[`post_commit`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-post_commit),
+follows a protocol to update the tail. After each successful CAS to update the
+tail, it checks whether the tail is actually correctly pointing to the true
+tail. If not, another attempt to update the tail is made. Although we allow the
+tail to momentarily fall behind, it is important that we do not let the tail to
+fall behind indefinitely, because then we would risk leaking memory &mdash;
+nodes that have been dequeued from the queue would still be pointed to by the
+tail.
+
+Using the Michael-Scott style queue is as easy as any other transactional queue:
+
+```ocaml
+# let a_queue : int queue = queue ()
+val a_queue : int queue = {head = <abstr>; tail = <abstr>}
+# Xt.commit { tx = enqueue a_queue 19 }
+- : unit = ()
+# Xt.commit { tx = try_dequeue a_queue }
+- : int option = Some 19
+# Xt.commit { tx = try_dequeue a_queue }
+- : int option = None
+```
+
+The queue implementation in this section is an example of using **kcas** to
+implement a fine-grained lock-free algorithm. Instead of recording all shared
+memory accesses and performing them atomically all at once, the implementation
+updates the tail outside of the transaction. This can potentially improve
+performance and scalability.
+
+This sort of algorithm design requires careful reasoning. Consider the dequeue
+operation. Instead of recording the `Xt.get ~xt old_head` operation in the
+transaction log, one could propose to bypass the log as `Loc.get old_head`. That
+may seem like a valid optimization, because logging the update of the head in
+the transaction is sufficient to ensure that each transaction dequeues a unique
+node. Unfortunately that would change the semantics of the operation.
+
+Suppose, for example, that you have two queues, _A_ and _B_, and you must
+maintain the invariant that at most one of the queues is non-empty. One domain
+tries to dequeue from _A_ and, if _A_ was empty, enqueue to _B_. Another domain
+does the opposite, dequeue from _B_ and enqueue to _A_ (when _B_ was empty).
+When such operations are performed in isolation, the invariant would be
+maintained. However, if the access of `old_head` is not recorded in the log, it
+is possible to end up with both _A_ and _B_ non-empty. This kind of
+[race condition](https://en.wikipedia.org/wiki/Race_condition) is common enough
+that it has been given a name: _write skew_. As an exercise, write out the
+sequence of atomic accesses that leads to that result.
 
 ## Designing lock-free algorithms with k-CAS
 

@@ -27,6 +27,7 @@
 module Loc = Kcas.Loc
 module Op = Kcas.Op
 module Tx = Kcas.Tx
+module Xt = Kcas.Xt
 module Mode = Kcas.Mode
 module Backoff = Kcas.Backoff
 
@@ -258,6 +259,34 @@ let test_updates () =
 
 (* *)
 
+let test_post_commit () =
+  let attempt_with_post_commit ~expect { Xt.tx } =
+    let count = ref 0 in
+    let tx ~xt =
+      tx ~xt;
+      Xt.post_commit ~xt @@ fun () -> incr count
+    in
+    (try
+       count := 0;
+       Xt.attempt ~mode:Mode.obstruction_free { tx }
+     with Exit -> ());
+    assert (!count = expect);
+    (try
+       count := 0;
+       Tx.attempt ~mode:Mode.obstruction_free (Xt.to_tx { tx })
+     with Exit -> ());
+    assert (!count = expect)
+  in
+  attempt_with_post_commit ~expect:0 { tx = (fun ~xt:_ -> raise Exit) };
+  attempt_with_post_commit ~expect:1 { tx = (fun ~xt:_ -> ()) };
+  let a = Loc.make 0 and b = Loc.make 0 in
+  attempt_with_post_commit ~expect:1 { tx = Xt.modify a Fun.id };
+  attempt_with_post_commit ~expect:1 { tx = Xt.incr a };
+  attempt_with_post_commit ~expect:1
+    { tx = (fun ~xt -> Xt.set ~xt a (Xt.exchange ~xt b 0)) }
+
+(* *)
+
 let test_backoff () =
   let b = Backoff.create ~lower_wait_log:5 ~upper_wait_log:6 () in
   assert (Backoff.get_wait_log b = 5);
@@ -289,6 +318,7 @@ let () =
   test_stress 1000 10000;
   test_presort ();
   test_updates ();
+  test_post_commit ();
   test_backoff ();
   test_tx ()
 
