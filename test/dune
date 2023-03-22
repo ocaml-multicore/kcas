@@ -53,6 +53,11 @@
  (modules xt_parallel_cmp_bench))
 
 (test
+ (name ms_queue_test)
+ (libraries kcas)
+ (modules ms_queue_test))
+
+(test
  (name example)
  (libraries kcas)
  (modules example))

@@ -808,30 +808,28 @@ update the tail after the transaction has been successfully committed:
     let rec find_and_set_tail old_tail =
       match Xt.compare_and_swap ~xt old_tail Nil new_node with
       | Nil -> ()
-      | Node (_, old_tail) ->
-        find_and_set_tail old_tail in
-    let old_tail = Atomic.get tail in
-    find_and_set_tail old_tail;
-    Xt.post_commit ~xt @@ fun () ->
-    let rec fix_tail old_tail new_tail =
-      if Atomic.compare_and_set tail old_tail new_tail then
-        match Loc.get new_tail with
-        | Nil -> ()
-        | Node (_, new_new_tail) ->
-          fix_tail new_tail new_new_tail in
-    fix_tail old_tail new_tail
+      | Node (_, old_tail) -> find_and_set_tail old_tail
+    in
+    find_and_set_tail (Atomic.get tail);
+    let rec fix_tail () =
+      let old_tail = Atomic.get tail in
+      if
+        Loc.get new_tail == Nil
+        && not (Atomic.compare_and_set tail old_tail new_tail)
+      then fix_tail ()
+    in
+    Xt.post_commit ~xt fix_tail
 val enqueue : xt:'a Xt.t -> 'b queue -> 'b -> unit = <fun>
 ```
 
 The post commit action, registered using
 [`post_commit`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-post_commit),
-follows a protocol to update the tail. After each successful CAS to update the
-tail, it checks whether the tail is actually correctly pointing to the true
-tail. If not, another attempt to update the tail is made. Although we allow the
-tail to momentarily fall behind, it is important that we do not let the tail to
-fall behind indefinitely, because then we would risk leaking memory &mdash;
-nodes that have been dequeued from the queue would still be pointed to by the
-tail.
+checks that the tail is still the true tail and then attempts to update the
+tail. The order of accesses is very subtle as always with non-transactional
+atomic operations. Can you see why it works? Although we allow the tail to
+momentarily fall behind, it is important that we do not let the tail fall behind
+indefinitely, because then we would risk leaking memory &mdash; nodes that have
+been dequeued from the queue would still be pointed to by the tail.
 
 Using the Michael-Scott style queue is as easy as any other transactional queue:
 
@@ -860,7 +858,7 @@ the transaction is sufficient to ensure that each transaction dequeues a unique
 node. Unfortunately that would change the semantics of the operation.
 
 Suppose, for example, that you have two queues, _A_ and _B_, and you must
-maintain the invariant that at most one of the queues is non-empty. One domain
+maintain the invariant that at least one of the queues is empty. One domain
 tries to dequeue from _A_ and, if _A_ was empty, enqueue to _B_. Another domain
 does the opposite, dequeue from _B_ and enqueue to _A_ (when _B_ was empty).
 When such operations are performed in isolation, the invariant would be
