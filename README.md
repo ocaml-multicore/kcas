@@ -858,7 +858,7 @@ the transaction is sufficient to ensure that each transaction dequeues a unique
 node. Unfortunately that would change the semantics of the operation.
 
 Suppose, for example, that you have two queues, _A_ and _B_, and you must
-maintain the invariant that at most one of the queues is non-empty. One domain
+maintain the invariant that at least one of the queues is empty. One domain
 tries to dequeue from _A_ and, if _A_ was empty, enqueue to _B_. Another domain
 does the opposite, dequeue from _B_ and enqueue to _A_ (when _B_ was empty).
 When such operations are performed in isolation, the invariant would be
