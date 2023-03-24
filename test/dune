@@ -38,12 +38,9 @@
  (modules example))
 
 (executable 
-   (name tx_loc_modes1) 
-   (libraries kcas) 
-   (modules tx_loc_modes1))
-
-(executable 
-   (name tx_loc_modes2) 
+   (name tx_loc_modes) 
    (libraries kcas barrier) 
-   (modules tx_loc_modes2))
+   (modules tx_loc_modes))
+
+
 

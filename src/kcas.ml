@@ -175,7 +175,7 @@ let rec update_no_alloc backoff loc state set_after =
     update_no_alloc backoff loc state set_after
 
 let is_obstruction_free casn loc =
-  Atomic.get casn == (Mode.obstruction_free :> status) && loc.id mod 2 == 0
+  Atomic.get casn == (Mode.obstruction_free :> status) && loc.id > 0
   [@@inline]
 
 let cas loc before state =
