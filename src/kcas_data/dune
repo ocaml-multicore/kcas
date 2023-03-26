@@ -1,0 +1,4 @@
+(library
+ (name kcas_data)
+ (public_name kcas_data)
+ (libraries kcas))
