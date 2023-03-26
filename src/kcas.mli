@@ -10,7 +10,7 @@ module Backoff : module type of Backoff
 
 (** Shared memory locations. *)
 module Loc : sig
-  type 'a t
+  type !'a t
   (** Type of shared memory locations. *)
 
   val make : 'a -> 'a t
@@ -162,7 +162,7 @@ end
 
 (** Transactions on shared memory locations. *)
 module Tx : sig
-  type 'a t
+  type +'a t
   (** Type of transactions on shared memory locations.
 
       A transaction can be thought of as a specification of a sequence of {!get}
