@@ -11,37 +11,39 @@ module Q = struct
     Xt.of_tx ~xt Tx.(pop_front q |> map Option.some <|> return None)
 end
 
-module P = Xt_three_stack_queue
-module S = Xt_stack
+module P = Kcas_data.Queue
+module S = Kcas_data.Stack
 
 let () =
   let p = P.create () and q = Q.create () and s = S.create () in
 
   (* Populate [p] with two items atomically  *)
   let tx ~xt =
-    P.push_front ~xt p 4;
-    P.push_back ~xt p 1
+    P.Xt.add ~xt 4 p;
+    P.Xt.add ~xt 1 p
   in
   Xt.commit { tx };
 
-  Xt.commit { tx = P.push_back p 3 };
+  Xt.commit { tx = P.Xt.add 3 p };
 
-  assert (not (Xt.commit { tx = P.is_empty p }));
+  assert (not (Xt.commit { tx = P.Xt.is_empty p }));
 
   (* Transfer item from [p] queue to [q] queue atomically *)
-  let tx ~xt = P.pop_front_opt ~xt p |> Option.iter @@ Q.push_back ~xt q in
+  let tx ~xt = P.Xt.take_opt ~xt p |> Option.iter @@ Q.push_back ~xt q in
   Xt.commit { tx };
 
   assert (Xt.commit { tx = Q.pop_front_opt q } = Some 4);
   assert (Xt.commit { tx = Q.is_empty q });
 
   (* Transfer item from queue [p] to stack [s] atomically *)
-  Xt.commit
-    { tx = (fun ~xt -> P.pop_front_opt ~xt p |> Option.iter @@ S.push ~xt s) };
+  let tx ~xt =
+    P.Xt.take_opt ~xt p |> Option.iter @@ fun x -> S.Xt.push ~xt x s
+  in
+  Xt.commit { tx };
 
-  assert (Xt.commit { tx = S.pop_opt s } = Some 1);
-  assert (Xt.commit { tx = P.pop_front_opt p } = Some 3);
-  assert (Xt.commit { tx = P.is_empty p });
+  assert (Xt.commit { tx = S.Xt.pop_opt s } = Some 1);
+  assert (Xt.commit { tx = P.Xt.take_opt p } = Some 3);
+  assert (Xt.commit { tx = P.Xt.is_empty p });
 
   Xt.commit { tx = Q.push_front q 101 };
   assert (not (Xt.commit { tx = Q.is_empty q }))

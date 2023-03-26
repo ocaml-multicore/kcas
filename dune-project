@@ -11,4 +11,8 @@
  (depends 
   (ocaml (>= 5.0))
   (mdx (and (>= 1.10.0) :with-test))))
+(package (name kcas_data)
+ (synopsis "Compositional lock-free data structures")
+ (depends
+  (kcas (= :version))))
 (using mdx 0.2)

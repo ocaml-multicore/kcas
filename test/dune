@@ -7,11 +7,6 @@
  (libraries kcas)
  (modules tx_linked_queue))
 
-(library
- (name xt_three_stack_queue)
- (libraries kcas)
- (modules xt_three_stack_queue))
-
 (test
  (name test)
  (libraries kcas barrier)
@@ -19,13 +14,13 @@
 
 (test
  (name tx_test)
- (libraries kcas tx_linked_queue xt_three_stack_queue)
+ (libraries kcas kcas_data tx_linked_queue)
  (modules tx_test tx_stack))
 
 (test
  (name xt_test)
- (libraries kcas tx_linked_queue xt_three_stack_queue)
- (modules xt_test xt_stack))
+ (libraries kcas kcas_data tx_linked_queue)
+ (modules xt_test))
 
 (test
  (name test_overlapping_loc)

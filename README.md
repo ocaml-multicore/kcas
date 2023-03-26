@@ -1,5 +1,5 @@
-[API reference](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/index.html)
-&middot; <sub><sup>(The API was redesigned in version 0.2.0. See
+[API reference](https://ocaml-multicore.github.io/kcas/doc/) &middot;
+<sub><sup>(The API was redesigned in version 0.2.0. See
 [API reference for version 0.1.8](https://ocaml-multicore.github.io/kcas/0.1.8/kcas/Kcas/index.html).)</sup></sub>
 
 # **kcas** &mdash; Multi-word compare-and-set library
