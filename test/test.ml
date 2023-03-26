@@ -299,6 +299,15 @@ let test_backoff () =
 
 (* *)
 
+type _ _loc_is_injective =
+  | Int : int _loc_is_injective
+  | Loc : 'a _loc_is_injective -> 'a Loc.t _loc_is_injective
+
+let _tx_is_covariant (tx : < foo : int ; bar : float > Tx.t) =
+  (tx :> < foo : int > Tx.t)
+
+(* *)
+
 let test_tx () =
   let rx = Loc.make 0 in
   let ry = Loc.make 1 in
