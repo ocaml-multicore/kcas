@@ -380,6 +380,12 @@ module Tx = struct
   let incr loc log = update_as ignore loc (( + ) 1) log
   let decr loc log = update_as ignore loc (( + ) (-1)) log
   let update_as g loc f log = update_as g loc f log
+
+  let swap l1 l2 log =
+    let log, x1 = get l1 log in
+    let log, x2 = exchange l2 x1 log in
+    set l1 x2 log
+
   let return value log = (log, value)
   let delay uxt log = uxt () log
 
@@ -491,6 +497,7 @@ module Xt = struct
   let incr ~xt loc = fetch_and_add ~xt loc 1 |> ignore
   let decr ~xt loc = fetch_and_add ~xt loc (-1) |> ignore
   let update ~xt loc f = update loc (protect xt f) xt
+  let swap ~xt l1 l2 = set ~xt l1 @@ exchange ~xt l2 @@ get ~xt l1
 
   let post_commit ~xt action =
     xt.post_commit <- Action.append action xt.post_commit

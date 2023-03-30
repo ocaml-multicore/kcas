@@ -266,6 +266,9 @@ module Tx : sig
   val exchange_as : ('a -> 'b) -> 'a Loc.t -> 'a -> 'b t
   (** [exchange_as g r v] is equivalent to [update r (fun _ -> v) |> map g]. *)
 
+  val swap : 'a Loc.t -> 'a Loc.t -> unit t
+  (** [swap l1 l2] is equivalent to [let* x1 = get l1 in let* x2 = exchange l2 x1 in set l1 x2]. *)
+
   val compare_and_swap : 'a Loc.t -> 'a -> 'a -> 'a t
   (** [compare_and_swap r before after] is equivalent to
 
@@ -431,6 +434,9 @@ module Xt : sig
 
   val exchange : xt:'x t -> 'a Loc.t -> 'a -> 'a
   (** [exchange ~xt r v] is equivalent to [update ~xt r (fun _ -> v)]. *)
+
+  val swap : xt:'x t -> 'a Loc.t -> 'a Loc.t -> unit
+  (** [swap ~xt l1 l2] is equivalent to [set ~xt l1 @@ exchange ~xt l2 @@ get ~xt l1]. *)
 
   val compare_and_swap : xt:'x t -> 'a Loc.t -> 'a -> 'a -> 'a
   (** [compare_and_swap ~xt r before after] is equivalent to
