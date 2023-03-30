@@ -355,6 +355,12 @@ module Tx : sig
   (** [post_commit action] adds the [action] to be performed after the
       transaction has been performed successfully. *)
 
+  (** {1 Advanced} *)
+
+  val is_in_log : 'a Loc.t -> bool t
+  (** [is_in_log r] determines whether the shared memory location [r] has been
+      accessed by the transaction. *)
+
   (** {1 Conditional transactions} *)
 
   val ( <|> ) : 'a t -> 'a t -> 'a t
@@ -427,13 +433,13 @@ module Xt : sig
 
   val update : xt:'x t -> 'a Loc.t -> ('a -> 'a) -> 'a
   (** [update ~xt r f] is equivalent to [let x = get ~xt r in set ~xt r (f x); x]
-      with the limitation that [f] must not and is not allowed to record
-      accesses to the transaction log. *)
+      with the limitation that [f] must not and is not allowed to access the
+      transaction log. *)
 
   val modify : xt:'x t -> 'a Loc.t -> ('a -> 'a) -> unit
   (** [modify ~xt r f] is equivalent to [let x = get ~xt r in set ~xt r (f x)]
-      with the limitation that [f] must not and is not allowed to record
-      accesses to the transaction log. *)
+      with the limitation that [f] must not and is not allowed to access the
+      transaction log. *)
 
   val exchange : xt:'x t -> 'a Loc.t -> 'a -> 'a
   (** [exchange ~xt r v] is equivalent to [update ~xt r (fun _ -> v)]. *)
@@ -463,6 +469,12 @@ module Xt : sig
   val post_commit : xt:'x t -> (unit -> unit) -> unit
   (** [post_commit ~xt action] adds the [action] to be performed after the
       transaction has been performed successfully. *)
+
+  (** {1 Advanced} *)
+
+  val is_in_log : xt:'x t -> 'a Loc.t -> bool
+  (** [is_in_log ~xt r] determines whether the shared memory location [r] has
+      been accessed by the transaction. *)
 
   (** {1 Performing accesses} *)
 
