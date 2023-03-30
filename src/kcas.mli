@@ -33,6 +33,9 @@ module Loc : sig
       succeeds and then returns the [b] value.  It is safe for the given
       function [f] to raise an exception to abort the update. *)
 
+  val modify : ?backoff:Backoff.t -> 'a t -> ('a -> 'a) -> unit
+  (** [modify r f] is equivalent to [update r f |> ignore]. *)
+
   val exchange : ?backoff:Backoff.t -> 'a t -> 'a -> 'a
   (** [exchange r after] atomically updates the shared memory location [r] to
       the [after] value and returns the current value (before the exchange). *)

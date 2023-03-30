@@ -237,6 +237,8 @@ module Loc = struct
       update_no_alloc backoff loc state @@ fun state before ->
       state.after <- f before
 
+  let modify ?backoff loc f = update ?backoff loc f |> ignore [@@inline]
+
   let exchange ?(backoff = Backoff.default) loc value =
     update_no_alloc backoff loc (new_state value) @@ fun _ _ -> ()
 
