@@ -210,6 +210,9 @@ let cas loc before state =
   && Atomic.compare_and_set loc.state state' state
   [@@inline]
 
+let inc x = x + 1
+let dec x = x - 1
+
 module Loc = struct
   type 'a t = 'a loc
 
@@ -244,8 +247,8 @@ module Loc = struct
 
   let set ?backoff loc value = exchange ?backoff loc value |> ignore
   let fetch_and_add ?backoff loc n = update ?backoff loc (( + ) n)
-  let incr ?backoff loc = fetch_and_add ?backoff loc 1 |> ignore
-  let decr ?backoff loc = fetch_and_add ?backoff loc (-1) |> ignore
+  let incr ?backoff loc = update ?backoff loc inc |> ignore
+  let decr ?backoff loc = update ?backoff loc dec |> ignore
 end
 
 let insert cass loc state =
@@ -379,8 +382,8 @@ module Tx = struct
   let exchange_as g loc after log = update_as g loc (fun _ -> after) log
   let exchange loc after log = update_as Fun.id loc (fun _ -> after) log
   let fetch_and_add loc n log = update_as Fun.id loc (( + ) n) log
-  let incr loc log = update_as ignore loc (( + ) 1) log
-  let decr loc log = update_as ignore loc (( + ) (-1)) log
+  let incr loc log = update_as ignore loc inc log
+  let decr loc log = update_as ignore loc dec log
   let update_as g loc f log = update_as g loc f log
 
   let swap l1 l2 log =
@@ -496,8 +499,8 @@ module Xt = struct
 
   let exchange ~xt loc after = update loc (fun _ -> after) xt
   let fetch_and_add ~xt loc n = update loc (( + ) n) xt
-  let incr ~xt loc = fetch_and_add ~xt loc 1 |> ignore
-  let decr ~xt loc = fetch_and_add ~xt loc (-1) |> ignore
+  let incr ~xt loc = update loc inc xt |> ignore
+  let decr ~xt loc = update loc dec xt |> ignore
   let update ~xt loc f = update loc (protect xt f) xt
   let swap ~xt l1 l2 = set ~xt l1 @@ exchange ~xt l2 @@ get ~xt l1
 
