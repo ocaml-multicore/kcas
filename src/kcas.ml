@@ -149,33 +149,34 @@ let determine_for_owner casn cass =
   | exception Exit -> Atomic.get casn == `After
   [@@inline]
 
+let impossible () = failwith "impossible" [@@inline never]
 let overlap () = failwith "kcas: location overlap" [@@inline never]
 
 type splay = Miss : splay | Hit : 'a loc * 'a state -> splay
 
-let rec splay x = function
+let rec splay ~hit_parent x = function
   | NIL -> (NIL, Miss, NIL)
   | CASN (a, s, l, r) as t ->
-      if x < a.id then
+      if x < a.id && ((not hit_parent) || l != NIL) then
         match l with
         | NIL -> (NIL, Miss, t)
         | CASN (pa, ps, ll, lr) ->
-            if x < pa.id then
-              let lll, n, llr = splay x ll in
+            if x < pa.id && ((not hit_parent) || ll != NIL) then
+              let lll, n, llr = splay ~hit_parent x ll in
               (lll, n, CASN (pa, ps, llr, CASN (a, s, lr, r)))
-            else if pa.id < x then
-              let lrl, n, lrr = splay x lr in
+            else if pa.id < x && ((not hit_parent) || lr != NIL) then
+              let lrl, n, lrr = splay ~hit_parent x lr in
               (CASN (pa, ps, ll, lrl), n, CASN (a, s, lrr, r))
             else (ll, Hit (pa, ps), CASN (a, s, lr, r))
-      else if a.id < x then
+      else if a.id < x && ((not hit_parent) || r != NIL) then
         match r with
         | NIL -> (t, Miss, NIL)
         | CASN (pa, ps, rl, rr) ->
-            if x < pa.id then
-              let rll, n, rlr = splay x rl in
+            if x < pa.id && ((not hit_parent) || rl != NIL) then
+              let rll, n, rlr = splay ~hit_parent x rl in
               (CASN (a, s, l, rll), n, CASN (pa, ps, rlr, rr))
-            else if pa.id < x then
-              let rrl, n, rrr = splay x rr in
+            else if pa.id < x && ((not hit_parent) || rr != NIL) then
+              let rrl, n, rrr = splay ~hit_parent x rr in
               (CASN (pa, ps, CASN (a, s, l, rl), rrl), n, rrr)
             else (CASN (a, s, l, rl), Hit (pa, ps), rr)
       else (l, Hit (a, s), r)
@@ -257,7 +258,7 @@ let insert cass loc state =
   | CASN (a, _, NIL, _) when x < a.id -> CASN (loc, state, NIL, cass)
   | CASN (a, _, _, NIL) when a.id < x -> CASN (loc, state, cass, NIL)
   | _ -> (
-      match splay x cass with
+      match splay ~hit_parent:false x cass with
       | _, Hit _, _ -> overlap ()
       | l, Miss, r -> CASN (loc, state, l, r))
   [@@inline]
@@ -334,7 +335,7 @@ let update_as g loc f (casn, cass, post_commit) =
   | CASN (loc', state', l, r) when Obj.magic loc' == loc ->
       update_as g loc f casn post_commit state' l r
   | _ -> (
-      match splay x cass with
+      match splay ~hit_parent:false x cass with
       | l, Miss, r -> update_as0 g loc f casn post_commit l r
       | l, Hit (_loc', state'), r ->
           update_as g loc f casn post_commit state' l r)
@@ -396,6 +397,19 @@ module Tx = struct
 
   let post_commit action (casn, cass, post_commit) =
     ((casn, cass, Action.append action post_commit), ())
+
+  let is_in_log loc ((casn, cass, post_commit) as log) =
+    let x = loc.id in
+    match cass with
+    | NIL -> (log, false)
+    | CASN (a, _, NIL, _) when x < a.id -> (log, false)
+    | CASN (a, _, _, NIL) when a.id < x -> (log, false)
+    | CASN (a, _, _, _) when Obj.magic a == loc -> (log, true)
+    | cass -> (
+        match splay ~hit_parent:true loc.id cass with
+        | l, Hit (a, s), r ->
+            ((casn, CASN (a, s, l, r), post_commit), Obj.magic a == loc)
+        | _, Miss, _ -> impossible ())
 
   let ( let* ) xt xyt log =
     let log, x = xt log in
@@ -478,7 +492,7 @@ module Xt = struct
     | CASN (loc', state', l, r) when Obj.magic loc' == loc ->
         update loc f xt state' l r
     | cass -> (
-        match splay x cass with
+        match splay ~hit_parent:false x cass with
         | l, Miss, r -> update0 loc f xt l r
         | l, Hit (_loc', state'), r -> update loc f xt state' l r)
     [@@inline]
@@ -506,6 +520,20 @@ module Xt = struct
 
   let post_commit ~xt action =
     xt.post_commit <- Action.append action xt.post_commit
+
+  let is_in_log ~xt loc =
+    let x = loc.id in
+    match xt.cass with
+    | NIL -> false
+    | CASN (a, _, NIL, _) when x < a.id -> false
+    | CASN (a, _, _, NIL) when a.id < x -> false
+    | CASN (a, _, _, _) when Obj.magic a == loc -> true
+    | cass -> (
+        match splay ~hit_parent:true x cass with
+        | l, Hit (a, s), r ->
+            xt.cass <- CASN (a, s, l, r);
+            Obj.magic a == loc
+        | _, Miss, _ -> impossible ())
 
   type 'a tx = { tx : 'x. xt:'x t -> 'a } [@@unboxed]
 

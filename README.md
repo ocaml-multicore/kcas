@@ -1175,7 +1175,9 @@ the `back` to the `middle` before examining the `middle`:
     match Xt.update ~xt queue.front tl_safe with
     | x :: _ -> Some x
     | [] ->
-      back_to_middle queue;
+      if not (Xt.is_in_log ~xt queue.middle ||
+              Xt.is_in_log ~xt queue.back) then
+        back_to_middle queue;
       match Xt.exchange ~xt queue.middle [] |> List.rev with
       | x :: xs ->
         Xt.set ~xt queue.front xs;
@@ -1371,7 +1373,7 @@ adversarial transaction to switch a hash table to the rehashing state in case a
 rehash seems necessary:
 
 ```ocaml
-# let prepare_rehash hashtbl delta =
+# let prepare_rehash ~xt hashtbl delta =
     let tx ~xt =
       match Xt.get ~xt hashtbl.pending with
       | `Rehash _ -> ()
@@ -1385,20 +1387,27 @@ rehash seems necessary:
         else
           raise Not_found
     in
-    try Xt.commit { tx } with Not_found -> ()
-val prepare_rehash : ('a, 'b) hashtbl -> int -> unit = <fun>
+    try
+      if Xt.is_in_log ~xt hashtbl.pending then
+        tx ~xt
+      else
+        Xt.commit { tx }
+    with Not_found -> ()
+val prepare_rehash : xt:'a Xt.t -> ('b, 'c) hashtbl -> int -> unit = <fun>
 ```
 
 Note again that while the rehash logic allows some slack in the capacity, a real
 implementation would likely use a bigger minimum capacity and perhaps avoid
-using powers of two.
+using powers of two. Also, if we have already modified the hash table, which we
+know by checking whether the `pending` location has been accessed, we must
+continue within the same tramsaction.
 
 Before we mutate a hash table, we will then call a helper to check whether we
 need to rehash:
 
 ```ocaml
 # let maybe_rehash ~xt hashtbl delta =
-    prepare_rehash hashtbl delta;
+    prepare_rehash ~xt hashtbl delta;
     match Xt.get ~xt hashtbl.pending with
     | `Nothing -> ()
     | `Rehash new_capacity ->

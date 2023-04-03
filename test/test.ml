@@ -245,6 +245,49 @@ let test_presort () =
 
 (* *)
 
+let test_presort_and_is_in_log_xt () =
+  let n_incs = 50_000 and n_domains = 3 and n_locs = 12 in
+  let n_locs_half = n_locs asr 1 in
+
+  let barrier = Barrier.make n_domains in
+
+  let locs = Array.init n_locs (fun _ -> Loc.make 0) in
+
+  let in_place_shuffle array =
+    let n = Array.length array in
+    for i = 0 to n - 2 do
+      let j = Random.int (n - i) + i in
+      let t = array.(i) in
+      array.(i) <- array.(j);
+      array.(j) <- t
+    done
+  in
+
+  let thread () =
+    let locs = Array.copy locs in
+    Random.self_init ();
+    Barrier.await barrier;
+    for _ = 1 to n_incs do
+      in_place_shuffle locs;
+      let tx ~xt =
+        for i = 0 to n_locs_half - 1 do
+          Xt.incr ~xt locs.(i)
+        done;
+        assert (Xt.is_in_log ~xt locs.(Random.int n_locs_half));
+        assert (not (Xt.is_in_log ~xt locs.(n_locs_half)))
+      in
+      Xt.commit { tx }
+    done
+  in
+
+  Array.make n_domains thread
+  |> Array.map Domain.spawn |> Array.iter Domain.join;
+
+  let sum = locs |> Array.map Loc.get |> Array.fold_left ( + ) 0 in
+  assert (sum = n_incs * n_locs_half * n_domains)
+
+(* *)
+
 let test_updates () =
   let x = Loc.make 0 in
   assert (Loc.fetch_and_add x 1 = 0);
@@ -326,6 +369,7 @@ let () =
   test_read_casn ();
   test_stress 1000 10000;
   test_presort ();
+  test_presort_and_is_in_log_xt ();
   test_updates ();
   test_post_commit ();
   test_backoff ();
