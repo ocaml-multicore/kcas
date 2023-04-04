@@ -11,14 +11,15 @@ GH_PAGES=gh-pages
 
 TAG="$1"
 
-if [ $# -ne 1 ] || ! [ "$(git tag -l "$TAG")" ] || [ ! -e $NAME.opam ]; then
+if ! [ -e $NAME.opam ] || [ $# -ne 1 ] || \
+     { [ "$TAG" != main ] && ! [ "$(git tag -l "$TAG")" ]; }; then
   CMD="${0##*/}"
   cat << EOF
-Usage: $CMD tag-name
+Usage: $CMD tag-name-or-main
 
 This script
 - clones the repository into a temporary directory ($TMP/$NAME),
-- builds the documentation for the specified tag,
+- builds the documentation for the specified tag or main,
 - updates $GH_PAGES branch with the documentation in directory for the tag,
 - prompts whether to also update the main documentation in $MAIN directory, and
 - prompts whether to push changes to $GH_PAGES.
@@ -37,13 +38,16 @@ git checkout "$TAG"
 dune build @doc --root=.
 
 git checkout $GH_PAGES
-if [ -e "$TAG" ]; then
-  git rm -rf "$TAG"
+if [ "$TAG" != main ]; then
+  echo "Updating the $TAG doc."
+  if [ -e "$TAG" ]; then
+    git rm -rf "$TAG"
+  fi
+  cp -r $DOC "$TAG"
+  git add "$TAG"
 fi
-cp -r $DOC "$TAG"
-git add "$TAG"
 
-read -p "Also update the main doc? (y/N) " -n 1 -r
+read -p "Update the main doc? (y/N) " -n 1 -r
 echo
 if [[ $REPLY =~ ^[Yy]$ ]]; then
   if [ -e $MAIN ]; then
