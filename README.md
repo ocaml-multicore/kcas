@@ -4,10 +4,15 @@
 
 # **kcas** &mdash; Multi-word compare-and-set library
 
-**kcas** provides an implementation of atomic
+[**kcas**](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/index.html)
+provides an implementation of atomic
 [lock-free](https://en.wikipedia.org/wiki/Non-blocking_algorithm#Lock-freedom)
 multi-word [compare-and-set](https://en.wikipedia.org/wiki/Compare-and-swap)
 (MCAS), which is a powerful tool for designing concurrent algorithms.
+
+[**kcas_data**](https://ocaml-multicore.github.io/kcas/doc/kcas_data/Kcas_data/index.html)
+provides implementations of compositional lock-free data structures implemented
+using **kcas**.
 
 Features and properties:
 

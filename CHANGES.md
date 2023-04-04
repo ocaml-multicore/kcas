@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.2.4
+
+* Introduce `kcas_data` companion package of composable lock-free data structures (@polytypic)
+* Add `is_in_log` operation to determine whether a location has been accessed by a transaction (@polytypic)
+* Add `Loc.modify` (@polytypic)
+* Add transactional `swap` operation to exchange contents of two locations (@polytypic)
+* Injectivity `!'a Loc.t` and variance `+'a Tx.t` annotations (@polytypic)
+
 ## 0.2.3
 
 * Add support for post commit actions to transactions (@polytypic)
