@@ -54,6 +54,7 @@ is distributed under the [ISC license](LICENSE.md).
     - [Understanding transactions](#understanding-transactions)
     - [A three-stack lock-free queue](#a-three-stack-lock-free-queue)
     - [A rehashable lock-free hash table](#a-rehashable-lock-free-hash-table)
+  - [Beware of torn reads](#beware-of-torn-reads)
 - [Development](#development)
 
 ## A quick tour
@@ -1487,6 +1488,91 @@ val assoc : (string * int) list =
 What we have here is a lock-free hash table with rehashing that should not be
 highly prone to starvation. In other respects this is a fairly naive hash table
 implementation. You might want to think about various ways to improve upon it.
+
+### Beware of torn reads
+
+The algorithm underlying **kcas** ensures that it is not possible to read
+uncommitted changes to shared memory locations and that an operation can only
+complete successfully if all of the accesses taken together were atomic. These
+are very strong guarantees and make it much easier to implement correct
+concurrent algorithms.
+
+Unfortunately, the transaction mechanism that **kcas** provides does not prevent
+one specific concurrency anomaly. When reading multiple locations, it is
+possible for a transaction to observe different locations at different times
+even though it is not possible for the transaction to commit successfully unless
+all the accesses together were atomic.
+
+Let's examine this phenomena. To see the anomaly, we need to have two or more
+locations. Let's just create two locations `a` and `b`:
+
+```ocaml
+# let a = Loc.make 0 and b = Loc.make 0
+val a : int Loc.t = <abstr>
+val b : int Loc.t = <abstr>
+```
+
+And create helper that spawns a domain that repeatedly increments `a` and
+decrements `b` in a transaction:
+
+```ocaml
+# let with_updater fn =
+    let stop = ref false in
+    let domain = Domain.spawn @@ fun () ->
+      while not !stop do
+        let tx ~xt =
+          Xt.incr ~xt a;
+          Xt.decr ~xt b;
+        in
+        Xt.commit { tx }
+      done in
+    let finally () =
+      stop := true;
+      Domain.join domain in
+    Fun.protect ~finally fn
+val with_updater : (unit -> 'a) -> 'a = <fun>
+```
+
+The sum of the values of `a` and `b` must always be zero. We can verify this
+using a transaction:
+
+```ocaml
+# with_updater @@ fun () ->
+    for _ = 1 to 10_000 do
+      let tx ~xt =
+        0 = (Xt.get ~xt a + Xt.get ~xt b)
+      in
+      if not (Xt.commit { tx }) then
+        failwith "torn read"
+    done;
+    "no torn reads"
+- : string = "no torn reads"
+```
+
+Nice! So, it appears everything works as expected. A transaction can only commit
+after having read a consistent, atomic, snapshot of all the shared memory
+locations.
+
+Unfortunately within a transaction attempt things are not as simple. Let's do an
+experiment where we abort the transaction in case we observe that the values of
+`a` and `b` are inconsistent:
+
+```ocaml
+# with_updater @@ fun () ->
+    for _ = 1 to 10_000 do
+      let tx ~xt =
+        if 0 <> (Xt.get ~xt a + Xt.get ~xt b) then
+          failwith "torn read"
+      in
+      Xt.commit { tx }
+    done;
+    "no torn reads"
+Exception: Failure "torn read".
+```
+
+Oops! So, within a transaction we may actually observe different locations
+having values from different committed transactions. This is something that
+needs to be kept in mind when writing transactions.
 
 ## Development
 
