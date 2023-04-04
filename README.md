@@ -1194,12 +1194,15 @@ val dequeue : xt:'a Xt.t -> 'b queue -> 'b option = <fun>
 There are a number of subtle implementation details above that deserve
 attention.
 
-First of all, notice that `dequeue` calls `back_to_middle queue` before
-accessing `queue.middle` and `queue.back`. If the call `back_to_middle queue`
-would be made after accessing `queue.middle` or `queue.back`, then those
-accesses would be recorded in the transaction log `xt` and the log would be
-inconsistent after `back_to_middle queue` mutates the locations. This would
-cause the transaction attempt to fail and we want to avoid such doomed attempts.
+First of all, notice that `dequeue` only calls `back_to_middle queue` after
+making sure that `queue.middle` and `queue.back` have not already been accessed
+using
+[`is_in_log`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-is_in_log).
+If the call `back_to_middle queue` would be made after accessing `queue.middle`
+or `queue.back`, then those accesses would be recorded in the transaction log
+`xt` and the log would be inconsistent after `back_to_middle queue` mutates the
+locations. This would cause the transaction attempt to fail and we want to avoid
+such doomed attempts.
 
 Another subtle, but important, detail is that despite calling
 `back_to_middle queue` to move `queue.back` to `queue.middle`, it would be
@@ -1399,8 +1402,10 @@ val prepare_rehash : xt:'a Xt.t -> ('b, 'c) hashtbl -> int -> unit = <fun>
 Note again that while the rehash logic allows some slack in the capacity, a real
 implementation would likely use a bigger minimum capacity and perhaps avoid
 using powers of two. Also, if we have already modified the hash table, which we
-know by checking whether the `pending` location has been accessed, we must
-continue within the same tramsaction.
+know by using
+[`is_in_log`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-is_in_log)
+to check whether the `pending` location has been accessed, we must continue
+within the same transaction.
 
 Before we mutate a hash table, we will then call a helper to check whether we
 need to rehash:
