@@ -1,3 +1,4 @@
 (tests
  (names hashtbl_test hashtbl_bench queue_test stack_test)
- (libraries kcas kcas_data))
+ (libraries kcas kcas_data)
+ (package kcas_data))

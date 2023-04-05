@@ -1,5 +1,6 @@
 (mdx
- (package kcas)
+ (package kcas_test)
  (deps
-  (package kcas))
+  (package kcas)
+  (package kcas_data))
  (files README.md))
