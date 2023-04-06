@@ -136,54 +136,61 @@ let finish casn (`Undetermined cass as undetermined) (status : determined) =
   then release casn cass status
   else fenceless_get casn == `After
 
-let rec determine casn action = function
-  | NIL -> action
-  | CASN ({ loc; state; lt; gt; _ } as record) as eq -> (
-      match if lt != NIL then determine casn action lt else action with
-      | `Before -> `Before
-      | (`After | `Verify) as action ->
-          let current = Atomic.get loc.state in
-          if state == current then
-            let action = if is_cmp casn state then `Verify else action in
-            determine casn action gt
-          else
-            let matches_expected () =
-              let expected = state.before in
-              expected == current.after
-              && (current.casn == casn_after || is_after current.casn)
-              || expected == current.before
-                 && (current.casn == casn_before || not (is_after current.casn))
-            in
-            if (not (is_cmp casn state)) && matches_expected () then
-              match fenceless_get casn with
-              | `Undetermined _ ->
-                  (* We now know that the operation wasn't finished when we read
-                     [current], but it is possible that the [loc]ation has been
-                     updated since then by some other domain helping us (or even
-                     by some later operation). If so, then the [compare_and_set]
-                     below fails. Copying the awaiters from [current] is safe in
-                     either case, because we know that we have the [current]
-                     state that our operation is interested in.  By doing the
-                     copying here, we at most duplicate work already done by
-                     some other domain. However, it is necessary to do the copy
-                     before the [compare_and_set], because afterwards is too
-                     late as some other domain might finish the operation after
-                     the [compare_and_set] and miss the awaiters. *)
-                  (match current.awaiters with
-                  | [] -> ()
-                  | awaiters -> record.awaiters <- awaiters);
-                  if Atomic.compare_and_set loc.state current state then
-                    determine casn action gt
-                  else determine casn action eq
-              | #determined -> raise Exit
-            else `Before)
+let a_cas = 1
+and a_cmp = 2
+
+let a_cas_and_a_cmp = a_cas lor a_cmp
+
+let rec determine casn status = function
+  | NIL -> status
+  | CASN ({ loc; state; lt; gt; _ } as record) as eq ->
+      let status = if lt != NIL then determine casn status lt else status in
+      if status < 0 then status
+      else
+        let current = Atomic.get loc.state in
+        if state == current then
+          determine casn (status lor (1 + Bool.to_int (is_cmp casn state))) gt
+        else
+          let matches_expected () =
+            let expected = state.before in
+            expected == current.after
+            && (current.casn == casn_after || is_after current.casn)
+            || expected == current.before
+               && (current.casn == casn_before || not (is_after current.casn))
+          in
+          if (not (is_cmp casn state)) && matches_expected () then
+            match Atomic.get casn with
+            | `Undetermined _ ->
+                (* We now know that the operation wasn't finished when we read
+                   [current], but it is possible that the [loc]ation has been
+                   updated since then by some other domain helping us (or even
+                   by some later operation). If so, then the [compare_and_set]
+                   below fails. Copying the awaiters from [current] is safe in
+                   either case, because we know that we have the [current]
+                   state that our operation is interested in.  By doing the
+                   copying here, we at most duplicate work already done by
+                   some other domain. However, it is necessary to do the copy
+                   before the [compare_and_set], because afterwards is too
+                   late as some other domain might finish the operation after
+                   the [compare_and_set] and miss the awaiters. *)
+                (match current.awaiters with
+                | [] -> ()
+                | awaiters -> record.awaiters <- awaiters);
+                if Atomic.compare_and_set loc.state current state then
+                  determine casn (status lor a_cas) gt
+                else determine casn status eq
+            | #determined -> raise Exit
+          else -1
 
 and is_after casn =
   match fenceless_get casn with
   | `Undetermined cass as undetermined -> (
-      match determine casn `After cass with
-      | `Verify -> finish casn undetermined (verify casn cass)
-      | #determined as status -> finish casn undetermined status
+      match determine casn 0 cass with
+      | status ->
+          finish casn undetermined
+            (if a_cas_and_a_cmp = status then verify casn cass
+             else if 0 <= status then `After
+             else `Before)
       | exception Exit -> fenceless_get casn == `After)
   | `After -> true
   | `Before -> false
@@ -193,15 +200,17 @@ let determine_for_owner casn cass =
   (* The end result is a cyclic data structure, which is why we cannot
      initialize the [casn] atomic directly. *)
   fenceless_set casn undetermined;
-  match determine casn `After cass with
-  | `Verify ->
-      (* We only want to [raise Interference] in case it is the verify step that
-         fails.  The idea is that in [lock_free] mode the attempt might have
-         succeeded as the compared locations would have been set in [lock_free]
-         mode preventing interference.  If failure happens before the verify
-         step then the [lock_free] mode would have likely also failed. *)
-      finish casn undetermined (verify casn cass) || raise Mode.Interference
-  | #determined as status -> finish casn undetermined status
+  match determine casn 0 cass with
+  | status ->
+      if a_cas_and_a_cmp = status then
+        (* We only want to [raise Interference] in case it is the verify step
+           that fails.  The idea is that in [lock_free] mode the attempt might
+           have succeeded as the compared locations would have been set in
+           [lock_free] mode preventing interference.  If failure happens before
+           the verify step then the [lock_free] mode would have likely also
+           failed. *)
+        finish casn undetermined (verify casn cass) || raise Mode.Interference
+      else finish casn undetermined (if 0 <= status then `After else `Before)
   | exception Exit -> fenceless_get casn == `After
   [@@inline]
 
