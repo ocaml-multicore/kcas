@@ -46,7 +46,7 @@
     to the [Stdlib] equivalent.  Additionally, compositional transactional
     interfaces are provided for some operations.
 
-    These implementation will use more space than the corresponding [Stdlib]
+    These implementations will use more space than the corresponding [Stdlib]
     data structures.  Performance, when accessed concurrently, should be
     competitive or superior compared to naïve locking. *)
 
