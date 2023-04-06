@@ -1517,7 +1517,7 @@ val a : int Loc.t = <abstr>
 val b : int Loc.t = <abstr>
 ```
 
-And create helper that spawns a domain that repeatedly increments `a` and
+And create a helper that spawns a domain that repeatedly increments `a` and
 decrements `b` in a transaction:
 
 ```ocaml
