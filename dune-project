@@ -9,15 +9,11 @@
 (package (name kcas)
  (synopsis "Multi-word compare-and-set library")
  (depends 
-  (ocaml (>= 5.0))))
+  (ocaml (>= 5.0))
+  (mdx (and (>= 1.10.0) :with-test))))
 (package (name kcas_data)
  (synopsis "Compositional lock-free data structures")
  (depends
-  (kcas (= :version))))
-(package (name kcas_test)
- (synopsis "Test suite for the kcas packages")
- (depends
   (kcas (= :version))
-  (kcas_data (= :version))
   (mdx (and (>= 1.10.0) :with-test))))
 (using mdx 0.2)

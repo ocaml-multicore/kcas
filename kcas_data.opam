@@ -9,6 +9,7 @@ bug-reports: "https://github.com/ocaml-multicore/kcas/issues"
 depends: [
   "dune" {>= "3.3"}
   "kcas" {= version}
+  "mdx" {>= "1.10.0" & with-test}
   "odoc" {with-doc}
 ]
 build: [
