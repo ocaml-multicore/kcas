@@ -1,47 +1,77 @@
-(* This example is a simple test of the lock-free mode of Kcas.One thread reads each location whereas the other thread increments the value at each location.
-   Threads synched with Barrier*)
+open Kcas
 
-module Loc = Kcas.Loc
-module Mode = Kcas.Mode
-module Tx = Kcas.Tx
-
-let lock = Barrier.make 2
-let loop_count = try int_of_string Sys.argv.(1) with _ -> 1500
+let loop_count = try int_of_string Sys.argv.(1) with _ -> 100000
 
 let mode =
   try if Sys.argv.(2) = "lock-free" then Some Mode.lock_free else None
   with _ -> None
-(* ... *)
 
-let a = Loc.make ?mode 10
-let b = Loc.make ~mode:Mode.lock_free 10
+(* Number of shared counters being used to try to cause interference *)
 
-let read loc loc2 =
-  Tx.(let* t1 = Tx.get loc2 in
 
-      let* _ = Tx.get loc in
+(* Number of private accumulators used for extra work *)
+let n_counters = try int_of_string Sys.argv.(3) with _ -> 2
+let n_accumulators = try int_of_string Sys.argv.(4) with _ -> 2
 
-      Tx.set loc2 (t1 + 1))
+let sleep_time = try int_of_string Sys.argv.(5) with _ -> 85
 
-let incr loc v =
-  Tx.(
-    let* v' = Tx.get loc in
-    Tx.set loc (v' + v))
+(* Set to true when the accumulator work is done and counter threads may exit.
+   This way we ensure that the counter threads are causing interference for
+   the whole duration of the test. *)
+let exit = ref false
 
-let thread1 () =
-  Barrier.await lock;
-  for _ = 1 to loop_count do
-    let alp = incr a 1 in
+(* Counters are first initialized with a dummy location *)
+let counters =
+  let dummy_location_to_be_replaced = Loc.make 0 in
+  Array.make n_counters dummy_location_to_be_replaced
 
-    Tx.commit alp
+(* Barrier used to synchronize counter threads and the accumulator thread *)
+let barrier = Barrier.make (n_counters + 1)
+
+let counter_thread i () =
+  (* We allocate actual counter locations within the domain to avoid false sharing *)
+  let counter = Loc.make ?mode 0 in
+  counters.(i) <- counter;
+
+  let tx ~xt = Xt.incr ~xt counter in
+
+  Barrier.await barrier;
+
+  while not !exit do
+    (* Increment the accumulator to cause interference *)
+    Xt.commit { tx };
+
+    (* Delay for a bit.  If we don't delay enough, we can starve the accumulator. *)
+    for _ = 1 to sleep_time do
+      Domain.cpu_relax ()
+    done
   done
 
-let thread2 () =
-  Barrier.await lock;
+let accumulator_thread () =
+  (* Accumulators allocated in the domain to avoid false sharing *)
+  let accumulators = Array.init n_accumulators (fun _ -> Loc.make 0) in
+
+  let tx ~xt =
+    (* Compute sum of counters - these accesses can be interfered with *)
+    let sum_of_counters =
+      Array.fold_left (fun sum counter -> sum + Xt.get ~xt counter) 0 counters
+    in
+
+    (* And do some other work (updating accumulators) *)
+    Array.iter
+      (fun accumulator ->
+        Xt.fetch_and_add ~xt accumulator sum_of_counters |> ignore)
+      accumulators
+  in
+
+  Barrier.await barrier;
+
   for _ = 1 to loop_count do
-    let beta = read a b in
+    Xt.commit { tx }
+  done;
 
-    Tx.commit beta
-  done
+  exit := true
 
-let _ = [ thread2; thread1 ] |> List.map Domain.spawn |> List.iter Domain.join
+let () =
+  accumulator_thread :: List.init n_counters counter_thread
+  |> List.map Domain.spawn |> List.iter Domain.join
