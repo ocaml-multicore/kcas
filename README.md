@@ -916,15 +916,15 @@ accesses and optimistic updates we can reduce that to just two accesses:
 # let transfer amount ~source ~target =
     let tx ~xt =
       if Xt.fetch_and_add ~xt source (-amount) < amount then
-        raise Not_found;
+        raise Exit;
       Xt.fetch_and_add ~xt target amount |> ignore
     in
-    try Xt.commit { tx } with Not_found -> ()
+    try Xt.commit { tx } with Exit -> ()
 val transfer : int -> source:int Loc.t -> target:int Loc.t -> unit = <fun>
 ```
 
-Note that we raise the Stdlib `Not_found` exception to abort the transaction. As
-we can see
+Note that we raise the Stdlib `Exit` exception to abort the transaction. As we
+can see
 
 ```ocaml
 # Loc.get a, Loc.get b
@@ -1036,7 +1036,9 @@ mutate any shared memory locations.
 
 When a transaction is (unconditionally) _committed_, rather than merely
 _attempted_ (once), the commit mechanism keeps on retrying until an attempt
-succeeds or the transaction function raises an exception (other than `Exit` or
+succeeds or the transaction function raises an exception (other than
+[`Retry`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#exception-Retry)
+or
 [`Interference`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Mode/index.html#exception-Interference))
 that the commit mechanism does not handle.
 
@@ -1098,18 +1100,18 @@ For the quick transaction we introduce a helper function:
 # let back_to_middle queue =
     let tx ~xt =
       match Xt.exchange ~xt queue.back [] with
-      | [] -> raise Not_found
+      | [] -> raise Exit
       | xs ->
         if Xt.exchange ~xt queue.middle xs != [] then
-          raise Not_found
+          raise Exit
     in
-    try Xt.commit { tx } with Not_found -> ()
+    try Xt.commit { tx } with Exit -> ()
 val back_to_middle : 'a queue -> unit = <fun>
 ```
 
 Note that the above uses
 [`exchange`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-exchange)
-to optimistically record shared memory accesses and then uses the `Not_found`
+to optimistically record shared memory accesses and then uses the `Exit`
 exception to abort the transaction in case the optimistic accesses turn out to
 be unnecessary or incorrect.
 
@@ -1334,14 +1336,14 @@ rehash seems necessary:
         else if size * 8 < capacity then
           Xt.set ~xt hashtbl.pending (`Rehash (capacity / 2))
         else
-          raise Not_found
+          raise Exit
     in
     try
       if Xt.is_in_log ~xt hashtbl.pending then
         tx ~xt
       else
         Xt.commit { tx }
-    with Not_found -> ()
+    with Exit -> ()
 val prepare_rehash : xt:'a Xt.t -> ('b, 'c) hashtbl -> int -> unit = <fun>
 ```
 

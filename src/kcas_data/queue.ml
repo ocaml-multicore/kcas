@@ -42,9 +42,9 @@ module Xt = struct
     let tx ~xt =
       let xs = Xt.exchange ~xt back Elems.empty in
       if xs == Elems.empty || Xt.exchange ~xt middle xs != Elems.empty then
-        raise Not_found
+        raise Exit
     in
-    try Xt.commit { tx } with Not_found -> ()
+    try Xt.commit { tx } with Exit -> ()
 
   let take_opt_finish ~xt front elems =
     let elems = Elems.rev elems in

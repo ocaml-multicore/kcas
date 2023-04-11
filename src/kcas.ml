@@ -93,8 +93,6 @@ let finish casn (`Undetermined cass as undetermined) (status : determined) =
   then release casn cass status
   else Atomic.get casn == `After
 
-let exit _ = raise Exit [@@inline never]
-
 let rec determine casn action = function
   | NIL -> action
   | CASN (loc, desired, lt, gt) as eq -> (
@@ -119,7 +117,7 @@ let rec determine casn action = function
                   if Atomic.compare_and_set loc.state current desired then
                     determine casn action gt
                   else determine casn action eq
-              | #determined -> exit ()
+              | #determined -> raise Exit
             else `Before)
 
 and is_after casn =
@@ -370,6 +368,11 @@ module Xt = struct
   let update ~xt loc f = update loc (protect xt f) xt
   let swap ~xt l1 l2 = set ~xt l1 @@ exchange ~xt l2 @@ get ~xt l1
 
+  exception Retry
+
+  let retry () = raise Retry [@@inline never]
+  let check condition = if not condition then retry () [@@inline]
+
   let post_commit ~xt action =
     xt.post_commit <- Action.append action xt.post_commit
 
@@ -407,18 +410,18 @@ module Xt = struct
           let before = state.before in
           state.before <- state.after;
           if cas loc before state then Action.run xt.post_commit result
-          else exit ()
+          else retry ()
     | cass ->
         if determine_for_owner xt.casn cass then
           Action.run xt.post_commit result
-        else exit ()
+        else retry ()
 
   let rec commit backoff mode tx =
     match attempt mode tx with
     | result -> result
     | exception Mode.Interference ->
         commit (Backoff.once backoff) Mode.lock_free tx
-    | exception Exit -> commit (Backoff.once backoff) mode tx
+    | exception Retry -> commit (Backoff.once backoff) mode tx
 
   let commit ?(backoff = Backoff.default) ?(mode = Mode.obstruction_free) tx =
     commit backoff mode tx.tx

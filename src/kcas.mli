@@ -217,6 +217,18 @@ module Xt : sig
   val decr : xt:'x t -> int Loc.t -> unit
   (** [decr ~xt r] is equivalent to [fetch_and_add ~xt r (-1) |> ignore]. *)
 
+  (** {1 Retrying} *)
+
+  exception Retry
+  (** Exception that may be raised by a transaction to signal that the
+      transaction should be retried. *)
+
+  val retry : unit -> 'a
+  (** [retry ()] is equivalent to [raise Retry]. *)
+
+  val check : bool -> unit
+  (** [check condition] is equivalent to [if not condition then retry ()]. *)
+
   (** {1 Post commit actions} *)
 
   val post_commit : xt:'x t -> (unit -> unit) -> unit
@@ -243,12 +255,12 @@ module Xt : sig
   (** [attempt tx] attempts to atomically perform the transaction over shared
       memory locations recorded by calling [tx] with a fresh explicit
       transaction log.  If used in {!Mode.obstruction_free} may raise
-      {!Mode.Interference}.  Otherwise either raises [Exit] on failure to commit
-      the transaction or returns the result of the transaction.  The default for
-      [attempt] is {!Mode.lock_free}. *)
+      {!Mode.Interference}.  Otherwise either raises {!Retry} on failure to
+      commit the transaction or returns the result of the transaction.  The
+      default for [attempt] is {!Mode.lock_free}. *)
 
   val commit : ?backoff:Backoff.t -> ?mode:Mode.t -> 'a tx -> 'a
-  (** [commit tx] repeats [attempt tx] until it does not raise [Exit] or
+  (** [commit tx] repeats [attempt tx] until it does not raise {!Retry} or
       {!Mode.Interference} and then either returns or raises whatever attempt
       returned or raised.
 

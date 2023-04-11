@@ -62,11 +62,11 @@ let () =
   assert (Hashtbl.length t = 2);
   (match
      Hashtbl.filter_map_inplace
-       (fun _ v -> if v = -2 then raise Not_found else None)
+       (fun _ v -> if v = -2 then raise Exit else None)
        t
    with
   | _ -> assert false
-  | exception Not_found -> ());
+  | exception Exit -> ());
   assert (Hashtbl.find_all t "key" = [ -3; -2 ]);
   assert (Hashtbl.length t = 2)
 
