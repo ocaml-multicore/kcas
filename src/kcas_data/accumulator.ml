@@ -37,14 +37,6 @@ module Xt = struct
   let set ~xt a n = add ~xt a (n - get ~xt a)
 end
 
-module Tx = struct
-  let add a n = Kcas.Xt.to_tx { tx = Xt.add a n }
-  let incr a = Kcas.Xt.to_tx { tx = Xt.incr a }
-  let decr a = Kcas.Xt.to_tx { tx = Xt.decr a }
-  let get a = Kcas.Xt.to_tx { tx = Xt.get a }
-  let set a n = Kcas.Xt.to_tx { tx = Xt.set a n }
-end
-
 let add a n = if n <> 0 then Loc.fetch_and_add (get_self a) n |> ignore
 let incr a = Loc.incr (get_self a)
 let decr a = Loc.decr (get_self a)

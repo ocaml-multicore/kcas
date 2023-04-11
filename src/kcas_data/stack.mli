@@ -27,29 +27,17 @@ val copy : 'a t -> 'a t
 val of_seq : 'a Seq.t -> 'a t
 (** [of_seq xs] creates a stack from the sequence [xs]. *)
 
-(** {1 Compositional interfaces} *)
-
-module Tx :
-  Stack_intf.Ops
-    with type 'a t := 'a t
-    with type 'a res := 'a Tx.t
-    with type ('x, 'fn) fn := 'fn
-(** Transactions on stacks. *)
+(** {1 Compositional interface} *)
 
 module Xt :
   Stack_intf.Ops
     with type 'a t := 'a t
-    with type 'a res := 'a
     with type ('x, 'fn) fn := xt:'x Xt.t -> 'fn
 (** Explicit transaction log passing on stacks. *)
 
 (** {1 Non-compositional interface} *)
 
-include
-  Stack_intf.Ops
-    with type 'a t := 'a t
-    with type 'a res := 'a
-    with type ('x, 'fn) fn := 'fn
+include Stack_intf.Ops with type 'a t := 'a t with type ('x, 'fn) fn := 'fn
 
 val pop : 'a t -> 'a
 (** [pop s] removes and returns the topmost element in stack [s], or raises

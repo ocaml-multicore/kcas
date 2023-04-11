@@ -24,12 +24,7 @@
     OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
   ---------------------------------------------------------------------------*)
 
-module Loc = Kcas.Loc
-module Op = Kcas.Op
-module Tx = Kcas.Tx
-module Xt = Kcas.Xt
-module Mode = Kcas.Mode
-module Backoff = Kcas.Backoff
+open Kcas
 
 let nb_iter = 100_000
 
@@ -313,11 +308,6 @@ let test_post_commit () =
        count := 0;
        Xt.attempt ~mode:Mode.obstruction_free { tx }
      with Exit -> ());
-    assert (!count = expect);
-    (try
-       count := 0;
-       Tx.attempt ~mode:Mode.obstruction_free (Xt.to_tx { tx })
-     with Exit -> ());
     assert (!count = expect)
   in
   attempt_with_post_commit ~expect:0 { tx = (fun ~xt:_ -> raise Exit) };
@@ -346,20 +336,18 @@ type _ _loc_is_injective =
   | Int : int _loc_is_injective
   | Loc : 'a _loc_is_injective -> 'a Loc.t _loc_is_injective
 
-let _tx_is_covariant (tx : < foo : int ; bar : float > Tx.t) =
-  (tx :> < foo : int > Tx.t)
-
 (* *)
 
-let test_tx () =
+let test_xt () =
   let rx = Loc.make 0 in
   let ry = Loc.make 1 in
-  Tx.(
-    commit
-      (let* y = get ry in
-       let* () = set rx y in
-       let+ x' = get rx in
-       assert (x' = y)));
+  let tx ~xt =
+    let y = Xt.get ~xt ry in
+    Xt.set ~xt rx y;
+    let x' = Xt.get ~xt rx in
+    assert (x' = y)
+  in
+  Xt.commit { tx };
   assert (Loc.get rx = Loc.get ry)
 
 let () =
@@ -373,7 +361,7 @@ let () =
   test_updates ();
   test_post_commit ();
   test_backoff ();
-  test_tx ()
+  test_xt ()
 
 (*
   ####
