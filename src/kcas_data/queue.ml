@@ -107,18 +107,6 @@ module Xt = struct
     |> Elems.prepend_to_seq front
 end
 
-module Tx = struct
-  let is_empty q = Kcas.Xt.to_tx { tx = Xt.is_empty q }
-  let length q = Kcas.Xt.to_tx { tx = Xt.length q }
-  let add x q = Kcas.Xt.to_tx { tx = Xt.add x q }
-  let push = add
-  let take_opt q = Kcas.Xt.to_tx { tx = Xt.take_opt q }
-  let peek_opt q = Kcas.Xt.to_tx { tx = Xt.peek_opt q }
-  let clear q = Kcas.Xt.to_tx { tx = Xt.clear q }
-  let swap q1 q2 = Kcas.Xt.to_tx { tx = Xt.swap q1 q2 }
-  let to_seq q = Kcas.Xt.to_tx { tx = Xt.to_seq q }
-end
-
 let is_empty q = Kcas.Xt.commit { tx = Xt.is_empty q }
 let length q = Kcas.Xt.commit { tx = Xt.length q }
 let add x q = Loc.modify q.back @@ Elems.cons x

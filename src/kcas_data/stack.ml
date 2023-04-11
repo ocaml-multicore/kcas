@@ -6,17 +6,6 @@ let create () = Loc.make Elems.empty
 let copy s = Loc.make @@ Loc.get s
 let of_seq xs = Loc.make (Elems.of_seq_rev xs)
 
-module Tx = struct
-  let length s = Tx.get_as Elems.length s
-  let is_empty s = Tx.get_as (( == ) Elems.empty) s
-  let push x s = Tx.modify s @@ Elems.cons x
-  let pop_opt s = Tx.update_as Elems.hd_opt s Elems.tl_safe
-  let top_opt s = Tx.get_as Elems.hd_opt s
-  let clear s = Tx.set s Elems.empty
-  let swap s1 s2 = Tx.swap s1 s2
-  let to_seq s = Tx.get_as Elems.to_seq s
-end
-
 module Xt = struct
   let length ~xt s = Xt.get ~xt s |> Elems.length
   let is_empty ~xt s = Xt.get ~xt s == Elems.empty

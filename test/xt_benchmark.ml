@@ -1,6 +1,5 @@
 open Printf
-module Loc = Kcas.Loc
-module Tx = Kcas.Tx
+open Kcas
 
 let k_kCAS, num_iter =
   if Array.length Sys.argv < 3 then (2, 1000)
@@ -13,17 +12,21 @@ let k_kCAS, num_iter =
 
 let make_kCAS k =
   let rs = List.init k (fun _ -> Loc.make 0) in
-  let rec incs = function
+  let rec incs ~xt = function
     | [] -> failwith "bug"
-    | [ r ] -> Tx.(modify r (( + ) 1))
-    | r :: rs -> Tx.(modify r (( + ) 1) >> incs rs)
+    | [ r ] -> Xt.modify ~xt r (( + ) 1)
+    | r :: rs ->
+        Xt.modify ~xt r (( + ) 1);
+        incs ~xt rs
   in
-  let rec decs = function
+  let rec decs ~xt = function
     | [] -> failwith "bug"
-    | [ r ] -> Tx.(modify r (( + ) (-1)))
-    | r :: rs -> Tx.(modify r (( + ) (-1)) >> decs rs)
+    | [ r ] -> Xt.modify ~xt r (( + ) (-1))
+    | r :: rs ->
+        Xt.modify ~xt r (( + ) (-1));
+        decs ~xt rs
   in
-  (incs rs, decs rs)
+  ({ Xt.tx = incs rs }, { Xt.tx = decs rs })
 
 let operation1, operation2 = make_kCAS k_kCAS
 
@@ -52,8 +55,8 @@ end
 let benchmark () =
   let rec loop i =
     if i > 0 then (
-      ignore @@ Tx.commit operation1;
-      ignore @@ Tx.commit operation2;
+      Xt.commit operation1;
+      Xt.commit operation2;
       loop (i - 1))
   in
   loop num_iter

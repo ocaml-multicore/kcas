@@ -332,18 +332,6 @@ module Xt = struct
   let length ~xt t = Accumulator.Xt.get ~xt t.length
 end
 
-module Tx = struct
-  let find_opt t k = Kcas.Xt.to_tx { tx = Xt.find_opt t k }
-  let find_all t k = Kcas.Xt.to_tx { tx = Xt.find_all t k }
-  let mem t k = Kcas.Xt.to_tx { tx = Xt.mem t k }
-  let clear t = Kcas.Xt.to_tx { tx = Xt.clear t }
-  let reset t = Kcas.Xt.to_tx { tx = Xt.reset t }
-  let remove t k = Kcas.Xt.to_tx { tx = Xt.remove t k }
-  let add t k v = Kcas.Xt.to_tx { tx = Xt.add t k v }
-  let replace t k v = Kcas.Xt.to_tx { tx = Xt.replace t k v }
-  let length t = Accumulator.Tx.get t.length
-end
-
 let find_opt t k =
   Loc.get t.buckets |> bucket_of t.hash k |> Loc.get |> Assoc.find_opt t.equal k
 
