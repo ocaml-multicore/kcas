@@ -47,7 +47,6 @@ is distributed under the [ISC license](LICENSE.md).
     - [A transactional lock-free queue](#a-transactional-lock-free-queue)
     - [Composing transactions](#composing-transactions)
     - [About transactions](#about-transactions)
-  - [Programming with explicit transaction log passing](#programming-with-explicit-transaction-log-passing)
     - [A transactional lock-free leftist heap](#a-transactional-lock-free-leftist-heap)
     - [A composable Michael-Scott style queue](#a-composable-michael-scott-style-queue)
 - [Designing lock-free algorithms with k-CAS](#designing-lock-free-algorithms-with-k-cas)
@@ -104,21 +103,11 @@ Attempt primitive operations over multiple locations:
 Perform transactions over them:
 
 ```ocaml
-# Tx.(
-    commit (
-      let* a = get a
-      and* b = get b in
-      set x (b - a)
-    )
-  )
-- : unit = ()
-```
-
-Explicitly pass a transaction log through a computation:
-
-```ocaml
-# Xt.commit { tx = fun ~xt ->
-    Xt.set ~xt a (Xt.get ~xt b) }
+# let tx ~xt =
+    let a = Xt.get ~xt a
+    and b = Xt.get ~xt b in
+    Xt.set ~xt x (b - a) in
+  Xt.commit { tx }
 - : unit = ()
 ```
 
@@ -140,9 +129,6 @@ The API of **kcas** is divided into submodules. The main modules are
   providing an interface for _primitive operations_ over multiple shared memory
   locations,
 
-- [`Tx`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Tx/index.html),
-  providing _composable transactions_ over shared memory locations, and
-
 - [`Xt`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html),
   providing _explicit transaction log passing_ over shared memory locations.
 
@@ -162,7 +148,6 @@ In other words, an application that uses
 atomic operations over multiple atomic locations, could theoretically just
 rebind `module Atomic = Loc` and then use the
 [`Op`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Op/index.html),
-[`Tx`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Tx/index.html),
 and/or
 [`Xt`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html) APIs
 to perform operations over multiple locations. This should not be done
@@ -238,10 +223,16 @@ quite low-level and is not intended for application level programming.
 
 ### Programming with transactions
 
-The [`Tx`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Tx/index.html)
-module provides a higher-level API that is intended to be suitable for both
-designing and implementing new lock-free algorithms and as an application level
-programming interface for compositional use of such algorithms.
+The [`Xt`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html)
+module provides an API that allows _transactions_ over shared memory locations
+to be implemented as functions that explicitly pass a mutable transaction log,
+as the labeled argument `~xt`, through the computation to record accesses of
+shared memory locations. Once the transaction function returns, those accesses
+can then be attempted to be performed atomically. The
+[`Xt`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html) API
+is intended to be suitable for both designing and implementing new lock-free
+algorithms and as an application level programming interface for compositional
+use of such algorithms.
 
 #### A transactional lock-free stack
 
@@ -263,59 +254,45 @@ val stack : unit -> 'a stack = <fun>
 ```
 
 To push an element to a stack we
-[`modify`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Tx/index.html#val-modify)
+[`modify`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-modify)
 the stack to cons the element onto the list:
 
 ```ocaml
-# let push stack element =
-    Tx.modify stack @@ List.cons element
-val push : 'a list Loc.t -> 'a -> unit Tx.t = <fun>
+# let push ~xt stack element =
+    Xt.modify ~xt stack @@ List.cons element
+val push : xt:'a Xt.t -> 'b list Loc.t -> 'b -> unit = <fun>
 ```
+
+Notice the `~xt` parameter. It refers to the transaction log being passed
+explicitly. Above we pass it to
+[`modify`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-modify)
+to record an operation in the log rather than perform it immediately.
 
 Popping an element from a stack is a little more complicated as we need to
 handle the case of an empty stack. Let's go with a basic approach where we first
-[`get`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Tx/index.html#val-get)
-the content of the stack,
-[`set`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Tx/index.html#val-set)
-it if necessary, and
-[`return`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Tx/index.html#val-return)
-an optional element.
+[`get`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-get)
+the content of the stack, and
+[`set`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-set)
+it if necessary, and return an optional element.
 
 ```ocaml
-# let try_pop stack = Tx.(
-    let* content = get stack in
-    match content with
-    | [] -> return None
+# let try_pop ~xt stack =
+    match Xt.get ~xt stack with
+    | [] -> None
     | element :: rest ->
-      let+ () = set stack rest in
+      Xt.set ~xt stack rest;
       Some element
-  )
-val try_pop : 'a list Loc.t -> 'a option Tx.t = <fun>
+val try_pop : xt:'a Xt.t -> 'b list Loc.t -> 'b option = <fun>
 ```
 
-Above we used the
-[`let*`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Tx/index.html#val-let*)
+Again, `try_pop` passes the `~xt` parameter explicitly to the
+[`get`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-get)
 and
-[`let+`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Tx/index.html#val-let+)
-[binding operators](https://v2.ocaml.org/manual/bindingops.html) to sequence
-primitive transactions. We could also implement `try_pop` more concisely using
-the infix operators
-[`>>=`](<https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Tx/index.html#val-(%3E%3E=)>)
-and
-[`>>.`](<https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Tx/index.html#val-(%3E%3E.)>):
+[`set`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-set)
+operations to record them in the log rather than perform them immediately.
 
-```ocaml
-# let try_pop stack = Tx.(
-    get stack >>= function
-    | [] -> return None
-    | element :: rest ->
-      set stack rest >>.
-      Some element
-  )
-val try_pop : 'a list Loc.t -> 'a option Tx.t = <fun>
-```
-
-With a couple of useful list manipulation helper functions
+We could also implement `try_pop` more concisely with the help of a couple of
+useful list manipulation helper functions
 
 ```ocaml
 # let hd_opt = function
@@ -328,47 +305,53 @@ val hd_opt : 'a list -> 'a option = <fun>
 val tl_safe : 'a list -> 'a list = <fun>
 ```
 
-an even more concise implementation is possible using
-[`update_as`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Tx/index.html#val-update_as):
+and
+[`update`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-update):
 
 ```ocaml
-# let try_pop stack = Tx.update_as hd_opt stack tl_safe
-val try_pop : 'a list Loc.t -> 'a option Tx.t = <fun>
+# let try_pop ~xt stack =
+    Xt.update ~xt stack tl_safe |> hd_opt
+val try_pop : xt:'a Xt.t -> 'b list Loc.t -> 'b option = <fun>
 ```
 
-Above,
-[`update_as`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Tx/index.html#val-update_as)
-is used as a shorthand to both compute the result and the new value for the
-stack contents.
-
-If the stack already contained an empty list, `[]`, all of the above variations
+If the stack already contained an empty list, `[]`, both of the above variations
 of `try_pop` generate a read-only CMP operation in the
 [`obstruction_free`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Mode/index.html#val-obstruction_free)
 mode. This means that multiple domains may run `try_pop` on an empty stack in
 parallel without interference. The variation using
-[`update_as`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Tx/index.html#val-update_as)
+[`update`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-update)
 also makes only a single access to the underlying transaction log and is likely
-to be the fastest variation.
+to be the faster variation.
 
 So, to use a stack, we first need to create it and then we may
-[`commit`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Tx/index.html#val-commit)
+[`commit`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-commit)
 transactions to `push` and `try_pop` elements:
 
 ```ocaml
 # let a_stack : int stack = stack ()
 val a_stack : int stack = <abstr>
-# Tx.commit @@ push a_stack 101
+# Xt.commit { tx = push a_stack 101 }
 - : unit = ()
-# Tx.commit @@ try_pop a_stack
+# Xt.commit { tx = try_pop a_stack }
 - : int option = Some 101
-# Tx.commit @@ try_pop a_stack
+# Xt.commit { tx = try_pop a_stack }
 - : int option = None
 ```
 
-As an astute reader you may wonder why `push` and `try_pop` return transactions
-that we then need to separately
-[`commit`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Tx/index.html#val-commit)
-to. We'll get to that soon!
+The
+[`{ tx = ... }`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#type-tx)
+wrapper is used to ensure that the transaction function is polymorphic with
+respect to the log. This way the type system makes it difficult to accidentally
+leak the log as described in the paper
+[Lazy Functional State Threads](https://dl.acm.org/doi/10.1145/178243.178246).
+
+As an astute reader you may wonder why we wrote `push` and `try_pop` to take a
+transaction log as a parameter and then separately called
+[`commit`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-commit)
+rather than call just call
+[`commit`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-commit)
+inside the `push` and `try_pop` functions and avoid exposing the `~xt`
+parameter. We'll get to that soon!
 
 #### A transactional lock-free queue
 
@@ -396,13 +379,13 @@ val queue : unit -> 'a queue = <fun>
 ```
 
 To enqueue we just
-[`modify`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Tx/index.html#val-modify)
+[`modify`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-modify)
 the back of the queue and `cons` the element to the list:
 
 ```ocaml
-# let enqueue queue element =
-    Tx.modify queue.back @@ List.cons element
-val enqueue : 'a queue -> 'a -> unit Tx.t = <fun>
+# let enqueue ~xt queue element =
+    Xt.modify ~xt queue.back @@ List.cons element
+val enqueue : xt:'a Xt.t -> 'b queue -> 'b -> unit = <fun>
 ```
 
 Dequeue is again more complicated. First we examine the front of the queue. If
@@ -412,23 +395,22 @@ clear the back, move the rest of the elements to the front, and return the
 element. Otherwise we return `None` as the queue was empty.
 
 ```ocaml
-# let try_dequeue queue = Tx.(
-    update queue.front tl_safe >>= function
-    | element :: _ -> return (Some element)
+# let try_dequeue ~xt queue =
+    match Xt.update ~xt queue.front tl_safe with
+    | element :: _ -> Some element
     | [] ->
-      exchange_as List.rev queue.back [] >>= function
-      | [] -> return None
+      match Xt.exchange ~xt queue.back [] |> List.rev with
+      | [] -> None
       | element :: rest ->
-        set queue.front rest >>.
+        Xt.set ~xt queue.front rest;
         Some element
-  )
-val try_dequeue : 'a queue -> 'a option Tx.t = <fun>
+val try_dequeue : xt:'a Xt.t -> 'b queue -> 'b option = <fun>
 ```
 
 Above,
-[`update`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Tx/index.html#val-update)
+[`update`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-update)
 and
-[`exchange_as`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Tx/index.html#val-exchange_as)
+[`exchange`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-exchange)
 are used as convenient shorthands and to reduce the number of accesses to the
 transaction log. If both the front and back locations already contained an empty
 list, `[]`, the above generates read-only CMP operations in the
@@ -443,7 +425,7 @@ element, no write to the front is generated.
 > First of all, the transaction must be attempted in the
 > [`obstruction_free`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Mode/index.html#val-obstruction_free)
 > mode, which is the default mode that
-> [`commit`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Tx/index.html#val-commit)
+> [`commit`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-commit)
 > uses initially.
 >
 > Additionally, there must be no operation in the transaction that sets a new
@@ -458,24 +440,24 @@ element, no write to the front is generated.
 > overhead and also supporting convenient read-only updates.
 
 So, to use a queue, we first need to create it and then we may
-[`commit`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Tx/index.html#val-commit)
+[`commit`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-commit)
 transactions to `enqueue` and `try_dequeue` elements:
 
 ```ocaml
 # let a_queue : int queue = queue ()
 val a_queue : int queue = {front = <abstr>; back = <abstr>}
-# Tx.commit @@ enqueue a_queue 76
+# Xt.commit { tx = enqueue a_queue 76 }
 - : unit = ()
-# Tx.commit @@ try_dequeue a_queue
+# Xt.commit { tx = try_dequeue a_queue }
 - : int option = Some 76
-# Tx.commit @@ try_dequeue a_queue
+# Xt.commit { tx = try_dequeue a_queue }
 - : int option = None
 ```
 
 > **_Beware_**: Using two stacks for a queue is easy to implement and performs
-> well in many cases. Unfortunately it has one major weakness. The problem is
-> that it may take a relatively long time to reverse the back of a queue. This
-> can cause
+> ok in many cases. Unfortunately it has one major weakness. The problem is that
+> it may take a relatively long time to reverse the back of a queue. This can
+> cause
 > [starvation](<https://en.wikipedia.org/wiki/Starvation_(computer_science)>) as
 > producers may then be able to always complete their transactions before
 > consumers and the back of the queue might grow without bound. _Can you see a
@@ -484,39 +466,38 @@ val a_queue : int queue = {front = <abstr>; back = <abstr>}
 #### Composing transactions
 
 The main benefit of the
-[`Tx`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Tx/index.html) API
+[`Xt`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html) API
 over the
 [`Op`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Op/index.html) API
-is that transactions are composable. In fact, we already used
-[`let*`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Tx/index.html#val-let*)
-to compose primitive transactions when implementing transactional stacks and
-queues. Composition is not limited to primitive transactions.
+is that transactions are composable. In fact, we already wrote transactions that
+recorded multiple primitive shared memory accesses to the explicitly passed
+transaction log. Nothing prevents us from writing transactions calling other
+non-primitive transactions.
 
-For example, one can push multiple elements to a transactional stack atomically:
+For example, one can write a transaction to push multiple elements to a
+transactional stack atomically:
 
 ```ocaml
-# Tx.(
-    commit (
-      push a_stack 3 >>
-      push a_stack 1 >>
-      push a_stack 4
-    )
-  )
+# let tx ~xt =
+    push ~xt a_stack 3;
+    push ~xt a_stack 1;
+    push ~xt a_stack 4
+  in
+  Xt.commit { tx }
 - : unit = ()
 ```
 
 Or transfer elements between different transactional data structures:
 
 ```ocaml
-# Tx.(
-    commit (
-      try_pop a_stack >>= function
-      | Some element ->
-        enqueue a_queue element
-      | None ->
-        return ()
-    )
-  )
+# let tx ~xt =
+    match try_pop ~xt a_stack with
+    | Some element ->
+      enqueue ~xt a_queue element
+    | None ->
+      ()
+  in
+  Xt.commit { tx }
 - : unit = ()
 ```
 
@@ -532,32 +513,15 @@ or overheads to the otherwise simple and efficient implementation. In
 particular, the transactions provided by **kcas** do not directly provide
 blocking or the ability to wait for changes to shared memory locations before
 retrying a transaction. The way
-[`commit`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Tx/index.html#val-commit)
+[`commit`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-commit)
 works is that it simply retries the transaction in case it failed. To avoid
 contention, a
 [`backoff`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Backoff/index.html)
 mechanism is used, but otherwise
-[`commit`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Tx/index.html#val-commit)
+[`commit`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-commit)
 will essentially perform a
 [busy-wait](https://en.wikipedia.org/wiki/Busy_waiting), which should usually be
 avoided.
-
-### Programming with explicit transaction log passing
-
-The [`Xt`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html)
-module provides an API that allows transactions to be implemented by explicitly
-passing a mutable transaction log, which allows convenient use of all the
-ordinary sequential control flow structures of OCaml.
-
-> At the moment it is unclear whether both of the
-> [`Xt`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html) and
-> the [`Tx`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Tx/index.html)
-> APIs will be supported in the future. They provide roughly the same expressive
-> power as witnessed by the conversions
-> [`of_tx`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-of_tx)
-> and
-> [`to_tx`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-to_tx).
-> Feedback on this question is welcome!
 
 #### A transactional lock-free leftist heap
 
@@ -600,11 +564,6 @@ leftist heap:
 val npl_of : xt:'a Xt.t -> 'b leftist -> int = <fun>
 ```
 
-Notice the `~xt` parameter. It refers to the transaction log being passed
-explicitly. Above we pass it to
-[`get`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-get)
-to record an operation in the log.
-
 The core operation of leftist heaps is that of merging two leftist heaps:
 
 ```ocaml
@@ -635,12 +594,6 @@ val merge :
   xt:'a Xt.t ->
   lt:('b -> 'b -> bool) -> 'b leftist -> 'b leftist -> 'b leftist = <fun>
 ```
-
-Again, `merge` passes the `~xt` parameter explicitly to the
-[`get`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-get)
-and
-[`set`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-set)
-operations to record them in the log.
 
 The `merge` operation can be used to implement both insertion to
 
@@ -701,13 +654,6 @@ it to
 
 Notice that we could simply use `List.iter` from the Stdlib to iterate over a
 list of elements.
-
-> The
-> [`{ tx = ... }`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#type-tx)
-> wrapper is used to ensure that the transaction function is polymorphic with
-> respect to the log. This way the type system makes it difficult to
-> accidentally leak the log as described in the paper
-> [Lazy Functional State Threads](https://dl.acm.org/doi/10.1145/178243.178246).
 
 Let's then define a transaction passing function to remove all elements from a
 heap
@@ -881,12 +827,6 @@ that it allows developing lock-free algorithms compositionally. In the following
 sections we discuss a number of basic tips and approaches for making best use of
 k-CAS.
 
-> The examples in this section use the
-> [`Xt`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html)
-> module, but essentially the same advice applies when using the
-> [`Tx`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Tx/index.html)
-> module.
-
 ### Minimize accesses
 
 Accesses of shared memory locations inside transactions consult the transaction
@@ -988,15 +928,15 @@ we can see
 
 ```ocaml
 # Loc.get a, Loc.get b
-- : int * int = (52, 52)
+- : int * int = (10, 52)
 # transfer 100 ~source:a ~target:b
 - : unit = ()
 # Loc.get a, Loc.get b
-- : int * int = (52, 52)
+- : int * int = (10, 52)
 # transfer 10 ~source:a ~target:b
 - : unit = ()
 # Loc.get a, Loc.get b
-- : int * int = (42, 62)
+- : int * int = (0, 62)
 ```
 
 the updates are only done in case of success.

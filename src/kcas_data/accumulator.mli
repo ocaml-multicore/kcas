@@ -24,26 +24,14 @@ val n_way_of : t -> int
 
     {b NOTE}: The returned value may not be the same as given to {!make}. *)
 
-(** {1 Compositional interfaces} *)
-
-module Tx :
-  Accumulator_intf.Ops
-    with type t := t
-    with type 'a res := 'a Tx.t
-    with type ('x, 'fn) fn := 'fn
-(** Transactions on accumulators. *)
+(** {1 Compositional interface} *)
 
 module Xt :
   Accumulator_intf.Ops
     with type t := t
-    with type 'a res := 'a
     with type ('x, 'fn) fn := xt:'x Xt.t -> 'fn
 (** Explicit transaction log passing on accumulators. *)
 
 (** {1 Non-compositional interface} *)
 
-include
-  Accumulator_intf.Ops
-    with type t := t
-    with type 'a res := 'a
-    with type ('x, 'fn) fn := 'fn
+include Accumulator_intf.Ops with type t := t with type ('x, 'fn) fn := 'fn

@@ -59,8 +59,7 @@ end
 
     Multiple shared memory locations can be manipulated atomically using either
 
-    - {!Op}, to specify a list of primitive operations to perform,
-    - {!Tx}, to specify a composable transaction, or
+    - {!Op}, to specify a list of primitive operations to perform, or
     - {!Xt}, to explicitly pass a transaction log to record accesses.
 
     Atomic operations over multiple shared memory locations are performed in two
@@ -144,267 +143,21 @@ end
 
 (** {2 Composable transactions on multiple locations}
 
-    The {!Tx} and {!Xt} modules provide two different ways to implement
-    composable transactions over shared memory locations.  Using either of those
-    one essentially declares a transaction that specifies how to access shared
-    memory locations.  To actually perform the accesses one then separately
-    commits the transaction.
-
-    Accesses of shared memory locations inside either form of transaction should
-    generally use the access operations, such as {!Tx.get} and {!Xt.get},
-    provided by the corresponding module.  Transactions should also generally
-    not perform arbitrary side-effects, because when a transaction is committed
-    it may be attempted multiple times meaning that the side-effects are also
-    performed multiple times.
+    The {!Xt} module provides a way to implement composable transactions over
+    shared memory locations.  A transaction can be thought of as a specification
+    of a sequence of {!Xt.get} and {!Xt.set} accesses to shared memory
+    locations.  To actually perform the accesses one then {!Xt.commit}s the
+    transaction.
 
     {b WARNING}: Operations provided by the {!Loc} module for accessing
     individual shared memory locations are not transactional.  There are cases
     where it can be advantageous to perform operations along with a transaction
     that do not get recorded into the transaction log, but doing so requires one
-    to reason about the potential parallel interleavings of operations. *)
+    to reason about the potential parallel interleavings of operations.
 
-(** Transactions on shared memory locations. *)
-module Tx : sig
-  type +'a t
-  (** Type of transactions on shared memory locations.
-
-      A transaction can be thought of as a specification of a sequence of {!get}
-      and {!set} accesses to shared memory locations that can be {!attempt}ed to
-      perform the accesses atomically.
-
-      Transactions can be composed both sequentially (see {!let*}) and
-      conditionally (see {!(<|>)} and {!forget}).
-
-      Here is an example of unconditionally {!commit}ting a transaction that
-      swaps the values of the two shared memory locations [x_loc] and [y_loc]
-      and returns their sum:
-
-      {[
-        commit begin
-          let* x = get x_loc
-          and* y = get y_loc in
-          let+ () = set y_loc x
-          and+ () = set x_loc y in
-          x + y
-        end
-      ]}
-
-      Above, [get y_loc] and [set y_loc x] are intentionally one after the
-      other, because the internal log used within transactions to record {!get}s
-      and {!set}s is optimized for accessing recently accessed elements again.
-
-      Here is an example of {!attempt}ing a conditional transaction
-
-      {[
-        attempt begin
-          begin
-            let* x = get x_loc in
-            if x < 0 then
-              forget
-            else
-              return x
-          end
-          <|> get y_loc
-        end
-      ]}
-
-      that reads [x_loc], but {!forget}s the access in case [x_loc] had a
-      negative value and then reads [y_loc] instead.
-
-      What does that actually mean?  Let's assume [x_loc] initially contains a
-      negative value.  During the first phase of the transaction [x_loc] is read
-      and is found to be negative.  The access is forgotten.  Let's assume that
-      after that the value of [x_loc] is modified by some other domain.  The
-      transaction continues to read [y_loc] and results in the value of [y_loc].
-      The transaction is allowed to commit despite the value of [x_loc] having
-      been changed during the transaction.
-
-      Consider the following similar looking conditional transaction {!attempt}:
-
-      {[
-        attempt begin
-          let* x = get x_loc in
-          if x < 0 then
-            get y_loc
-          else
-            return x
-        end
-      ]}
-
-      If some other domain modifies [x_loc] after it has been read by the above
-      transaction attempt, then the commit phase will fail, because the access
-      of [x_loc] is found to be inconsistent.
-
-      Note that neither of the above conditional examples is generally
-      preferred, because they have fundamentally different semantics and the
-      choice of whether accesses should, should not, or may be safely forgotten
-      depends on what the desired semantics are for the transaction. *)
-
-  (** {1 Access combinators} *)
-
-  val get : 'a Loc.t -> 'a t
-  (** [get r] accesses the shared memory location [r] inside the transaction
-      and results in the current value of [r] inside the transaction. *)
-
-  val get_as : ('a -> 'b) -> 'a Loc.t -> 'b t
-  (** [get_as g r] is equivalent to [get r |> map g]. *)
-
-  val set : 'a Loc.t -> 'a -> unit t
-  (** [set r v] accesses the shared memory location [r] inside the transaction
-      and sets the current value of [r] to the value [v] inside the
-      transaction. *)
-
-  val update : 'a Loc.t -> ('a -> 'a) -> 'a t
-  (** [update r f] is equivalent to [let* x = get r in let+ () = set r (f x) in x]. *)
-
-  val update_as : ('a -> 'b) -> 'a Loc.t -> ('a -> 'a) -> 'b t
-  (** [update_as g r f] is equivalent to [update r f |> map g]. *)
-
-  val modify : 'a Loc.t -> ('a -> 'a) -> unit t
-  (** [modify r f] is equivalent to [let* x = get r in set r (f x)]. *)
-
-  val exchange : 'a Loc.t -> 'a -> 'a t
-  (** [exchange r v] is equivalent to [update r (fun _ -> v)]. *)
-
-  val exchange_as : ('a -> 'b) -> 'a Loc.t -> 'a -> 'b t
-  (** [exchange_as g r v] is equivalent to [update r (fun _ -> v) |> map g]. *)
-
-  val swap : 'a Loc.t -> 'a Loc.t -> unit t
-  (** [swap l1 l2] is equivalent to [let* x1 = get l1 in let* x2 = exchange l2 x1 in set l1 x2]. *)
-
-  val compare_and_swap : 'a Loc.t -> 'a -> 'a -> 'a t
-  (** [compare_and_swap r before after] is equivalent to
-
-      {[
-        update r @@ fun actual ->
-        if actual == before then after else actual
-      ]} *)
-
-  val fetch_and_add : int Loc.t -> int -> int t
-  (** [fetch_and_add r n] is equivalent to [update r ((+) n)]. *)
-
-  val incr : int Loc.t -> unit t
-  (** [incr r] is equivalent to [modify r ((+) 1)]. *)
-
-  val decr : int Loc.t -> unit t
-  (** [decr r] is equivalent to [modify r ((+) (-1))]. *)
-
-  (** {1 Sequencing combinators} *)
-
-  val return : 'a -> 'a t
-  (** [return v] is a transactional operation whose result is the value [v]. *)
-
-  val ( let* ) : 'a t -> ('a -> 'b t) -> 'b t
-  (** [let* x = x_tx in to_y_tx x] is the sequential composition of the
-      transaction [x_tx] with the transaction [to_y_tx x] computed from the
-      result [x] of [x_tx]. *)
-
-  val ( and* ) : 'a t -> 'b t -> ('a * 'b) t
-  (** [( and* ) x_tx tx_y] is a transaction that performs both the transaction
-      [x_tx] and the transaction [tx_y] and returns a pair of their results. *)
-
-  val ( let+ ) : 'a t -> ('a -> 'b) -> 'b t
-  (** [let+ x = tx in fn x] is equivalent to [let* x = tx in return (fn x)]. *)
-
-  val ( and+ ) : 'a t -> 'b t -> ('a * 'b) t
-  (** [and+] is a synonym for {!and*} for use with {!let+}. *)
-
-  val ( >> ) : 'ignore t -> 'a t -> 'a t
-  (** [u_tx >> x_tx] is equivalent to [let* _ = u_tx in x_tx]. *)
-
-  val ( >>. ) : 'ignore t -> 'a -> 'a t
-  (** [u_tx >>. x] is equivalent to [let+ _ = u_tx in x]. *)
-
-  val ( >>= ) : 'a t -> ('a -> 'b t) -> 'b t
-  (** [>>=] is a synonym for {!let*}. *)
-
-  val map : ('a -> 'b) -> 'a t -> 'b t
-  (** [map xy x_tx] is equivalent to [let+ x = x_tx in xy x]. *)
-
-  val delay : (unit -> 'a t) -> 'a t
-  (** [delay to_tx] is equivalent to [let* () = return () in to_tx ()] *)
-
-  val try_in : (exn -> 'b t) -> ('a -> 'b t) -> 'a t -> 'b t
-  (** [try_in e_to_y_tx x_to_y_tx x_tx] is for handling exceptions during the
-      access log recording phase of running a transaction.  In case the
-      transaction [x_tx] raises during the first phase, the accesses from [x_tx]
-      are forgotten.
-
-      [try_in e_to_y_tx x_to_y_tx x_tx] is the equivalent of
-
-      {[
-        match run_phase_1 x_tx with
-        | x -> run_phase_1 (x_to_y_tx x)
-        | exception e -> run_phase_1 (e_to_y_tx e)
-      ]}
-
-      for transactions.
-
-      Note that the order of parameters is chosen with the following style in
-      mind:
-
-      {[
-        transaction
-        |> try_in (fun exn -> (* handle failure *)) @@ fun value ->
-           (* continue successfully *)
-      ]} *)
-
-  (** {1 Post commit actions} *)
-
-  val post_commit : (unit -> unit) -> unit t
-  (** [post_commit action] adds the [action] to be performed after the
-      transaction has been performed successfully. *)
-
-  (** {1 Advanced} *)
-
-  val is_in_log : 'a Loc.t -> bool t
-  (** [is_in_log r] determines whether the shared memory location [r] has been
-      accessed by the transaction. *)
-
-  (** {1 Conditional transactions} *)
-
-  val ( <|> ) : 'a t -> 'a t -> 'a t
-  (** [l_tx <|> r_tx] is a left-biased choice between the two transactions
-      [l_tx] and [r_tx].
-
-      If the [l_tx] transaction successfully produces a log of operations in the
-      first phase of {!attempt}, then those are attempted in the second phase.
-      On the other hand, if the [l_tx] transaction raises [Exit], then the
-      choice acts like [r_tx].
-
-      For example, [(set x_loc x >> forget) <|> r_tx] is equivalent to [r_tx]
-      meaning that the [set x_loc x] access will not be part of the operations
-      attempted in the second phase of a transaction. *)
-
-  val forget : 'a t
-  (** [forget] is equivalent to [delay (fun () -> raise Exit)].
-
-      The name [forget] was chosen to give the idea that this causes the
-      transaction to forget any accesses made during the forgotten part of a
-      transaction. *)
-
-  (** {1 Performing transactions} *)
-
-  val attempt : ?mode:Mode.t -> 'a t -> 'a
-  (** [attempt tx] attempts to atomically perform the given transaction over
-      shared memory locations.  If used in {!Mode.obstruction_free} may raise
-      {!Mode.Interference}.  Otherwise either raises [Exit] on failure to commit
-      the transaction or returns the result of the transaction.  The default for
-      [attempt] is {!Mode.lock_free}. *)
-
-  val commit : ?backoff:Backoff.t -> ?mode:Mode.t -> 'a t -> 'a
-  (** [commit tx] repeats [attempt tx] until it does not raise [Exit] or
-      {!Mode.Interference} and then either returns or raises whatever attempt
-      returned or raised.
-
-      The default for [commit] is {!Mode.obstruction_free}.  However, after
-      enough attempts have failed during the verification step, [commit]
-      switches to {!Mode.lock_free}.
-
-      Note that, aside from using exponential backoff to reduce contention, the
-      transaction mechanism has no way to intelligently wait until shared memory
-      locations are modified by other domains. *)
-end
+    Transactions should also generally not perform arbitrary side-effects,
+    because when a transaction is committed it may be attempted multiple times
+    meaning that the side-effects are also performed multiple times. *)
 
 (** Explicit transaction log passing on shared memory locations. *)
 module Xt : sig
@@ -506,14 +259,4 @@ module Xt : sig
       Note that, aside from using exponential backoff to reduce contention, the
       transaction mechanism has no way to intelligently wait until shared memory
       locations are modified by other domains. *)
-
-  (** {1 Conversions} *)
-
-  val of_tx : 'a Tx.t -> xt:'x t -> 'a
-  (** [of_tx tx] converts the given {!Tx} transaction [tx] to an explicit log
-      passing function. *)
-
-  val to_tx : 'a tx -> 'a Tx.t
-  (** [to_tx tx] converts the given explicit log passing function [tx] to a
-      {!Tx} transaction. *)
 end

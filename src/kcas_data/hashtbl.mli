@@ -97,19 +97,11 @@ val of_seq :
     ⚠️ [of_seq (to_seq t)] does not necessarily copy the bindings of a hash table
     correctly. *)
 
-(** {1 Compositional interfaces} *)
-
-module Tx :
-  Hashtbl_intf.Ops
-    with type ('k, 'v) t := ('k, 'v) t
-    with type 'a res := 'a Tx.t
-    with type ('x, 'fn) fn := 'fn
-(** Transactions on hash tables. *)
+(** {1 Compositional interface} *)
 
 module Xt :
   Hashtbl_intf.Ops
     with type ('k, 'v) t := ('k, 'v) t
-    with type 'a res := 'a
     with type ('x, 'fn) fn := xt:'x Xt.t -> 'fn
 (** Explicit transaction log passing on hash tables. *)
 
@@ -118,7 +110,6 @@ module Xt :
 include
   Hashtbl_intf.Ops
     with type ('k, 'v) t := ('k, 'v) t
-    with type 'a res := 'a
     with type ('x, 'fn) fn := 'fn
 
 val find : ('k, 'v) t -> 'k -> 'v

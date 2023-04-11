@@ -4,9 +4,15 @@
  (package kcas))
 
 (library
- (name tx_linked_queue)
+ (name xt_linked_queue)
  (libraries kcas)
- (modules tx_linked_queue)
+ (modules xt_linked_queue)
+ (package kcas))
+
+(library
+ (name xt_stack)
+ (libraries kcas)
+ (modules xt_stack)
  (package kcas))
 
 (test
@@ -16,14 +22,8 @@
  (package kcas))
 
 (test
- (name tx_test)
- (libraries kcas kcas_data tx_linked_queue)
- (modules tx_test tx_stack)
- (package kcas_data))
-
-(test
  (name xt_test)
- (libraries kcas kcas_data tx_linked_queue)
+ (libraries kcas kcas_data xt_linked_queue xt_stack)
  (modules xt_test)
  (package kcas_data))
 
@@ -40,15 +40,9 @@
  (package kcas))
 
 (test
- (name tx_benchmark)
+ (name xt_benchmark)
  (libraries kcas)
- (modules tx_benchmark)
- (package kcas))
-
-(test
- (name tx_parallel_cmp_bench)
- (libraries kcas barrier)
- (modules tx_parallel_cmp_bench)
+ (modules xt_benchmark)
  (package kcas))
 
 (test
