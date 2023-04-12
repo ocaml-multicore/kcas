@@ -34,4 +34,8 @@ module type Ops = sig
   val take_opt : ('x, 'a t -> 'a option) fn
   (** [take_opt q] removes and returns the first element in queue [q], or
       returns [None] if the queue is empty. *)
+
+  val take_all : ('x, 'a t -> 'a Seq.t) fn
+  (** [take_all q] removes and returns a domain safe sequence for iterating
+      through all the elements that were in the queue front to back. *)
 end

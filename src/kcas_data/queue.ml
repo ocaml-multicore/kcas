@@ -96,15 +96,24 @@ module Xt = struct
     Xt.set ~xt q1.middle middle;
     Xt.set ~xt q1.back back
 
-  let to_seq ~xt { back; middle; front } =
-    let front = Xt.get ~xt front
-    and middle = Xt.get ~xt middle
-    and back = Xt.get ~xt back in
+  let seq_of ~back ~middle ~front =
     (* Sequence construction is lazy, so this function is O(1). *)
     Seq.empty
     |> Elems.rev_prepend_to_seq back
     |> Elems.rev_prepend_to_seq middle
     |> Elems.prepend_to_seq front
+
+  let to_seq ~xt { back; middle; front } =
+    let front = Xt.get ~xt front
+    and middle = Xt.get ~xt middle
+    and back = Xt.get ~xt back in
+    seq_of ~back ~middle ~front
+
+  let take_all ~xt { back; middle; front } =
+    let front = Xt.exchange ~xt front Elems.empty
+    and middle = Xt.exchange ~xt middle Elems.empty
+    and back = Xt.exchange ~xt back Elems.empty in
+    seq_of ~back ~middle ~front
 end
 
 let is_empty q = Kcas.Xt.commit { tx = Xt.is_empty q }
@@ -116,6 +125,8 @@ let take_opt q =
   match Loc.update q.front Elems.tl_safe |> Elems.hd_opt with
   | None -> Kcas.Xt.commit { tx = Xt.take_opt q }
   | some -> some
+
+let take_all q = Kcas.Xt.commit { tx = Xt.take_all q }
 
 let peek_opt q =
   match Loc.get q.front |> Elems.hd_opt with
