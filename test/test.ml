@@ -198,22 +198,21 @@ let test_stress n nb_loop =
 
 (* test 5 *)
 
+let in_place_shuffle array =
+  let n = Array.length array in
+  for i = 0 to n - 2 do
+    let j = Random.int (n - i) + i in
+    let t = array.(i) in
+    array.(i) <- array.(j);
+    array.(j) <- t
+  done
+
 let test_presort () =
   let n_incs = 50_000 and n_domains = 3 and n_locs = 5 in
 
   let barrier = Barrier.make n_domains in
 
   let locs = Array.init n_locs (fun _ -> Loc.make 0) in
-
-  let in_place_shuffle array =
-    let n = Array.length array in
-    for i = 0 to n - 2 do
-      let j = Random.int (n - i) + i in
-      let t = array.(i) in
-      array.(i) <- array.(j);
-      array.(j) <- t
-    done
-  in
 
   let mk_inc locs =
     in_place_shuffle locs;
@@ -306,7 +305,7 @@ let test_post_commit () =
     in
     (try
        count := 0;
-       Xt.attempt ~mode:Mode.obstruction_free { tx }
+       Xt.commit ~mode:Mode.obstruction_free { tx }
      with Exit -> ());
     assert (!count = expect)
   in
@@ -329,6 +328,82 @@ let test_backoff () =
   assert (Backoff.get_wait_log b = 6);
   let b = Backoff.reset b in
   assert (Backoff.get_wait_log b = 5)
+
+(* *)
+
+let test_blocking () =
+  let state = Loc.make `Spawned in
+  let await state' =
+    Loc.get_as (fun state -> Retry.unless (state == state')) state
+  in
+
+  let a = Loc.make 0 and bs = Array.init 10 @@ fun _ -> Loc.make 0 in
+
+  let n = 10_000 in
+
+  let num_attempts = ref 0 in
+
+  let other_domain =
+    Domain.spawn @@ fun () ->
+    Loc.set state `Get_a_non_zero;
+    Loc.get_as
+      (fun a ->
+        incr num_attempts;
+        Retry.unless (a != 0))
+      a;
+
+    Loc.set state `Update_a_zero;
+    Loc.modify a (fun a ->
+        incr num_attempts;
+        Retry.unless (a = 0);
+        a + 1);
+
+    Loc.set state `Set_1_b_to_0;
+    let bs = Array.copy bs in
+    for _ = 1 to n do
+      (* We access in random order to exercise tx log waiters handling. *)
+      in_place_shuffle bs;
+      let tx ~xt =
+        incr num_attempts;
+        match
+          bs
+          |> Array.find_map @@ fun b ->
+             if Xt.get ~xt b = 1 then Some b
+             else if Loc.has_awaiters b (* There must be no leaked waiters... *)
+             then (
+               (* ...except if main domain just set the loc *)
+               assert (Loc.get b = 1);
+               Retry.later ())
+             else None
+        with
+        | None -> Retry.later ()
+        | Some b -> Xt.set ~xt b 0
+      in
+      Xt.commit { tx }
+    done
+  in
+
+  await `Get_a_non_zero;
+  Loc.set a 1;
+  assert (!num_attempts <= 2 + 1 (* Need to account for race to next. *));
+
+  await `Update_a_zero;
+  Loc.set a 0;
+  assert (!num_attempts <= 4 + 1 (* Need to account for race to next. *));
+
+  await `Set_1_b_to_0;
+  for _ = 1 to n do
+    let i = Random.int (Array.length bs) in
+    Loc.set bs.(i) 1;
+    Loc.get_as (fun b -> Retry.unless (b = 0)) bs.(i)
+  done;
+
+  Domain.join other_domain;
+
+  assert (!num_attempts <= 4 + (n * 2));
+  for i = 0 to Array.length bs - 1 do
+    assert (not (Loc.has_awaiters bs.(i)))
+  done
 
 (* *)
 
@@ -361,6 +436,7 @@ let () =
   test_updates ();
   test_post_commit ();
   test_backoff ();
+  test_blocking ();
   test_xt ()
 
 (*

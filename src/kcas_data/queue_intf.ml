@@ -31,6 +31,14 @@ module type Ops = sig
   (** [peek_opt q] returns the first element in queue [q], without removing it
       from the queue, or returns [None] if the queue is empty. *)
 
+  val peek_blocking : ('x, 'a t -> 'a) fn
+  (** [peek_blocking q] returns the first element in queue [q], without removing
+      it from the queue, or blocks waiting for the queue to become non-empty. *)
+
+  val take_blocking : ('x, 'a t -> 'a) fn
+  (** [take_blocking q] removes and returns the first element in queue [q], or
+      blocks waiting for the queue to become non-empty. *)
+
   val take_opt : ('x, 'a t -> 'a option) fn
   (** [take_opt q] removes and returns the first element in queue [q], or
       returns [None] if the queue is empty. *)

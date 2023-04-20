@@ -16,6 +16,8 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
 
+(** Randomized exponential backoff mechanism. *)
+
 type t
 (** Type of backoff values. *)
 

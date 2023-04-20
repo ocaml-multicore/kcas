@@ -3,9 +3,15 @@ type 'a t = { value : 'a; tl : 'a t; length : int }
 let rec empty = { value = Obj.magic (); tl = empty; length = 0 }
 let singleton value = { value; tl = empty; length = 1 } [@@inline]
 let tl_safe { tl; _ } = tl [@@inline]
+let tl_or_retry t = if t != empty then t.tl else Kcas.Retry.later () [@@inline]
 let length { length; _ } = length [@@inline]
 let cons value tl = { value; tl; length = 1 + tl.length } [@@inline]
 let hd_opt t = if t != empty then Some t.value else None [@@inline]
+
+let hd_or_retry t = if t != empty then t.value else Kcas.Retry.later ()
+  [@@inline]
+
+let hd_unsafe t = t.value [@@inline]
 let rec fold f a t = if t == empty then a else fold f (f a t.value) t.tl
 let iter f t = fold (fun () x -> f x) () t [@@inline]
 

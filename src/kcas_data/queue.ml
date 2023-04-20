@@ -42,9 +42,9 @@ module Xt = struct
     let tx ~xt =
       let xs = Xt.exchange ~xt back Elems.empty in
       if xs == Elems.empty || Xt.exchange ~xt middle xs != Elems.empty then
-        raise Not_found
+        raise Exit
     in
-    try Xt.commit { tx } with Not_found -> ()
+    try Xt.commit { tx } with Exit -> ()
 
   let take_opt_finish ~xt front elems =
     let elems = Elems.rev elems in
@@ -63,6 +63,8 @@ module Xt = struct
         let elems = Xt.exchange ~xt back Elems.empty in
         if elems != Elems.empty then take_opt_finish ~xt front elems else None)
 
+  let take_blocking ~xt q = Xt.to_blocking ~xt (take_opt q)
+
   let peek_opt_finish ~xt front elems =
     let elems = Elems.rev elems in
     Xt.set ~xt front elems;
@@ -79,6 +81,8 @@ module Xt = struct
       else
         let elems = Xt.exchange ~xt back Elems.empty in
         if elems != Elems.empty then peek_opt_finish ~xt front elems else None)
+
+  let peek_blocking ~xt q = Xt.to_blocking ~xt (peek_opt q)
 
   let clear ~xt { back; middle; front } =
     Xt.set ~xt front Elems.empty;
@@ -126,6 +130,7 @@ let take_opt q =
   | None -> Kcas.Xt.commit { tx = Xt.take_opt q }
   | some -> some
 
+let take_blocking q = Kcas.Xt.commit { tx = Xt.take_blocking q }
 let take_all q = Kcas.Xt.commit { tx = Xt.take_all q }
 
 let peek_opt q =
@@ -133,6 +138,7 @@ let peek_opt q =
   | None -> Kcas.Xt.commit { tx = Xt.peek_opt q }
   | some -> some
 
+let peek_blocking q = Kcas.Xt.commit { tx = Xt.peek_blocking q }
 let clear q = Kcas.Xt.commit { tx = Xt.clear q }
 let swap q1 q2 = Kcas.Xt.commit { tx = Xt.swap q1 q2 }
 let to_seq q = Kcas.Xt.commit { tx = Xt.to_seq q }

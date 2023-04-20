@@ -1,3 +1,4 @@
 (library
  (name kcas)
- (public_name kcas))
+ (public_name kcas)
+ (libraries threads domain-local-await))

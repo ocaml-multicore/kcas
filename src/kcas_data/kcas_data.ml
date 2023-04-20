@@ -54,6 +54,10 @@ module Hashtbl = Hashtbl
 module Queue = Queue
 module Stack = Stack
 
+(** {1 Communication and synchronization primitives}  *)
+
+module Promise = Promise
+
 (** {1 Utilities} *)
 
 module Accumulator = Accumulator
