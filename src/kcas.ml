@@ -3,14 +3,19 @@
  * Copyright (c) 2023, Vesa Karvonen <vesa.a.j.k@gmail.com>
  *)
 
-(*
+(* NOTE: You can adjust comment blocks below to select whether or not to use
+   fenceless operations where it is safe to do so.  Fenceless operations have
+   been seen to provide significant performance improvements on ARM (Apple
+   M1). *)
+
+(**)
 external fenceless_get : 'a Atomic.t -> 'a = "%field0"
 external fenceless_set : 'a Atomic.t -> 'a -> unit = "%setfield0"
-*)
 (**)
+(*
 let fenceless_get = Atomic.get
 let fenceless_set = Atomic.set
-(**)
+*)
 
 module Backoff = Backoff
 module Domain_local_await = Domain_local_await
