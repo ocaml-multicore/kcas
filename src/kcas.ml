@@ -61,9 +61,7 @@ let resume_awaiters result = function
 
 type determined = [ `After | `Before ]
 
-type 'a loc = { state : 'a state Atomic.t; id : int }
-
-and 'a state = {
+type 'a state = {
   mutable before : 'a;
   mutable after : 'a;
   mutable casn : casn;
@@ -83,6 +81,26 @@ and cass =
 
 and casn = status Atomic.t
 and status = [ `Undetermined of cass | determined ]
+
+(* NOTE: You can adjust comment blocks below to select whether or not to use an
+   unsafe cast to avoid a level of indirection due to [Atomic.t] and reduce the
+   size of a location by two words.  This has been seen to provide significant
+   performance improvements. *)
+
+(**)
+and 'a loc = { mutable _state : 'a state; id : int }
+
+external as_atomic : 'a loc -> 'a state Atomic.t = "%identity"
+
+let make_loc state id = { _state = state; id } [@@inline]
+(**)
+
+(*
+and 'a loc = { state : 'a state Atomic.t; id : int }
+
+let as_atomic loc = loc.state [@@inline]
+let make_loc state id = { state = Atomic.make state; id } [@@inline]
+*)
 
 let is_cmp casn state = state.casn != casn [@@inline]
 
@@ -126,12 +144,13 @@ let rec verify casn = function
   | NIL -> `After
   | CASN { loc; state; lt; gt; _ } -> (
       if lt == NIL then
-        if is_cmp casn state && fenceless_get loc.state != state then `Before
+        if is_cmp casn state && fenceless_get (as_atomic loc) != state then
+          `Before
         else verify casn gt
       else
         match verify casn lt with
         | `After ->
-            if is_cmp casn state && fenceless_get loc.state != state then
+            if is_cmp casn state && fenceless_get (as_atomic loc) != state then
               `Before
             else verify casn gt
         | `Before -> `Before)
@@ -152,7 +171,7 @@ let rec determine casn status = function
       let status = if lt != NIL then determine casn status lt else status in
       if status < 0 then status
       else
-        let current = Atomic.get loc.state in
+        let current = Atomic.get (as_atomic loc) in
         if state == current then
           determine casn (status lor (1 + Bool.to_int (is_cmp casn state))) gt
         else
@@ -181,7 +200,7 @@ let rec determine casn status = function
                 (match current.awaiters with
                 | [] -> ()
                 | awaiters -> record.awaiters <- awaiters);
-                if Atomic.compare_and_set loc.state current state then
+                if Atomic.compare_and_set (as_atomic loc) current state then
                   determine casn (status lor a_cas) gt
                 else determine casn status eq
             | #determined -> raise Exit
@@ -272,13 +291,13 @@ module Retry = struct
 end
 
 let add_awaiter loc before awaiter =
-  let state_old = fenceless_get loc.state in
+  let state_old = fenceless_get (as_atomic loc) in
   let state_new =
     let awaiters = awaiter :: state_old.awaiters in
     { before; after = before; casn = casn_after; awaiters }
   in
   before == eval state_old
-  && Atomic.compare_and_set loc.state state_old state_new
+  && Atomic.compare_and_set (as_atomic loc) state_old state_new
 
 let[@tail_mod_cons] rec remove_first x' removed = function
   | [] ->
@@ -287,13 +306,13 @@ let[@tail_mod_cons] rec remove_first x' removed = function
   | x :: xs -> if x == x' then xs else x :: remove_first x' removed xs
 
 let rec remove_awaiter loc before awaiter =
-  let state_old = fenceless_get loc.state in
+  let state_old = fenceless_get (as_atomic loc) in
   if before == eval state_old then
     let removed = ref true in
     let awaiters = remove_first awaiter removed state_old.awaiters in
     if !removed then
       let state_new = { before; after = before; casn = casn_after; awaiters } in
-      if not (Atomic.compare_and_set loc.state state_old state_new) then
+      if not (Atomic.compare_and_set (as_atomic loc) state_old state_new) then
         remove_awaiter loc before awaiter
 
 let block loc before =
@@ -305,13 +324,13 @@ let block loc before =
       raise cancellation_exn)
 
 let rec update_no_alloc backoff loc state f =
-  let state' = fenceless_get loc.state in
+  let state' = fenceless_get (as_atomic loc) in
   let before = eval state' in
   match f before with
   | after ->
       state.after <- after;
       if before == after then before
-      else if Atomic.compare_and_set loc.state state' state then (
+      else if Atomic.compare_and_set (as_atomic loc) state' state then (
         state.before <- after;
         resume_awaiters before state'.awaiters)
       else update_no_alloc (Backoff.once backoff) loc state f
@@ -320,10 +339,11 @@ let rec update_no_alloc backoff loc state f =
       update_no_alloc backoff loc state f
 
 let rec exchange_no_alloc backoff loc state =
-  let state' = fenceless_get loc.state in
+  let state' = fenceless_get (as_atomic loc) in
   let before = eval state' in
-  if before == state.after || Atomic.compare_and_set loc.state state' state then
-    resume_awaiters before state'.awaiters
+  if
+    before == state.after || Atomic.compare_and_set (as_atomic loc) state' state
+  then resume_awaiters before state'.awaiters
   else exchange_no_alloc (Backoff.once backoff) loc state
 
 let is_obstruction_free casn =
@@ -331,12 +351,12 @@ let is_obstruction_free casn =
   [@@inline]
 
 let cas loc before state =
-  let state' = fenceless_get loc.state in
+  let state' = fenceless_get (as_atomic loc) in
   let before' = state'.before and after' = state'.after in
   ((before == before' && before == after')
   || before == if is_after state'.casn then after' else before')
   && (before == state.after
-     || Atomic.compare_and_set loc.state state' state
+     || Atomic.compare_and_set (as_atomic loc) state' state
         && resume_awaiters true state'.awaiters)
   [@@inline]
 
@@ -347,11 +367,11 @@ module Loc = struct
   type 'a t = 'a loc
 
   let make after =
-    let state = Atomic.make @@ new_state after and id = Id.get_unique () in
-    { state; id }
+    let state = new_state after and id = Id.get_unique () in
+    make_loc state id
 
   let get_id loc = loc.id [@@inline]
-  let get loc = eval (Atomic.get loc.state)
+  let get loc = eval (Atomic.get (as_atomic loc))
 
   let rec get_as f loc =
     let before = get loc in
@@ -366,14 +386,14 @@ module Loc = struct
     cas loc before state
 
   let update ?(backoff = Backoff.default) loc f =
-    let state' = fenceless_get loc.state in
+    let state' = fenceless_get (as_atomic loc) in
     let before = eval state' in
     match f before with
     | after ->
         if before == after then before
         else
           let state = new_state after in
-          if Atomic.compare_and_set loc.state state' state then
+          if Atomic.compare_and_set (as_atomic loc) state' state then
             resume_awaiters before state'.awaiters
           else update_no_alloc (Backoff.once backoff) loc state f
     | exception Retry.Later ->
@@ -392,7 +412,7 @@ module Loc = struct
   let decr ?backoff loc = update ?backoff loc dec |> ignore
 
   let has_awaiters loc =
-    let state = Atomic.get loc.state in
+    let state = Atomic.get (as_atomic loc) in
     state.awaiters != []
 end
 
@@ -435,7 +455,7 @@ module Op = struct
           | [] -> determine_for_owner casn cass
           | CAS (loc, before, after) :: rest ->
               if before == after && is_obstruction_free casn then
-                let state = fenceless_get loc.state in
+                let state = fenceless_get (as_atomic loc) in
                 before == eval state && run (insert cass loc state) rest
               else
                 run
@@ -444,7 +464,7 @@ module Op = struct
         in
         let (CAS (loc, before, after)) = first in
         if before == after && is_obstruction_free casn then
-          let state = fenceless_get loc.state in
+          let state = fenceless_get (as_atomic loc) in
           before == eval state
           && run (CASN { loc; state; lt = NIL; gt = NIL; awaiters = [] }) rest
         else
@@ -460,7 +480,7 @@ module Xt = struct
   }
 
   let update0 loc f xt lt gt =
-    let state = fenceless_get loc.state in
+    let state = fenceless_get (as_atomic loc) in
     let before = eval state in
     let after = f before in
     let state =
