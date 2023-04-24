@@ -35,25 +35,25 @@
 
 (test
  (name benchmark)
- (libraries kcas)
+ (libraries kcas unix)
  (modules benchmark)
  (package kcas))
 
 (test
  (name tx_benchmark)
- (libraries kcas)
+ (libraries kcas unix)
  (modules tx_benchmark)
  (package kcas))
 
 (test
  (name tx_parallel_cmp_bench)
- (libraries kcas barrier)
+ (libraries kcas barrier unix)
  (modules tx_parallel_cmp_bench)
  (package kcas))
 
 (test
  (name xt_parallel_cmp_bench)
- (libraries kcas barrier)
+ (libraries kcas barrier unix)
  (modules xt_parallel_cmp_bench)
  (package kcas))
 

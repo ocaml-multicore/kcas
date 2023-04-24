@@ -1,4 +1,3 @@
 (library
  (name kcas)
- (public_name kcas)
- (libraries unix))
+ (public_name kcas))
