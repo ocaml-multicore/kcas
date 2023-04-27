@@ -213,7 +213,22 @@ module Xt : sig
       Accesses of shared memory locations using an explicit transaction log
       first ensure that the initial value of the shared memory location is
       recorded in the log and then act on the current value of the shared memory
-      location as recorded in the log. *)
+      location as recorded in the log.
+
+      It is important to understand that it is possible for a transaction to
+      observe the contents of two (or more) different shared memory locations
+      from two (or more) different committed updates.  This means that
+      invariants that hold between two (or more) different shared memory
+      locations may be seen as broken inside the transaction function.  However,
+      it is not possible to commit a transaction after it has seen such an
+      inconsistent view of the shared memory locations.
+
+      To mitigate potential issues due to this torn read anomaly and due to very
+      long running transactions, all of the access recording operations in this
+      section periodically validate the entire transaction log.  An important
+      guideline for writing transactions is that loops inside a transaction
+      should always include an access of some shared memory location through the
+      transaction log or should otherwise be guaranteed to be bounded. *)
 
   val get : xt:'x t -> 'a Loc.t -> 'a
   (** [get ~xt r] returns the current value of the shared memory location [r] in

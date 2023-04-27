@@ -1612,6 +1612,13 @@ Oops! So, within a transaction we may actually observe different locations
 having values from different committed transactions. This is something that
 needs to be kept in mind when writing transactions.
 
+To mitigate issues due to torn reads and to also avoid problems with long
+running transactions, the **kcas** transaction mechanism automatically validates
+the transaction log periodically when an access is made to the transaction log.
+Therefore an important guideline for writing transactions is that loops inside a
+transaction should always include an access of some shared memory location
+through the transaction log or should otherwise be guaranteed to be bounded.
+
 ## Scheduler interop
 
 The blocking mechanism in **kcas** is based on a
