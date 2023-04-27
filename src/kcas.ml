@@ -474,10 +474,32 @@ end
 
 module Xt = struct
   type 'x t = {
-    casn : casn;
+    mutable casn : casn;
     mutable cass : cass;
+    mutable validate_countdown : int;
+    mutable validate_period : int;
     mutable post_commit : Action.t;
   }
+
+  let rec validate casn = function
+    | NIL -> ()
+    | CASN { loc; state; lt; gt; _ } ->
+        if lt != NIL then validate casn lt;
+        let before = if is_cmp casn state then eval state else state.before in
+        if before != eval (fenceless_get (as_atomic loc)) then Retry.later ();
+        validate casn gt
+
+  let validate xt =
+    let p = xt.validate_period * 2 in
+    xt.validate_countdown <- p;
+    xt.validate_period <- p;
+    validate xt.casn xt.cass
+    [@@inline never]
+
+  let maybe_validate xt =
+    let c = xt.validate_countdown - 1 in
+    if 0 < c then xt.validate_countdown <- c else validate xt
+    [@@inline]
 
   let update0 loc f xt lt gt =
     let state = fenceless_get (as_atomic loc) in
@@ -510,6 +532,7 @@ module Xt = struct
     [@@inline]
 
   let update loc f xt =
+    maybe_validate xt;
     let x = loc.id in
     match xt.cass with
     | NIL -> update0 loc f xt NIL NIL
@@ -598,13 +621,21 @@ module Xt = struct
             awaiter;
           remove_awaiters awaiter casn stop gt)
 
-  let rec commit backoff (mode : Mode.t) tx =
-    let xt =
-      let casn = Atomic.make (mode :> status)
-      and cass = NIL
-      and post_commit = Action.noop in
-      { casn; cass; post_commit }
-    in
+  let initial_validate_period = 16
+
+  let reset_quick xt =
+    xt.cass <- NIL;
+    xt.validate_countdown <- initial_validate_period;
+    xt.validate_period <- initial_validate_period;
+    xt.post_commit <- Action.noop;
+    xt
+    [@@inline]
+
+  let reset mode xt =
+    xt.casn <- Atomic.make (mode :> status);
+    reset_quick xt
+
+  let rec commit backoff mode xt tx =
     match tx ~xt with
     | result -> (
         match xt.cass with
@@ -616,13 +647,14 @@ module Xt = struct
               state.before <- state.after;
               state.casn <- casn_after;
               if cas loc before state then Action.run xt.post_commit result
-              else commit (Backoff.once backoff) mode tx
+              else commit (Backoff.once backoff) mode (reset_quick xt) tx
         | cass -> (
             match determine_for_owner xt.casn cass with
             | true -> Action.run xt.post_commit result
-            | false -> commit (Backoff.once backoff) mode tx
+            | false -> commit (Backoff.once backoff) mode (reset mode xt) tx
             | exception Mode.Interference ->
-                commit (Backoff.once backoff) Mode.lock_free tx))
+                commit (Backoff.once backoff) Mode.lock_free
+                  (reset Mode.lock_free xt) tx))
     | exception Retry.Later -> (
         if xt.cass == NIL then invalid_retry ();
         let t = Domain_local_await.prepare_for_await () in
@@ -631,16 +663,22 @@ module Xt = struct
             match t.await () with
             | () ->
                 remove_awaiters t.release xt.casn NIL xt.cass;
-                commit (Backoff.reset backoff) mode tx
+                commit (Backoff.reset backoff) mode (reset_quick xt) tx
             | exception cancellation_exn ->
                 remove_awaiters t.release xt.casn NIL xt.cass;
                 raise cancellation_exn)
         | CASN _ as stop ->
             remove_awaiters t.release xt.casn stop xt.cass;
-            commit (Backoff.once backoff) mode tx)
+            commit (Backoff.once backoff) mode (reset_quick xt) tx)
 
   let commit ?(backoff = Backoff.default) ?(mode = Mode.obstruction_free) { tx }
       =
-    commit backoff mode tx
+    let casn = Atomic.make (mode :> status)
+    and cass = NIL
+    and validate_countdown = initial_validate_period
+    and validate_period = initial_validate_period
+    and post_commit = Action.noop in
+    let xt = { casn; cass; validate_countdown; post_commit; validate_period } in
+    commit backoff mode xt tx
     [@@inline]
 end

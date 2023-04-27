@@ -407,6 +407,32 @@ let test_blocking () =
 
 (* *)
 
+let test_validation () =
+  let a = Loc.make 0 and b = Loc.make 0 and looping = ref false in
+  let non_zero_difference_domain =
+    Domain.spawn @@ fun () ->
+    let rec tx ~xt =
+      let d = Xt.get ~xt a - Xt.get ~xt b in
+      if d <> 0 then d
+      else (
+        (* We explicitly want this tx to go into infinite loop!  Without
+           validation this would never finish. *)
+        looping := true;
+        tx ~xt)
+    in
+    Xt.commit { tx }
+  in
+
+  while not !looping do
+    Domain.cpu_relax ()
+  done;
+
+  Loc.set a 1;
+
+  assert (1 = Domain.join non_zero_difference_domain)
+
+(* *)
+
 type _ _loc_is_injective =
   | Int : int _loc_is_injective
   | Loc : 'a _loc_is_injective -> 'a Loc.t _loc_is_injective
@@ -437,6 +463,7 @@ let () =
   test_post_commit ();
   test_backoff ();
   test_blocking ();
+  test_validation ();
   test_xt ()
 
 (*
