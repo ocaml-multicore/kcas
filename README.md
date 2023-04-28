@@ -1,5 +1,7 @@
 [API reference](https://ocaml-multicore.github.io/kcas/doc/) &middot;
-<sub><sup>(The API was redesigned in version 0.2.0. See
+<sub><sup>(The `Tx` API was removed in version 0.3.0 &mdash; see
+[API reference for version 0.2.4](https://ocaml-multicore.github.io/kcas/0.2.4/index.html).
+The API was redesigned in version 0.2.0 &mdash; see
 [API reference for version 0.1.8](https://ocaml-multicore.github.io/kcas/0.1.8/kcas/Kcas/index.html).)</sup></sub>
 
 # **kcas** &mdash; STM based on lock-free MCAS

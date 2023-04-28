@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.3.0
+
+* Remove the `Tx` API (@polytypic)
+* Add blocking support to turn kcas into a proper STM (@polytypic, review: @lyrm)
+* Add periodic validation of transactions (@polytypic)
+
 ## 0.2.4
 
 * Introduce `kcas_data` companion package of composable lock-free data structures (@polytypic)
