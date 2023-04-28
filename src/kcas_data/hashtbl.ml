@@ -205,7 +205,7 @@ module Xt = struct
             let initial_state = Array.length old_buckets in
             while true do
               (* If state is modified outside our expensive tx would fail. *)
-              if Loc.get state <> initial_state then raise Exit;
+              Retry.unless (Loc.get state = initial_state);
               rehash_a_few_buckets ~xt
             done
           else
@@ -219,7 +219,7 @@ module Xt = struct
         assert (not must_be_done_in_this_tx);
         let buckets = Xt.get ~xt t.buckets in
         (* Check state to ensure that buckets have not been updated. *)
-        if Loc.get state < 0 then raise Exit;
+        Retry.unless (0 <= Loc.get state);
         let snapshot =
           get_or_alloc snapshot @@ fun () ->
           Array.make (Array.length buckets) []
@@ -241,7 +241,7 @@ module Xt = struct
         assert (not must_be_done_in_this_tx);
         let old_buckets = Xt.get ~xt t.buckets in
         (* Check state to ensure that buckets have not been updated. *)
-        if Loc.get state < 0 then raise Exit;
+        Retry.unless (0 <= Loc.get state);
         let new_capacity = Array.length old_buckets in
         let new_buckets =
           get_or_alloc new_buckets @@ fun () ->

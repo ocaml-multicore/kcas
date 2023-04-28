@@ -28,7 +28,19 @@ module type Ops = sig
   (** [pop_opt s] removes and returns the topmost element of the stack [s], or
       [None] if the stack is empty. *)
 
+  val pop_all : ('x, 'a t -> 'a Seq.t) fn
+  (** [pop_all s] removes and returns a domain safe sequence for iterating
+      through all the elements that were in the stack top to bottom. *)
+
+  val pop_blocking : ('x, 'a t -> 'a) fn
+  (** [pop_blocking s] removes and returns the topmost element of the stack [s],
+      or blocks waiting for the queue to become non-empty. *)
+
   val top_opt : ('x, 'a t -> 'a option) fn
   (** [top_opt s] returns the topmost element in stack [s], or [None] if the
       stack is empty. *)
+
+  val top_blocking : ('x, 'a t -> 'a) fn
+  (** [top_blocking s] returns the topmost element in stack [s], or blocks
+      waiting for the queue to become non-empty. *)
 end

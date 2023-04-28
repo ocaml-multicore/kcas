@@ -42,9 +42,9 @@ module Xt = struct
     let tx ~xt =
       let xs = Xt.exchange ~xt back Elems.empty in
       if xs == Elems.empty || Xt.exchange ~xt middle xs != Elems.empty then
-        raise Not_found
+        raise Exit
     in
-    try Xt.commit { tx } with Not_found -> ()
+    try Xt.commit { tx } with Exit -> ()
 
   let take_opt_finish ~xt front elems =
     let elems = Elems.rev elems in
@@ -63,6 +63,8 @@ module Xt = struct
         let elems = Xt.exchange ~xt back Elems.empty in
         if elems != Elems.empty then take_opt_finish ~xt front elems else None)
 
+  let take_blocking ~xt q = Xt.to_blocking ~xt (take_opt q)
+
   let peek_opt_finish ~xt front elems =
     let elems = Elems.rev elems in
     Xt.set ~xt front elems;
@@ -80,6 +82,8 @@ module Xt = struct
         let elems = Xt.exchange ~xt back Elems.empty in
         if elems != Elems.empty then peek_opt_finish ~xt front elems else None)
 
+  let peek_blocking ~xt q = Xt.to_blocking ~xt (peek_opt q)
+
   let clear ~xt { back; middle; front } =
     Xt.set ~xt front Elems.empty;
     Xt.set ~xt middle Elems.empty;
@@ -96,15 +100,24 @@ module Xt = struct
     Xt.set ~xt q1.middle middle;
     Xt.set ~xt q1.back back
 
-  let to_seq ~xt { back; middle; front } =
-    let front = Xt.get ~xt front
-    and middle = Xt.get ~xt middle
-    and back = Xt.get ~xt back in
+  let seq_of ~back ~middle ~front =
     (* Sequence construction is lazy, so this function is O(1). *)
     Seq.empty
     |> Elems.rev_prepend_to_seq back
     |> Elems.rev_prepend_to_seq middle
     |> Elems.prepend_to_seq front
+
+  let to_seq ~xt { back; middle; front } =
+    let front = Xt.get ~xt front
+    and middle = Xt.get ~xt middle
+    and back = Xt.get ~xt back in
+    seq_of ~back ~middle ~front
+
+  let take_all ~xt { back; middle; front } =
+    let front = Xt.exchange ~xt front Elems.empty
+    and middle = Xt.exchange ~xt middle Elems.empty
+    and back = Xt.exchange ~xt back Elems.empty in
+    seq_of ~back ~middle ~front
 end
 
 let is_empty q = Kcas.Xt.commit { tx = Xt.is_empty q }
@@ -117,11 +130,15 @@ let take_opt q =
   | None -> Kcas.Xt.commit { tx = Xt.take_opt q }
   | some -> some
 
+let take_blocking q = Kcas.Xt.commit { tx = Xt.take_blocking q }
+let take_all q = Kcas.Xt.commit { tx = Xt.take_all q }
+
 let peek_opt q =
   match Loc.get q.front |> Elems.hd_opt with
   | None -> Kcas.Xt.commit { tx = Xt.peek_opt q }
   | some -> some
 
+let peek_blocking q = Kcas.Xt.commit { tx = Xt.peek_blocking q }
 let clear q = Kcas.Xt.commit { tx = Xt.clear q }
 let swap q1 q2 = Kcas.Xt.commit { tx = Xt.swap q1 q2 }
 let to_seq q = Kcas.Xt.commit { tx = Xt.to_seq q }

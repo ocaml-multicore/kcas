@@ -7,12 +7,13 @@
 (homepage "https://github.com/ocaml-multicore/kcas")
 (license "ISC")
 (package (name kcas)
- (synopsis "Multi-word compare-and-set library")
+ (synopsis "Software transactional memory based on lock-free multi-word compare-and-set")
  (depends 
   (ocaml (>= 5.0))
+  (domain-local-await (>= 0.1.0))
   (mdx (and (>= 1.10.0) :with-test))))
 (package (name kcas_data)
- (synopsis "Compositional lock-free data structures")
+ (synopsis "Compositional lock-free data structures and primitives for communication and synchronization")
  (depends
   (kcas (= :version))
   (mdx (and (>= 1.10.0) :with-test))))

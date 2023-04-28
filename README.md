@@ -2,17 +2,18 @@
 <sub><sup>(The API was redesigned in version 0.2.0. See
 [API reference for version 0.1.8](https://ocaml-multicore.github.io/kcas/0.1.8/kcas/Kcas/index.html).)</sup></sub>
 
-# **kcas** &mdash; Multi-word compare-and-set library
+# **kcas** &mdash; STM based on lock-free MCAS
 
 [**kcas**](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/index.html)
-provides an implementation of atomic
+provides a software transactional memory (STM) implementation based on an atomic
 [lock-free](https://en.wikipedia.org/wiki/Non-blocking_algorithm#Lock-freedom)
 multi-word [compare-and-set](https://en.wikipedia.org/wiki/Compare-and-swap)
-(MCAS), which is a powerful tool for designing concurrent algorithms.
+(MCAS) algorithm enhanced with read-only compare operations and ability to block
+awaiting for changes.
 
 [**kcas_data**](https://ocaml-multicore.github.io/kcas/doc/kcas_data/Kcas_data/index.html)
-provides implementations of compositional lock-free data structures implemented
-using **kcas**.
+provides compositional lock-free data structures and primitives for
+communication and synchronization implemented using **kcas**.
 
 Features and properties:
 
@@ -30,6 +31,9 @@ Features and properties:
   read-only compare (CMP) operations that can be performed on overlapping
   locations in parallel without interference.
 
+- **_Blocking await_**: The algorithm supports awaiting for changes to any
+  number of shared memory locations.
+
 - **_Composable_**: Independently developed transactions can be composed with
   ease.
 
@@ -46,7 +50,7 @@ is distributed under the [ISC license](LICENSE.md).
     - [A transactional lock-free stack](#a-transactional-lock-free-stack)
     - [A transactional lock-free queue](#a-transactional-lock-free-queue)
     - [Composing transactions](#composing-transactions)
-    - [About transactions](#about-transactions)
+    - [Blocking transactions](#blocking-transactions)
     - [A transactional lock-free leftist heap](#a-transactional-lock-free-leftist-heap)
     - [A composable Michael-Scott style queue](#a-composable-michael-scott-style-queue)
 - [Designing lock-free algorithms with k-CAS](#designing-lock-free-algorithms-with-k-cas)
@@ -59,6 +63,7 @@ is distributed under the [ISC license](LICENSE.md).
     - [A three-stack lock-free queue](#a-three-stack-lock-free-queue)
     - [A rehashable lock-free hash table](#a-rehashable-lock-free-hash-table)
   - [Beware of torn reads](#beware-of-torn-reads)
+- [Scheduler interop](#scheduler-interop)
 - [Development](#development)
 
 ## A quick tour
@@ -100,22 +105,32 @@ Attempt primitive operations over multiple locations:
 - : bool = true
 ```
 
-Perform transactions over them:
+Block waiting for changes to locations:
+
+```ocaml
+# let a_domain = Domain.spawn @@ fun () ->
+    let x = Loc.get_as (fun x -> Retry.unless (x <> 0); x) x in
+    Printf.sprintf "The answer is %d!" x
+val a_domain : string Domain.t = <abstr>
+```
+
+Perform transactions over locations:
 
 ```ocaml
 # let tx ~xt =
     let a = Xt.get ~xt a
     and b = Xt.get ~xt b in
-    Xt.set ~xt x (b - a) in
+    Xt.set ~xt x (b - a)
+  in
   Xt.commit { tx }
 - : unit = ()
 ```
 
-And get the answer:
+And now we have it:
 
 ```ocaml
-# Loc.get x
-- : int = 42
+# Domain.join a_domain
+- : string = "The answer is 42!"
 ```
 
 ## Introduction
@@ -139,9 +154,7 @@ The following sections discuss each of the above in turn.
 The [`Loc`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Loc/index.html)
 module is essentially compatible with the Stdlib
 [`Atomic`](https://v2.ocaml.org/api/Atomic.html) module, except that a number of
-functions take an optional
-[`backoff`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Backoff/index.html)
-as an argument.
+functions take some optional arguments that one usually need not worry about.
 
 In other words, an application that uses
 [`Atomic`](https://v2.ocaml.org/api/Atomic.html), but then needs to perform
@@ -504,24 +517,102 @@ Or transfer elements between different transactional data structures:
 The ability to compose transactions allows algorithms and data-structures to be
 used for a wider variety of purposes.
 
-#### About transactions
+#### Blocking transactions
 
-The transaction mechanism provided by **kcas** is quite intentionally designed
-to be very simple and efficient. This also means that it cannot provide certain
-features, because adding such features would either add significant dependencies
-or overheads to the otherwise simple and efficient implementation. In
-particular, the transactions provided by **kcas** do not directly provide
-blocking or the ability to wait for changes to shared memory locations before
-retrying a transaction. The way
-[`commit`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-commit)
-works is that it simply retries the transaction in case it failed. To avoid
-contention, a
-[`backoff`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Backoff/index.html)
-mechanism is used, but otherwise
-[`commit`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-commit)
-will essentially perform a
-[busy-wait](https://en.wikipedia.org/wiki/Busy_waiting), which should usually be
-avoided.
+All of the previous operations we have implemented on stacks and queues have
+been non-blocking. What if we'd like to wait for an element to appear in a
+stack? One could write a loop that keeps on trying to pop an element
+
+```ocaml
+# let rec busy_waiting_pop stack =
+    match Xt.commit { tx = try_pop stack } with
+    | None -> busy_waiting_pop stack
+    | Some elem -> elem
+val busy_waiting_pop : 'a list Loc.t -> 'a = <fun>
+```
+
+but this sort of [busy-wait](https://en.wikipedia.org/wiki/Busy_waiting) is
+usually a _bad idea_ and should be avoided. It is usually better to block in
+such a way that the underlying domain can potentially perform other work.
+
+To support blocking **kcas** provides a
+[`later`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Retry/index.html#val-later)
+operation that amounts to raising a
+[`Later`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Retry/index.html#exception-Later)
+exception signaling that the operation, whether a single location operation or a
+multi location transaction, should be retried only after the shared memory
+locations examined by the operation have been modified outside of the
+transaction.
+
+Using
+[`later`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Retry/index.html#val-later)
+we can easily write blocking pop
+
+```ocaml
+# let pop ~xt stack =
+    match try_pop ~xt stack with
+    | None -> Retry.later ()
+    | Some elem -> elem
+val pop : xt:'a Xt.t -> 'b list Loc.t -> 'b = <fun>
+```
+
+and dequeue
+
+```ocaml
+# let dequeue ~xt queue =
+    match try_dequeue ~xt queue with
+    | None -> Retry.later ()
+    | Some elem -> elem
+val dequeue : xt:'a Xt.t -> 'b queue -> 'b = <fun>
+```
+
+operations.
+
+To test them out, let's create a fresh stack and a queue
+
+```ocaml
+# let a_stack : int stack = stack ()
+val a_stack : int stack = <abstr>
+# let a_queue : int queue = queue ()
+val a_queue : int queue = {front = <abstr>; back = <abstr>}
+```
+
+and then spawn a domain that tries to atomically both pop and dequeue:
+
+```ocaml
+# let a_domain = Domain.spawn @@ fun () ->
+    let tx ~xt = (pop ~xt a_stack, dequeue ~xt a_queue) in
+    let (popped, dequeued) = Xt.commit { tx } in
+    Printf.sprintf "I popped %d and dequeued %d!"
+      popped dequeued
+val a_domain : string Domain.t = <abstr>
+```
+
+The domain is now blocked waiting for changes to the stack and the queue. As
+long as we don't populate both at the same time
+
+```ocaml
+# Xt.commit { tx = push a_stack 2 };
+  let x = Xt.commit { tx = pop a_stack } in
+  Xt.commit { tx = enqueue a_queue x };
+- : unit = ()
+```
+
+the transaction keeps on being blocked. But if both become populated at the same
+time
+
+```ocaml
+# Xt.commit { tx = push a_stack 4 }
+- : unit = ()
+# Domain.join a_domain
+- : string = "I popped 4 and dequeued 2!"
+```
+
+the transaction can finish.
+
+The retry mechanism essentially allows a transaction to wait for an arbitrary
+condition and can function as a fairly expressive communication and
+synchronization mechanism.
 
 #### A transactional lock-free leftist heap
 
@@ -916,15 +1007,15 @@ accesses and optimistic updates we can reduce that to just two accesses:
 # let transfer amount ~source ~target =
     let tx ~xt =
       if Xt.fetch_and_add ~xt source (-amount) < amount then
-        raise Not_found;
+        raise Exit;
       Xt.fetch_and_add ~xt target amount |> ignore
     in
-    try Xt.commit { tx } with Not_found -> ()
+    try Xt.commit { tx } with Exit -> ()
 val transfer : int -> source:int Loc.t -> target:int Loc.t -> unit = <fun>
 ```
 
-Note that we raise the Stdlib `Not_found` exception to abort the transaction. As
-we can see
+Note that we raise the Stdlib `Exit` exception to abort the transaction. As we
+can see
 
 ```ocaml
 # Loc.get a, Loc.get b
@@ -1036,7 +1127,9 @@ mutate any shared memory locations.
 
 When a transaction is (unconditionally) _committed_, rather than merely
 _attempted_ (once), the commit mechanism keeps on retrying until an attempt
-succeeds or the transaction function raises an exception (other than `Exit` or
+succeeds or the transaction function raises an exception (other than
+[`Later`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Retry/index.html#exception-Later)
+or
 [`Interference`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Mode/index.html#exception-Interference))
 that the commit mechanism does not handle.
 
@@ -1098,18 +1191,18 @@ For the quick transaction we introduce a helper function:
 # let back_to_middle queue =
     let tx ~xt =
       match Xt.exchange ~xt queue.back [] with
-      | [] -> raise Not_found
+      | [] -> raise Exit
       | xs ->
         if Xt.exchange ~xt queue.middle xs != [] then
-          raise Not_found
+          raise Exit
     in
-    try Xt.commit { tx } with Not_found -> ()
+    try Xt.commit { tx } with Exit -> ()
 val back_to_middle : 'a queue -> unit = <fun>
 ```
 
 Note that the above uses
 [`exchange`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-exchange)
-to optimistically record shared memory accesses and then uses the `Not_found`
+to optimistically record shared memory accesses and then uses the `Exit`
 exception to abort the transaction in case the optimistic accesses turn out to
 be unnecessary or incorrect.
 
@@ -1334,14 +1427,14 @@ rehash seems necessary:
         else if size * 8 < capacity then
           Xt.set ~xt hashtbl.pending (`Rehash (capacity / 2))
         else
-          raise Not_found
+          raise Exit
     in
     try
       if Xt.is_in_log ~xt hashtbl.pending then
         tx ~xt
       else
         Xt.commit { tx }
-    with Not_found -> ()
+    with Exit -> ()
 val prepare_rehash : xt:'a Xt.t -> ('b, 'c) hashtbl -> int -> unit = <fun>
 ```
 
@@ -1504,7 +1597,7 @@ experiment where we abort the transaction in case we observe that the values of
 
 ```ocaml
 # with_updater @@ fun () ->
-    for _ = 1 to 10_000 do
+    for _ = 1 to 100_000 do
       let tx ~xt =
         if 0 <> (Xt.get ~xt a + Xt.get ~xt b) then
           failwith "torn read"
@@ -1518,6 +1611,184 @@ Exception: Failure "torn read".
 Oops! So, within a transaction we may actually observe different locations
 having values from different committed transactions. This is something that
 needs to be kept in mind when writing transactions.
+
+## Scheduler interop
+
+The blocking mechanism in **kcas** is based on a
+[_domain local await_](https://github.com/ocaml-multicore/domain-local-await)
+mechanism that schedulers can choose to implement to allow libraries like
+**kcas** to work with them.
+
+Implementing schedulers is not really what casual users of **kcas** are supposed
+to do. Below is an example of a _toy_ scheduler whose purpose is only to give a
+sketch of how a scheduler can provide the domain local await mechanism.
+
+Let's also demonstrate the use of the
+[`Queue`](https://ocaml-multicore.github.io/kcas/doc/kcas_data/Kcas_data/Queue/index.html),
+[`Stack`](https://ocaml-multicore.github.io/kcas/doc/kcas_data/Kcas_data/Stack/index.html),
+and
+[`Promise`](https://ocaml-multicore.github.io/kcas/doc/kcas_data/Kcas_data/Promise/index.html)
+implementations that are conveniently provided by the
+[**kcas_data**](https://ocaml-multicore.github.io/kcas/doc/kcas_data/Kcas_data/index.html)
+package.
+
+```ocaml
+# #require "kcas_data"
+# open Kcas_data
+```
+
+Here is the full toy scheduler module:
+
+```ocaml
+# module Scheduler : sig
+    type t
+    val spawn : unit -> t
+    val join : t -> unit
+    val fiber : t -> (unit -> 'a) -> 'a Promise.t
+  end = struct
+    type _ Effect.t +=
+      | Suspend : (('a, unit) Effect.Deep.continuation -> unit) -> 'a Effect.t
+
+    type t = { queue: (unit -> unit) Queue.t; domain: unit Domain.t }
+
+    let spawn () =
+      let queue = Queue.create () in
+      let rec scheduler work =
+        let effc (type a) : a Effect.t -> _ = function
+          | Suspend ef -> Some ef
+          | _ -> None in
+        Effect.Deep.try_with work () Effect.Deep.{effc};
+        match Queue.take_opt queue with
+        | Some work -> scheduler work
+        | None -> () in
+      let prepare_for_await _ =
+        let state = Atomic.make `Init in
+        let release () =
+          if Atomic.get state != `Released then
+            match Atomic.exchange state `Released with
+            | `Awaiting k ->
+              Queue.add (Effect.Deep.continue k) queue
+            | _ -> () in
+        let await () =
+          if Atomic.get state != `Released then
+            Effect.perform @@ Suspend (fun k ->
+              if not (Atomic.compare_and_set state `Init (`Awaiting k)) then
+                Effect.Deep.continue k ())
+        in
+        Domain_local_await.{ release; await } in
+      let domain = Domain.spawn @@ fun () ->
+        try
+          while true do
+            let work = Queue.take_blocking queue in
+            Domain_local_await.using
+              ~prepare_for_await
+              ~while_running:(fun () -> scheduler work)
+          done
+        with Exit -> () in
+      { queue; domain }
+
+    let join t =
+      Queue.add (fun () -> raise Exit) t.queue;
+      Domain.join t.domain
+
+    let fiber t thunk =
+      let (promise, resolver) = Promise.create () in
+      Queue.add (fun () -> Promise.resolve resolver (thunk ())) t.queue;
+      promise
+  end
+module Scheduler :
+  sig
+    type t
+    val spawn : unit -> t
+    val join : t -> unit
+    val fiber : t -> (unit -> 'a) -> 'a Promise.t
+  end
+```
+
+The idea is that one can spawn a scheduler to run on a new domain. Then one can
+run fibers on the scheduler. Because the scheduler provides the domain local
+await mechanism libraries like **kcas** can use it to block in a scheduler
+independent and friendly manner.
+
+Let's then demonstate the integration. To start we spawn a scheduler:
+
+```ocaml
+# let scheduler = Scheduler.spawn ()
+val scheduler : Scheduler.t = <abstr>
+```
+
+The scheduler is now eagerly awaiting for fibers to run. Let's give it a couple
+of them, but, let's first create a queue and a stack to communicate with the
+fibers:
+
+```ocaml
+# let in_queue : int Queue.t = Queue.create ()
+val in_queue : int Kcas_data.Queue.t = <abstr>
+# let out_stack : int Stack.t = Stack.create ()
+val out_stack : int Kcas_data.Stack.t = <abstr>
+```
+
+The first fiber we create just copies elements from the `in_queue` to the
+`out_stack`:
+
+```ocaml
+# ignore @@ Scheduler.fiber scheduler @@ fun () ->
+    while true do
+      let elem = Queue.take_blocking in_queue in
+      Printf.printf "Giving %d...\n%!" elem;
+      Stack.push elem out_stack
+    done
+- : unit = ()
+```
+
+The second fiber awaits to take two elements from the `out_stack`, updates a
+state in between, and then returns their sum:
+
+```ocaml
+# let state = Loc.make 0
+val state : int Loc.t = <abstr>
+# let sync_to target =
+    Loc.get_as (fun current -> Retry.unless (target <= current)) state
+val sync_to : int -> unit = <fun>
+# let a_promise = Scheduler.fiber scheduler @@ fun () ->
+    let x = Stack.pop_blocking out_stack in
+    Printf.printf "First you gave me %d.\n%!" x;
+    Loc.set state 1;
+    let y = Stack.pop_blocking out_stack in
+    Printf.printf "Then you gave me %d.\n%!" y;
+    Loc.set state 2;
+    x + y
+val a_promise : int Promise.t = <abstr>
+```
+
+To interact with the fibers, we add some elements to the `in_queue`:
+
+```ocaml
+# Queue.add 14 in_queue; sync_to 1
+Giving 14...
+First you gave me 14.
+- : unit = ()
+# Queue.add 28 in_queue; sync_to 2
+Giving 28...
+Then you gave me 28.
+- : unit = ()
+# Promise.await a_promise
+- : int = 42
+```
+
+As can be seen above, the scheduler multiplexes the domain among the fibers.
+Notice that thanks to the domain local await mechanism we could just perform
+blocking operations without thinking about the schedulers. Communication between
+the main domain, the scheduler domain, and the fibers _just works_ ™.
+
+Time to close the shop.
+
+```ocaml
+# Scheduler.join scheduler
+- : unit = ()
+```
+
+_That's all Folks!_
 
 ## Development
 

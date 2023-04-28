@@ -1,12 +1,58 @@
 (** {1 Auxiliary modules} *)
 
 module Backoff : module type of Backoff
-(** Randomized exponential backoff mechanism. *)
+
+(** Retry support. *)
+module Retry : sig
+  exception Later
+  (** Exception that may be raised to signal that the operation, such as
+      {!Loc.get_as}, {!Loc.update}, or {!Xt.commit}, should be retried, at some
+      point in the future, after the examined shared memory location or
+      locations have changed.
+
+      {b NOTE}: It is important to understand that "{i after}" may effectively
+      mean "{i immediately}", because it may be the case that the examined
+      shared memory locations have already changed. *)
+
+  val later : unit -> 'a
+  (** [later ()] is equivalent to [raise Later]. *)
+
+  val unless : bool -> unit
+  (** [unless condition] is equivalent to [if not condition then later ()]. *)
+end
+
+(** Operating modes of the [k-CAS-n-CMP] algorithm. *)
+module Mode : sig
+  type t
+  (** Type of an operating mode of the [k-CAS-n-CMP] algorithm. *)
+
+  val lock_free : t
+  (** In [lock_free] mode the algorithm makes sure that at least one domain will
+      be able to make progress at the cost of performing read-only operations as
+      read-write operations. *)
+
+  val obstruction_free : t
+  (** In [obstruction_free] mode the algorithm proceeds optimistically and
+      allows read-only operations to fail due to {!Interference} from other
+      domains that might have been prevented in the {!lock_free} mode. *)
+
+  exception Interference
+  (** Exception raised when interference from other domains is detected in the
+      {!obstruction_free} mode.  Interference may happen when some location is
+      accessed by both a compare-and-set and a (read-only) compare operation.
+      It is not necessary for the compare-and-set to actually change the logical
+      value of the location. *)
+end
 
 (** {1 Individual locations}
 
     Individual shared memory locations can be manipulated through the {!Loc}
-    module that is essentially compatible with the Stdlib [Atomic] module. *)
+    module that is essentially compatible with the [Stdlib.Atomic] module except
+    that some of the operations take additional optional arguments:
+
+    - [backoff] specifies the configuration for the {!Backoff} mechanism.  In
+      special cases, having more detailed knowledge of the application, one
+      might adjust the configuration to improve performance. *)
 
 (** Shared memory locations. *)
 module Loc : sig
@@ -23,6 +69,13 @@ module Loc : sig
   val get : 'a t -> 'a
   (** [get r] reads the current value of the shared memory location [r]. *)
 
+  val get_as : ('a -> 'b) -> 'a t -> 'b
+  (** [get_as f loc] is equivalent to [f (get loc)].  The given function [f] may
+      raise the {!Retry.Later} exception to signal that the conditional load
+      should be retried only after the location has been modified outside of the
+      conditional load.  It is also safe for the given function [f] to raise any
+      other exception to abort the conditional load. *)
+
   val compare_and_set : 'a t -> 'a -> 'a -> bool
   (** [compare_and_set r before after] atomically updates the shared memory
       location [r] to the [after] value if the current value of [r] is the
@@ -30,8 +83,11 @@ module Loc : sig
 
   val update : ?backoff:Backoff.t -> 'a t -> ('a -> 'a) -> 'a
   (** [update r f] repeats [let b = get r in compare_and_set r b (f b)] until it
-      succeeds and then returns the [b] value.  It is safe for the given
-      function [f] to raise an exception to abort the update. *)
+      succeeds and then returns the [b] value.  The given function [f] may raise
+      the {!Retry.Later} exception to signal that the update should only be
+      retried after the location has been modified outside of the update.  It is
+      also safe for the given function [f] to raise any other exception to abort
+      the update. *)
 
   val modify : ?backoff:Backoff.t -> 'a t -> ('a -> 'a) -> unit
   (** [modify r f] is equivalent to [update r f |> ignore]. *)
@@ -53,6 +109,12 @@ module Loc : sig
 
   val decr : ?backoff:Backoff.t -> int t -> unit
   (** [decr r] atomically decrements [r]. *)
+
+  (**/**)
+
+  val has_awaiters : 'a t -> bool
+  (** [has_awaiters r] determines whether the shared memory location [r] has
+      awaiters. *)
 end
 
 (** {1 Manipulating multiple locations atomically}
@@ -77,29 +139,6 @@ end
     shared memory have yet been attempted, it is safe, for example, to raise
     exceptions to signal failure.  Failure on the third phase raises
     {!Mode.Interference}. *)
-
-(** Operating modes of the [k-CAS-n-CMP] algorithm. *)
-module Mode : sig
-  type t
-  (** Type of an operating mode of the [k-CAS-n-CMP] algorithm. *)
-
-  val lock_free : t
-  (** In [lock_free] mode the algorithm makes sure that at least one domain will
-      be able to make progress by performing read-only operations as read-write
-      operations. *)
-
-  val obstruction_free : t
-  (** In [obstruction_free] mode the algorithm proceeds optimistically and
-      allows read-only operations to fail due to {!Interference} from other
-      domains that might have been prevented in the {!lock_free} mode. *)
-
-  exception Interference
-  (** Exception raised when interference from other domains is detected in the
-      {!obstruction_free} mode.  Interference may happen when some location is
-      accessed by both a compare-and-set and a (read-only) compare operation.
-      It is not necessary for the compare-and-set to actually change the logical
-      value of the location. *)
-end
 
 (** Operations on shared memory locations. *)
 module Op : sig
@@ -217,6 +256,16 @@ module Xt : sig
   val decr : xt:'x t -> int Loc.t -> unit
   (** [decr ~xt r] is equivalent to [fetch_and_add ~xt r (-1) |> ignore]. *)
 
+  (** {1 Blocking} *)
+
+  val to_blocking : xt:'x t -> (xt:'x t -> 'a option) -> 'a
+  (** [to_blocking ~xt tx] converts the non-blocking transaction [tx] to a
+      blocking transaction by retrying on [None]. *)
+
+  val to_nonblocking : xt:'x t -> (xt:'x t -> 'a) -> 'a option
+  (** [to_nonblocking ~xt tx] converts the blocking transaction [tx] to a
+      non-blocking transaction by returning [None] on retry. *)
+
   (** {1 Post commit actions} *)
 
   val post_commit : xt:'x t -> (unit -> unit) -> unit
@@ -239,24 +288,15 @@ module Xt : sig
   val call : 'a tx -> xt:'x t -> 'a
   (** [call ~xt tx] is equivalent to [tx.Xt.tx ~xt]. *)
 
-  val attempt : ?mode:Mode.t -> 'a tx -> 'a
-  (** [attempt tx] attempts to atomically perform the transaction over shared
-      memory locations recorded by calling [tx] with a fresh explicit
-      transaction log.  If used in {!Mode.obstruction_free} may raise
-      {!Mode.Interference}.  Otherwise either raises [Exit] on failure to commit
-      the transaction or returns the result of the transaction.  The default for
-      [attempt] is {!Mode.lock_free}. *)
-
   val commit : ?backoff:Backoff.t -> ?mode:Mode.t -> 'a tx -> 'a
-  (** [commit tx] repeats [attempt tx] until it does not raise [Exit] or
-      {!Mode.Interference} and then either returns or raises whatever attempt
-      returned or raised.
+  (** [commit tx] repeatedly calls [tx] to record a log of shared memory
+      accesses and attempts to perform them atomically until it succeeds and
+      then returns whatever [tx] returned.  [tx] may raise {!Retry.Later} to
+      explicitly request a retry or any other exception to abort the
+      transaction.
 
       The default for [commit] is {!Mode.obstruction_free}.  However, after
       enough attempts have failed during the verification step, [commit]
-      switches to {!Mode.lock_free}.
-
-      Note that, aside from using exponential backoff to reduce contention, the
-      transaction mechanism has no way to intelligently wait until shared memory
-      locations are modified by other domains. *)
+      switches to {!Mode.lock_free}.  Note that [commit] never raises the
+      {!Mode.Interference} exception. *)
 end
