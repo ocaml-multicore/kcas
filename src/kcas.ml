@@ -3,14 +3,19 @@
  * Copyright (c) 2023, Vesa Karvonen <vesa.a.j.k@gmail.com>
  *)
 
-(*
+(* NOTE: You can adjust comment blocks below to select whether or not to use
+   fenceless operations where it is safe to do so.  Fenceless operations have
+   been seen to provide significant performance improvements on ARM (Apple
+   M1). *)
+
+(**)
 external fenceless_get : 'a Atomic.t -> 'a = "%field0"
 external fenceless_set : 'a Atomic.t -> 'a -> unit = "%setfield0"
-*)
 (**)
+(*
 let fenceless_get = Atomic.get
 let fenceless_set = Atomic.set
-(**)
+*)
 
 module Backoff = Backoff
 module Domain_local_await = Domain_local_await
@@ -56,9 +61,7 @@ let resume_awaiters result = function
 
 type determined = [ `After | `Before ]
 
-type 'a loc = { state : 'a state Atomic.t; id : int }
-
-and 'a state = {
+type 'a state = {
   mutable before : 'a;
   mutable after : 'a;
   mutable casn : casn;
@@ -78,6 +81,26 @@ and cass =
 
 and casn = status Atomic.t
 and status = [ `Undetermined of cass | determined ]
+
+(* NOTE: You can adjust comment blocks below to select whether or not to use an
+   unsafe cast to avoid a level of indirection due to [Atomic.t] and reduce the
+   size of a location by two words.  This has been seen to provide significant
+   performance improvements. *)
+
+(**)
+and 'a loc = { mutable _state : 'a state; id : int }
+
+external as_atomic : 'a loc -> 'a state Atomic.t = "%identity"
+
+let make_loc state id = { _state = state; id } [@@inline]
+(**)
+
+(*
+and 'a loc = { state : 'a state Atomic.t; id : int }
+
+let as_atomic loc = loc.state [@@inline]
+let make_loc state id = { state = Atomic.make state; id } [@@inline]
+*)
 
 let is_cmp casn state = state.casn != casn [@@inline]
 
@@ -121,12 +144,13 @@ let rec verify casn = function
   | NIL -> `After
   | CASN { loc; state; lt; gt; _ } -> (
       if lt == NIL then
-        if is_cmp casn state && fenceless_get loc.state != state then `Before
+        if is_cmp casn state && fenceless_get (as_atomic loc) != state then
+          `Before
         else verify casn gt
       else
         match verify casn lt with
         | `After ->
-            if is_cmp casn state && fenceless_get loc.state != state then
+            if is_cmp casn state && fenceless_get (as_atomic loc) != state then
               `Before
             else verify casn gt
         | `Before -> `Before)
@@ -136,54 +160,61 @@ let finish casn (`Undetermined cass as undetermined) (status : determined) =
   then release casn cass status
   else fenceless_get casn == `After
 
-let rec determine casn action = function
-  | NIL -> action
-  | CASN ({ loc; state; lt; gt; _ } as record) as eq -> (
-      match if lt != NIL then determine casn action lt else action with
-      | `Before -> `Before
-      | (`After | `Verify) as action ->
-          let current = Atomic.get loc.state in
-          if state == current then
-            let action = if is_cmp casn state then `Verify else action in
-            determine casn action gt
-          else
-            let matches_expected () =
-              let expected = state.before in
-              expected == current.after
-              && (current.casn == casn_after || is_after current.casn)
-              || expected == current.before
-                 && (current.casn == casn_before || not (is_after current.casn))
-            in
-            if (not (is_cmp casn state)) && matches_expected () then
-              match fenceless_get casn with
-              | `Undetermined _ ->
-                  (* We now know that the operation wasn't finished when we read
-                     [current], but it is possible that the [loc]ation has been
-                     updated since then by some other domain helping us (or even
-                     by some later operation). If so, then the [compare_and_set]
-                     below fails. Copying the awaiters from [current] is safe in
-                     either case, because we know that we have the [current]
-                     state that our operation is interested in.  By doing the
-                     copying here, we at most duplicate work already done by
-                     some other domain. However, it is necessary to do the copy
-                     before the [compare_and_set], because afterwards is too
-                     late as some other domain might finish the operation after
-                     the [compare_and_set] and miss the awaiters. *)
-                  (match current.awaiters with
-                  | [] -> ()
-                  | awaiters -> record.awaiters <- awaiters);
-                  if Atomic.compare_and_set loc.state current state then
-                    determine casn action gt
-                  else determine casn action eq
-              | #determined -> raise Exit
-            else `Before)
+let a_cas = 1
+and a_cmp = 2
+
+let a_cas_and_a_cmp = a_cas lor a_cmp
+
+let rec determine casn status = function
+  | NIL -> status
+  | CASN ({ loc; state; lt; gt; _ } as record) as eq ->
+      let status = if lt != NIL then determine casn status lt else status in
+      if status < 0 then status
+      else
+        let current = Atomic.get (as_atomic loc) in
+        if state == current then
+          determine casn (status lor (1 + Bool.to_int (is_cmp casn state))) gt
+        else
+          let matches_expected () =
+            let expected = state.before in
+            expected == current.after
+            && (current.casn == casn_after || is_after current.casn)
+            || expected == current.before
+               && (current.casn == casn_before || not (is_after current.casn))
+          in
+          if (not (is_cmp casn state)) && matches_expected () then
+            match Atomic.get casn with
+            | `Undetermined _ ->
+                (* We now know that the operation wasn't finished when we read
+                   [current], but it is possible that the [loc]ation has been
+                   updated since then by some other domain helping us (or even
+                   by some later operation). If so, then the [compare_and_set]
+                   below fails. Copying the awaiters from [current] is safe in
+                   either case, because we know that we have the [current]
+                   state that our operation is interested in.  By doing the
+                   copying here, we at most duplicate work already done by
+                   some other domain. However, it is necessary to do the copy
+                   before the [compare_and_set], because afterwards is too
+                   late as some other domain might finish the operation after
+                   the [compare_and_set] and miss the awaiters. *)
+                (match current.awaiters with
+                | [] -> ()
+                | awaiters -> record.awaiters <- awaiters);
+                if Atomic.compare_and_set (as_atomic loc) current state then
+                  determine casn (status lor a_cas) gt
+                else determine casn status eq
+            | #determined -> raise Exit
+          else -1
 
 and is_after casn =
   match fenceless_get casn with
   | `Undetermined cass as undetermined -> (
-      match determine casn `After cass with
-      | `Verify -> finish casn undetermined (verify casn cass)
-      | #determined as status -> finish casn undetermined status
+      match determine casn 0 cass with
+      | status ->
+          finish casn undetermined
+            (if a_cas_and_a_cmp = status then verify casn cass
+             else if 0 <= status then `After
+             else `Before)
       | exception Exit -> fenceless_get casn == `After)
   | `After -> true
   | `Before -> false
@@ -193,15 +224,17 @@ let determine_for_owner casn cass =
   (* The end result is a cyclic data structure, which is why we cannot
      initialize the [casn] atomic directly. *)
   fenceless_set casn undetermined;
-  match determine casn `After cass with
-  | `Verify ->
-      (* We only want to [raise Interference] in case it is the verify step that
-         fails.  The idea is that in [lock_free] mode the attempt might have
-         succeeded as the compared locations would have been set in [lock_free]
-         mode preventing interference.  If failure happens before the verify
-         step then the [lock_free] mode would have likely also failed. *)
-      finish casn undetermined (verify casn cass) || raise Mode.Interference
-  | #determined as status -> finish casn undetermined status
+  match determine casn 0 cass with
+  | status ->
+      if a_cas_and_a_cmp = status then
+        (* We only want to [raise Interference] in case it is the verify step
+           that fails.  The idea is that in [lock_free] mode the attempt might
+           have succeeded as the compared locations would have been set in
+           [lock_free] mode preventing interference.  If failure happens before
+           the verify step then the [lock_free] mode would have likely also
+           failed. *)
+        finish casn undetermined (verify casn cass) || raise Mode.Interference
+      else finish casn undetermined (if 0 <= status then `After else `Before)
   | exception Exit -> fenceless_get casn == `After
   [@@inline]
 
@@ -258,13 +291,13 @@ module Retry = struct
 end
 
 let add_awaiter loc before awaiter =
-  let state_old = fenceless_get loc.state in
+  let state_old = fenceless_get (as_atomic loc) in
   let state_new =
     let awaiters = awaiter :: state_old.awaiters in
     { before; after = before; casn = casn_after; awaiters }
   in
   before == eval state_old
-  && Atomic.compare_and_set loc.state state_old state_new
+  && Atomic.compare_and_set (as_atomic loc) state_old state_new
 
 let[@tail_mod_cons] rec remove_first x' removed = function
   | [] ->
@@ -273,13 +306,13 @@ let[@tail_mod_cons] rec remove_first x' removed = function
   | x :: xs -> if x == x' then xs else x :: remove_first x' removed xs
 
 let rec remove_awaiter loc before awaiter =
-  let state_old = fenceless_get loc.state in
+  let state_old = fenceless_get (as_atomic loc) in
   if before == eval state_old then
     let removed = ref true in
     let awaiters = remove_first awaiter removed state_old.awaiters in
     if !removed then
       let state_new = { before; after = before; casn = casn_after; awaiters } in
-      if not (Atomic.compare_and_set loc.state state_old state_new) then
+      if not (Atomic.compare_and_set (as_atomic loc) state_old state_new) then
         remove_awaiter loc before awaiter
 
 let block loc before =
@@ -291,13 +324,13 @@ let block loc before =
       raise cancellation_exn)
 
 let rec update_no_alloc backoff loc state f =
-  let state' = fenceless_get loc.state in
+  let state' = fenceless_get (as_atomic loc) in
   let before = eval state' in
   match f before with
   | after ->
       state.after <- after;
       if before == after then before
-      else if Atomic.compare_and_set loc.state state' state then (
+      else if Atomic.compare_and_set (as_atomic loc) state' state then (
         state.before <- after;
         resume_awaiters before state'.awaiters)
       else update_no_alloc (Backoff.once backoff) loc state f
@@ -306,10 +339,11 @@ let rec update_no_alloc backoff loc state f =
       update_no_alloc backoff loc state f
 
 let rec exchange_no_alloc backoff loc state =
-  let state' = fenceless_get loc.state in
+  let state' = fenceless_get (as_atomic loc) in
   let before = eval state' in
-  if before == state.after || Atomic.compare_and_set loc.state state' state then
-    resume_awaiters before state'.awaiters
+  if
+    before == state.after || Atomic.compare_and_set (as_atomic loc) state' state
+  then resume_awaiters before state'.awaiters
   else exchange_no_alloc (Backoff.once backoff) loc state
 
 let is_obstruction_free casn =
@@ -317,12 +351,12 @@ let is_obstruction_free casn =
   [@@inline]
 
 let cas loc before state =
-  let state' = fenceless_get loc.state in
+  let state' = fenceless_get (as_atomic loc) in
   let before' = state'.before and after' = state'.after in
   ((before == before' && before == after')
   || before == if is_after state'.casn then after' else before')
   && (before == state.after
-     || Atomic.compare_and_set loc.state state' state
+     || Atomic.compare_and_set (as_atomic loc) state' state
         && resume_awaiters true state'.awaiters)
   [@@inline]
 
@@ -333,11 +367,11 @@ module Loc = struct
   type 'a t = 'a loc
 
   let make after =
-    let state = Atomic.make @@ new_state after and id = Id.get_unique () in
-    { state; id }
+    let state = new_state after and id = Id.get_unique () in
+    make_loc state id
 
   let get_id loc = loc.id [@@inline]
-  let get loc = eval (Atomic.get loc.state)
+  let get loc = eval (Atomic.get (as_atomic loc))
 
   let rec get_as f loc =
     let before = get loc in
@@ -352,14 +386,14 @@ module Loc = struct
     cas loc before state
 
   let update ?(backoff = Backoff.default) loc f =
-    let state' = fenceless_get loc.state in
+    let state' = fenceless_get (as_atomic loc) in
     let before = eval state' in
     match f before with
     | after ->
         if before == after then before
         else
           let state = new_state after in
-          if Atomic.compare_and_set loc.state state' state then
+          if Atomic.compare_and_set (as_atomic loc) state' state then
             resume_awaiters before state'.awaiters
           else update_no_alloc (Backoff.once backoff) loc state f
     | exception Retry.Later ->
@@ -378,7 +412,7 @@ module Loc = struct
   let decr ?backoff loc = update ?backoff loc dec |> ignore
 
   let has_awaiters loc =
-    let state = Atomic.get loc.state in
+    let state = Atomic.get (as_atomic loc) in
     state.awaiters != []
 end
 
@@ -421,7 +455,7 @@ module Op = struct
           | [] -> determine_for_owner casn cass
           | CAS (loc, before, after) :: rest ->
               if before == after && is_obstruction_free casn then
-                let state = fenceless_get loc.state in
+                let state = fenceless_get (as_atomic loc) in
                 before == eval state && run (insert cass loc state) rest
               else
                 run
@@ -430,7 +464,7 @@ module Op = struct
         in
         let (CAS (loc, before, after)) = first in
         if before == after && is_obstruction_free casn then
-          let state = fenceless_get loc.state in
+          let state = fenceless_get (as_atomic loc) in
           before == eval state
           && run (CASN { loc; state; lt = NIL; gt = NIL; awaiters = [] }) rest
         else
@@ -446,7 +480,7 @@ module Xt = struct
   }
 
   let update0 loc f xt lt gt =
-    let state = fenceless_get loc.state in
+    let state = fenceless_get (as_atomic loc) in
     let before = eval state in
     let after = f before in
     let state =
