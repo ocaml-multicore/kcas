@@ -121,8 +121,8 @@ end
 
     Multiple shared memory locations can be manipulated atomically using either
 
-    - {!Op}, to specify a list of primitive operations to perform, or
-    - {!Xt}, to explicitly pass a transaction log to record accesses.
+    - {!Xt}, to explicitly pass a transaction log to record accesses, or
+    - {!Op}, to specify a list of primitive operations to perform.
 
     Atomic operations over multiple shared memory locations are performed in two
     or three phases:
@@ -138,47 +138,8 @@ end
     Each phase may fail.  In particular, in the first phase, as no changes to
     shared memory have yet been attempted, it is safe, for example, to raise
     exceptions to signal failure.  Failure on the third phase raises
-    {!Mode.Interference}. *)
-
-(** Operations on shared memory locations. *)
-module Op : sig
-  type t
-  (** Type of operations on shared memory locations. *)
-
-  val make_cas : 'a Loc.t -> 'a -> 'a -> t
-  (** [make_cas r before after] is an operation that attempts to set the shared
-      memory location [r] to the [after] value and succeeds if the current
-      content of [r] is the [before] value. *)
-
-  val make_cmp : 'a Loc.t -> 'a -> t
-  (** [make_cmp r expected] is an operation that succeeds if the current value
-      of the shared memory location [r] is the [expected] value. *)
-
-  val get_id : t -> int
-  (** [get_id op] returns the unique id of the shared memory reference targeted
-      by the [op]eration. *)
-
-  val is_on_loc : t -> 'a Loc.t -> bool
-  (** [is_on_loc op r] determines whether the target of [op] is the shared
-      memory location [r]. *)
-
-  val atomic : t -> bool
-  (** [atomic op] attempts to perform the given operation atomically.  Returns
-      [true] on success and [false] on failure. *)
-
-  val atomically : ?mode:Mode.t -> t list -> bool
-  (** [atomically ops] attempts to perform the given operations atomically.  If
-      used in {!Mode.obstruction_free} may raise {!Mode.Interference}.
-      Otherwise returns [true] on success and [false] on failure.  The default
-      for [atomically] is {!Mode.lock_free}.
-
-      The algorithm requires provided operations to follow a global total order.
-      To eliminate a class of bugs, the operations are sorted automatically.  If
-      the operations are given in either ascending or descending order of the
-      targeted shared memory location ids, then sorting is done in linear time
-      [O(n)] and does not increase the time complexity of the algorithm.
-      Otherwise sorting may take linearithmic time [O(n*log(n))]. *)
-end
+    {!Mode.Interference}, which is typically automatically handled by
+    {!Xt.commit}. *)
 
 (** {2 Composable transactions on multiple locations}
 
@@ -314,4 +275,50 @@ module Xt : sig
       enough attempts have failed during the verification step, [commit]
       switches to {!Mode.lock_free}.  Note that [commit] never raises the
       {!Mode.Interference} exception. *)
+end
+
+(** {2 Multi-word compare-and-set operations}
+
+    The {!Op} module provides a multi-word compare-and-set (MCAS) interface for
+    manipulating multiple locations atomically.  This is a low-level interface
+    not intended for most users. *)
+
+(** Multi-word compare-and-set operations on shared memory locations. *)
+module Op : sig
+  type t
+  (** Type of operations on shared memory locations. *)
+
+  val make_cas : 'a Loc.t -> 'a -> 'a -> t
+  (** [make_cas r before after] is an operation that attempts to set the shared
+      memory location [r] to the [after] value and succeeds if the current
+      content of [r] is the [before] value. *)
+
+  val make_cmp : 'a Loc.t -> 'a -> t
+  (** [make_cmp r expected] is an operation that succeeds if the current value
+      of the shared memory location [r] is the [expected] value. *)
+
+  val get_id : t -> int
+  (** [get_id op] returns the unique id of the shared memory reference targeted
+      by the [op]eration. *)
+
+  val is_on_loc : t -> 'a Loc.t -> bool
+  (** [is_on_loc op r] determines whether the target of [op] is the shared
+      memory location [r]. *)
+
+  val atomic : t -> bool
+  (** [atomic op] attempts to perform the given operation atomically.  Returns
+      [true] on success and [false] on failure. *)
+
+  val atomically : ?mode:Mode.t -> t list -> bool
+  (** [atomically ops] attempts to perform the given operations atomically.  If
+      used in {!Mode.obstruction_free} may raise {!Mode.Interference}.
+      Otherwise returns [true] on success and [false] on failure.  The default
+      for [atomically] is {!Mode.lock_free}.
+
+      The algorithm requires provided operations to follow a global total order.
+      To eliminate a class of bugs, the operations are sorted automatically.  If
+      the operations are given in either ascending or descending order of the
+      targeted shared memory location ids, then sorting is done in linear time
+      [O(n)] and does not increase the time complexity of the algorithm.
+      Otherwise sorting may take linearithmic time [O(n*log(n))]. *)
 end
