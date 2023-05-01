@@ -66,4 +66,5 @@
 (test
  (name threads)
  (libraries kcas)
- (modules threads))
+ (modules threads)
+ (package kcas))
