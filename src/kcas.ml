@@ -18,7 +18,6 @@ let fenceless_set = Atomic.set
 *)
 
 module Backoff = Backoff
-module Domain_local_await = Domain_local_await
 
 module Id = struct
   let id = Atomic.make 1
