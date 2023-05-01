@@ -341,9 +341,9 @@ let rec update_no_alloc backoff loc state f =
 let rec exchange_no_alloc backoff loc state =
   let state' = fenceless_get (as_atomic loc) in
   let before = eval state' in
-  if
-    before == state.after || Atomic.compare_and_set (as_atomic loc) state' state
-  then resume_awaiters before state'.awaiters
+  if before == state.after then before
+  else if Atomic.compare_and_set (as_atomic loc) state' state then
+    resume_awaiters before state'.awaiters
   else exchange_no_alloc (Backoff.once backoff) loc state
 
 let is_obstruction_free casn =

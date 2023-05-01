@@ -405,6 +405,32 @@ let test_blocking () =
     assert (not (Loc.has_awaiters bs.(i)))
   done
 
+let test_no_unnecessary_wakeups () =
+  let continue = Loc.make false and tries = Atomic.make 0 in
+
+  let other_domain =
+    Domain.spawn @@ fun () ->
+    continue
+    |> Loc.get_as @@ fun s ->
+       Atomic.incr tries;
+       Retry.unless s
+  in
+
+  while not (Loc.has_awaiters continue) do
+    Domain.cpu_relax ()
+  done;
+
+  assert (Loc.compare_and_set continue false false);
+  assert (not (Loc.update continue Fun.id));
+  Loc.set continue false;
+
+  Unix.sleepf 0.01;
+
+  assert (Loc.has_awaiters continue && Atomic.get tries = 1);
+  Loc.set continue true;
+  Domain.join other_domain;
+  assert ((not (Loc.has_awaiters continue)) && Atomic.get tries = 2)
+
 (* *)
 
 let test_validation () =
@@ -463,6 +489,7 @@ let () =
   test_post_commit ();
   test_backoff ();
   test_blocking ();
+  test_no_unnecessary_wakeups ();
   test_validation ();
   test_xt ()
 
