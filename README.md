@@ -1601,7 +1601,16 @@ experiment where we abort the transaction in case we observe that the values of
 # with_updater @@ fun () ->
     for _ = 1 to 100_000 do
       let tx ~xt =
-        if 0 <> (Xt.get ~xt a + Xt.get ~xt b) then
+        let a = Xt.get ~xt a in
+        (* We wait a bit to make it almost certain
+           we will see a torn read. The wait can be
+           removed - it only make it somewhat less
+           likely that a torn read is seen. *)
+        for _ = 1 to 1000 do
+          Domain.cpu_relax ()
+        done;
+        let b = Xt.get ~xt b in
+        if 0 <> (a + b) then
           failwith "torn read"
       in
       Xt.commit { tx }
