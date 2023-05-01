@@ -670,14 +670,13 @@ module Xt = struct
             remove_awaiters t.release xt.casn stop xt.cass;
             commit (Backoff.once backoff) mode (reset_quick xt) tx)
 
-  let commit ?(backoff = Backoff.default) ?(mode = Mode.obstruction_free) { tx }
-      =
+  let commit ?(backoff = Backoff.default) ?(mode = Mode.obstruction_free) tx =
     let casn = Atomic.make (mode :> status)
     and cass = NIL
     and validate_countdown = initial_validate_period
     and validate_period = initial_validate_period
     and post_commit = Action.noop in
     let xt = { casn; cass; validate_countdown; post_commit; validate_period } in
-    commit backoff mode xt tx
+    commit backoff mode xt tx.tx
     [@@inline]
 end
