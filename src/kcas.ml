@@ -233,7 +233,9 @@ let determine_for_owner casn cass =
            the verify step then the [lock_free] mode would have likely also
            failed. *)
         finish casn undetermined (verify casn cass) || raise Mode.Interference
-      else finish casn undetermined (if 0 <= status then `After else `Before)
+      else
+        a_cmp = status
+        || finish casn undetermined (if 0 <= status then `After else `Before)
   | exception Exit -> fenceless_get casn == `After
   [@@inline]
 
