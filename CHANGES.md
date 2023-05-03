@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.3.1
+
+- Added doubly-linked list `Dllist` to `kcas_data` (@polytypic)
+- Minor optimizations (@polytypic)
+
 ## 0.3.0
 
 - Remove the `Tx` API (@polytypic)
