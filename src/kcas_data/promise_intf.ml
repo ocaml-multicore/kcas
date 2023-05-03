@@ -5,8 +5,8 @@ module type Ops = sig
   type ('x, 'fn) fn
 
   val resolve : ('x, 'a u -> 'a -> unit) fn
-  (** [resolve u v] resolves to promise corresponding to the resolver [u] to the
-      value [v].  Any awaiters of the corresponding promise are then
+  (** [resolve u v] resolves the promise corresponding to the resolver [u] to
+      the value [v].  Any awaiters of the corresponding promise are then
       unblocked. *)
 
   val await : ('x, 'a t -> 'a) fn
