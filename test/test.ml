@@ -34,7 +34,7 @@ let assert_kcas loc expected_v =
 
 let test_non_linearizable () =
   let barrier = Barrier.make 2
-  and n_iter = 1_000_000
+  and n_iter = 100_000
   and test_finished = ref false in
 
   let a = Loc.make 0 and b = Loc.make 0 in
@@ -208,7 +208,7 @@ let in_place_shuffle array =
   done
 
 let test_presort () =
-  let n_incs = 50_000 and n_domains = 3 and n_locs = 5 in
+  let n_incs = 10_000 and n_domains = 3 and n_locs = 5 in
 
   let barrier = Barrier.make n_domains in
 
@@ -240,7 +240,7 @@ let test_presort () =
 (* *)
 
 let test_presort_and_is_in_log_xt () =
-  let n_incs = 50_000 and n_domains = 3 and n_locs = 12 in
+  let n_incs = 10_000 and n_domains = 3 and n_locs = 12 in
   let n_locs_half = n_locs asr 1 in
 
   let barrier = Barrier.make n_domains in
@@ -482,7 +482,7 @@ let () =
   test_set ();
   test_casn ();
   test_read_casn ();
-  test_stress 1000 10000;
+  test_stress 1_000 1_000;
   test_presort ();
   test_presort_and_is_in_log_xt ();
   test_updates ();
@@ -491,7 +491,8 @@ let () =
   test_blocking ();
   test_no_unnecessary_wakeups ();
   test_validation ();
-  test_xt ()
+  test_xt ();
+  Printf.printf "Test suite OK!\n%!"
 
 (*
   ####

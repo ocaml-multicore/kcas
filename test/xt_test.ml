@@ -33,4 +33,6 @@ let () =
   assert (Xt.commit { tx = P.Xt.is_empty p });
 
   Xt.commit { tx = Q.push_front q 101 };
-  assert (not (Xt.commit { tx = Q.is_empty q }))
+  assert (not (Xt.commit { tx = Q.is_empty q }));
+
+  Printf.printf "Test Xt OK!\n%!"

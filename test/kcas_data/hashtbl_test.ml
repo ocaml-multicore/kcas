@@ -88,3 +88,5 @@ let () =
   Hashtbl.remove t "foo";
   assert (Hashtbl.length t = 1);
   assert (Hashtbl.to_seq t |> List.of_seq |> List.sort compare = [ ("bar", 19) ])
+
+let () = Printf.printf "Test Hashtbl OK!\n%!"

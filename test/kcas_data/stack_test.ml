@@ -18,4 +18,6 @@ let () =
   assert (Stack.length t = 2);
   assert (Stack.pop_opt t = Some 42);
   assert (Stack.pop_opt t = Some 101);
-  assert (Stack.pop_opt t = None)
+  assert (Stack.pop_opt t = None);
+
+  Printf.printf "Test Stack OK!\n%!"
