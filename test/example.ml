@@ -9,4 +9,6 @@ ignore (Kcas.Op.atomically kcas);
 
 (* atomic_1 = 1, atomic_2 = 4 *)
 assert (Kcas.Loc.get atomic_1 = 1);
-assert (Kcas.Loc.get atomic_2 = 4)
+assert (Kcas.Loc.get atomic_2 = 4);
+
+Printf.printf "Example OK!\n%!"

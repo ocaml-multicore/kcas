@@ -16,4 +16,6 @@ let () =
 
   Thread.join a_thread;
 
-  assert (Loc.get x + Loc.get y = 42)
+  assert (Loc.get x + Loc.get y = 42);
+
+  Printf.printf "Test threads OK!\n%!"

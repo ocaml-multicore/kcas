@@ -1578,7 +1578,7 @@ using a transaction:
 
 ```ocaml
 # with_updater @@ fun () ->
-    for _ = 1 to 10_000 do
+    for _ = 1 to 1_000 do
       let tx ~xt =
         0 = (Xt.get ~xt a + Xt.get ~xt b)
       in
@@ -1600,7 +1600,7 @@ experiment where we abort the transaction in case we observe that the values of
 <!-- $MDX skip -->
 ```ocaml
 # with_updater @@ fun () ->
-    for _ = 1 to 10_000 do
+    for _ = 1 to 1_000 do
       let tx ~xt =
         if 0 <> (Xt.get ~xt a + Xt.get ~xt b) then
           failwith "torn read"

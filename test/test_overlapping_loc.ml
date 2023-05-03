@@ -49,4 +49,6 @@ let test_3 () =
 let _ =
   test_1 ();
   test_2 ();
-  test_3 ()
+  test_3 ();
+
+  Printf.printf "Test overlapping loc OK!\n%!"

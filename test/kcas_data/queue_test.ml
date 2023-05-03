@@ -30,4 +30,6 @@ let () =
   assert (Queue.take_opt q = None);
   assert (Queue.take_opt r = Some 101);
   assert (Queue.take_opt r = Some 42);
-  assert (Queue.take_opt r = None)
+  assert (Queue.take_opt r = None);
+
+  Printf.printf "Test Queue OK!\n%!"
