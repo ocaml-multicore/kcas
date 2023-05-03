@@ -182,7 +182,7 @@ let rec determine casn status = function
                && (current.casn == casn_before || not (is_after current.casn))
           in
           if (not (is_cmp casn state)) && matches_expected () then
-            match Atomic.get casn with
+            match fenceless_get casn with
             | `Undetermined _ ->
                 (* We now know that the operation wasn't finished when we read
                    [current], but it is possible that the [loc]ation has been
