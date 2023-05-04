@@ -33,10 +33,10 @@ open Kcas
 
 (** {1 Common interface} *)
 
-type 'a t
+type !'a t
 (** Type of a doubly-linked list containing {!node}s of type ['a]. *)
 
-type 'a node
+type !'a node
 (** Type of a node containing a value of type ['a]. *)
 
 val get : 'a node -> 'a
