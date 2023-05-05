@@ -106,8 +106,6 @@ module HashedType = struct
     hash == HashedType.hash && equal == HashedType.equal
 end
 
-let make_bucket _ = Loc.make []
-
 let create ?hashed_type ?min_buckets ?max_buckets ?n_way () =
   let min_buckets =
     match min_buckets with
@@ -123,8 +121,9 @@ let create ?hashed_type ?min_buckets ?max_buckets ?n_way () =
     | None -> (Stdlib.Hashtbl.seeded_hash (Random.bits ()), ( = ))
     | Some hashed_type -> HashedType.unpack hashed_type
   and pending = Loc.make Nothing
-  and length = Accumulator.make ?n_way 0
-  and buckets = Loc.make @@ Array.init min_buckets make_bucket in
+  and buckets = Loc.make [||]
+  and length = Accumulator.make ?n_way 0 in
+  Loc.set buckets @@ Loc.make_array min_buckets [];
   { pending; length; buckets; hash; equal; min_buckets; max_buckets }
 
 let n_way_of t = Accumulator.n_way_of t.length
@@ -173,8 +172,7 @@ module Xt = struct
     | Nothing -> ()
     | Rehash { state; new_capacity; new_buckets } -> (
         let new_buckets =
-          get_or_alloc new_buckets @@ fun () ->
-          Array.init new_capacity make_bucket
+          get_or_alloc new_buckets @@ fun () -> Loc.make_array new_capacity []
         in
         let old_buckets = Xt.exchange ~xt t.buckets new_buckets in
         let hash = t.hash and mask = new_capacity - 1 in
@@ -244,8 +242,7 @@ module Xt = struct
         Retry.unless (0 <= Loc.fenceless_get state);
         let new_capacity = Array.length old_buckets in
         let new_buckets =
-          get_or_alloc new_buckets @@ fun () ->
-          Array.init new_capacity make_bucket
+          get_or_alloc new_buckets @@ fun () -> Loc.make_array new_capacity []
         in
         let filter_map_a_few_buckets ~xt =
           let i = Xt.fetch_and_add ~xt state (-batch_size) in
@@ -404,11 +401,12 @@ let rebuild ?hashed_type ?min_buckets ?max_buckets ?n_way t =
     | None -> true
     | Some hashed_type -> HashedType.is_same_as t.hash t.equal hashed_type
   and length = !length in
-  if is_same_hashed_type && min_buckets <= length && length <= max_buckets then
+  if is_same_hashed_type && min_buckets <= length && length <= max_buckets then (
     let pending = Loc.make Nothing
-    and length = Accumulator.make ~n_way length
-    and buckets = Loc.make @@ Array.map Loc.make snapshot in
-    { t with pending; length; buckets; min_buckets; max_buckets }
+    and buckets = Loc.make [||]
+    and length = Accumulator.make ~n_way length in
+    Loc.set buckets @@ Array.map Loc.make snapshot;
+    { t with pending; length; buckets; min_buckets; max_buckets })
   else
     let t = create ?hashed_type ~min_buckets ~max_buckets ~n_way () in
     snapshot
