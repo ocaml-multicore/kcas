@@ -31,7 +31,7 @@ module Xt = struct
 
   let add_node_l ~xt node list =
     let next = Xt.get ~xt list.next in
-    assert (Loc.get node.node_prev == list);
+    assert (Loc.fenceless_get node.node_prev == list);
     Loc.set node.node_next next;
     Xt.set ~xt list.next (as_list node);
     Xt.set ~xt next.prev (as_list node);
@@ -47,7 +47,7 @@ module Xt = struct
   let add_node_r ~xt node list =
     let prev = Xt.get ~xt list.prev in
     Loc.set node.node_prev prev;
-    assert (Loc.get node.node_next == list);
+    assert (Loc.fenceless_get node.node_next == list);
     Xt.set ~xt list.prev (as_list node);
     Xt.set ~xt prev.next (as_list node);
     node
