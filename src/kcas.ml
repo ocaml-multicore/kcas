@@ -20,10 +20,12 @@ let fenceless_set = Atomic.set
 module Backoff = Backoff
 
 module Id = struct
-  let neg_id = Atomic.make Int.min_int
-  let neg_id () = Atomic.fetch_and_add neg_id 1
-  let nat_id = Atomic.make 0
-  let nat_id () = Atomic.fetch_and_add nat_id 1
+  let neg_id = Atomic.make (-1)
+  let neg_ids n = Atomic.fetch_and_add neg_id (-n) [@@inline]
+  let neg_id () = neg_ids 1 [@@inline]
+  let nat_id = Atomic.make Int.max_int
+  let nat_ids n = Atomic.fetch_and_add nat_id (-n) [@@inline]
+  let nat_id () = nat_ids 1 [@@inline]
 end
 
 module Action : sig
@@ -375,6 +377,15 @@ module Loc = struct
       if mode == Mode.obstruction_free then Id.nat_id () else Id.neg_id ()
     in
     make_loc state id
+
+  let make_array ?(mode = Mode.obstruction_free) n after =
+    assert (0 <= n);
+    let state = new_state after
+    and id =
+      (if mode == Mode.obstruction_free then Id.nat_ids n else Id.neg_ids n)
+      - (n - 1)
+    in
+    Array.init n @@ fun i -> make_loc state (id + i)
 
   let get_id loc = loc.id [@@inline]
   let get loc = eval (Atomic.get (as_atomic loc))

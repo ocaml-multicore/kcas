@@ -69,6 +69,10 @@ module Loc : sig
       in rare cases where a location is updated frequently and obstruction-free
       read-only accesses would almost certainly suffer from interference. *)
 
+  val make_array : ?mode:Mode.t -> int -> 'a -> 'a t array
+  (** [make_array n initial] creates an array of [n] new shared memory locations
+      with the [initial] value. *)
+
   val get_mode : 'a t -> Mode.t
   (** [get_mode r] returns the operating mode of the shared memory location
       [r]. *)

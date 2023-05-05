@@ -11,7 +11,9 @@ let make ?n_way n =
     | None -> n_way_default
     | Some n_way -> n_way |> Int.min n_way_max |> Bits.ceil_pow_2
   in
-  Array.init n_way (fun i -> Loc.make (if i = 0 then n else 0))
+  let a = Loc.make_array ~mode:Mode.lock_free n_way 0 in
+  Loc.set (Array.unsafe_get a 0) n;
+  a
 
 let n_way_of = Array.length
 

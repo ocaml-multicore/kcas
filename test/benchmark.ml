@@ -16,7 +16,7 @@ let make_kCAS k =
     if k > 0 then
       let a = Loc.make 0 in
       loop (k - 1) (Op.make_cas a 0 1 :: out1) (Op.make_cas a 1 0 :: out2)
-    else (out1, out2)
+    else (List.rev out1, List.rev out2)
   in
 
   loop k [] []

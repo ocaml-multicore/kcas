@@ -6,15 +6,15 @@ type 'a t = {
   front : 'a Elems.t Loc.t;
 }
 
-let alloc ~back ~middle ~front =
+let alloc ~front ~middle ~back =
   (* We allocate locations in specific order to make most efficient use of the
      splay-tree based transaction log. *)
-  let back = Loc.make back
+  let front = Loc.make front
   and middle = Loc.make middle
-  and front = Loc.make front in
+  and back = Loc.make back in
   { back; middle; front }
 
-let create () = alloc ~back:Elems.empty ~middle:Elems.empty ~front:Elems.empty
+let create () = alloc ~front:Elems.empty ~middle:Elems.empty ~back:Elems.empty
 
 let copy q =
   let tx ~xt = (Xt.get ~xt q.front, Xt.get ~xt q.middle, Xt.get ~xt q.back) in
