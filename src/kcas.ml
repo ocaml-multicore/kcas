@@ -424,6 +424,8 @@ module Loc = struct
   let has_awaiters loc =
     let state = Atomic.get (as_atomic loc) in
     state.awaiters != []
+
+  let fenceless_get loc = eval (fenceless_get (as_atomic loc))
 end
 
 let insert cass loc state =

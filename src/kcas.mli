@@ -125,6 +125,10 @@ module Loc : sig
   val has_awaiters : 'a t -> bool
   (** [has_awaiters r] determines whether the shared memory location [r] has
       awaiters. *)
+
+  val fenceless_get : 'a t -> 'a
+  (** [fenceless_get r] is like [get r] except that [fenceless_get]s may be
+      reordered. *)
 end
 
 (** {1 Manipulating multiple locations atomically}

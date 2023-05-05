@@ -205,7 +205,7 @@ module Xt = struct
             let initial_state = Array.length old_buckets in
             while true do
               (* If state is modified outside our expensive tx would fail. *)
-              Retry.unless (Loc.get state = initial_state);
+              Retry.unless (Loc.fenceless_get state = initial_state);
               rehash_a_few_buckets ~xt
             done
           else
@@ -219,7 +219,7 @@ module Xt = struct
         assert (not must_be_done_in_this_tx);
         let buckets = Xt.get ~xt t.buckets in
         (* Check state to ensure that buckets have not been updated. *)
-        Retry.unless (0 <= Loc.get state);
+        Retry.unless (0 <= Loc.fenceless_get state);
         let snapshot =
           get_or_alloc snapshot @@ fun () ->
           Array.make (Array.length buckets) []
@@ -241,7 +241,7 @@ module Xt = struct
         assert (not must_be_done_in_this_tx);
         let old_buckets = Xt.get ~xt t.buckets in
         (* Check state to ensure that buckets have not been updated. *)
-        Retry.unless (0 <= Loc.get state);
+        Retry.unless (0 <= Loc.fenceless_get state);
         let new_capacity = Array.length old_buckets in
         let new_buckets =
           get_or_alloc new_buckets @@ fun () ->
@@ -333,15 +333,18 @@ module Xt = struct
 end
 
 let find_opt t k =
-  Loc.get t.buckets |> bucket_of t.hash k |> Loc.get |> Assoc.find_opt t.equal k
+  Loc.get t.buckets |> bucket_of t.hash k |> Loc.fenceless_get
+  |> Assoc.find_opt t.equal k
 
 let find_all t k =
-  Loc.get t.buckets |> bucket_of t.hash k |> Loc.get |> Assoc.find_all t.equal k
+  Loc.get t.buckets |> bucket_of t.hash k |> Loc.fenceless_get
+  |> Assoc.find_all t.equal k
 
 let find t k = match find_opt t k with None -> raise Not_found | Some v -> v
 
 let mem t k =
-  Loc.get t.buckets |> bucket_of t.hash k |> Loc.get |> Assoc.mem t.equal k
+  Loc.get t.buckets |> bucket_of t.hash k |> Loc.fenceless_get
+  |> Assoc.mem t.equal k
 
 let clear t = Kcas.Xt.commit { tx = Xt.clear t }
 let reset t = Kcas.Xt.commit { tx = Xt.reset t }
@@ -362,7 +365,7 @@ let snapshot ?length t =
   in
   Kcas.Xt.commit { tx };
   Kcas.Xt.commit { tx = Xt.perform_pending t };
-  Loc.get snapshot
+  Loc.fenceless_get snapshot
 
 let to_seq t =
   let snapshot = snapshot t in
@@ -432,7 +435,7 @@ let filter_map_inplace fn t =
   in
   Kcas.Xt.commit { tx };
   Kcas.Xt.commit { tx = Xt.perform_pending t };
-  match Loc.get raised with Done -> () | exn -> raise exn
+  match Loc.fenceless_get raised with Done -> () | exn -> raise exn
 
 let stats t =
   let length = ref 0 in
