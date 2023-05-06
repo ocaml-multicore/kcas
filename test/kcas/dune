@@ -3,29 +3,11 @@
  (modules barrier)
  (package kcas))
 
-(library
- (name xt_linked_queue)
- (libraries kcas)
- (modules xt_linked_queue)
- (package kcas))
-
-(library
- (name xt_stack)
- (libraries kcas)
- (modules xt_stack)
- (package kcas))
-
 (test
  (name test)
- (libraries kcas barrier)
+ (libraries kcas barrier unix)
  (modules test)
  (package kcas))
-
-(test
- (name xt_test)
- (libraries kcas kcas_data xt_linked_queue xt_stack)
- (modules xt_test)
- (package kcas_data))
 
 (test
  (name test_overlapping_loc)
@@ -65,7 +47,7 @@
 
 (test
  (name threads)
- (libraries kcas)
+ (libraries kcas threads)
  (modules threads)
  (package kcas))
 
