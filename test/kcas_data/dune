@@ -1,4 +1,35 @@
-(tests
- (names dllist_test hashtbl_test hashtbl_bench queue_test stack_test)
+(test
+ (name dllist_test)
+ (modules dllist_test)
+ (libraries kcas kcas_data)
+ (package kcas_data))
+
+(test
+ (name hashtbl_bench)
+ (modules hashtbl_bench)
  (libraries kcas kcas_data unix)
+ (package kcas_data))
+
+(test
+ (name hashtbl_test)
+ (modules hashtbl_test)
+ (libraries kcas kcas_data)
+ (package kcas_data))
+
+(test
+ (name queue_test)
+ (modules queue_test)
+ (libraries kcas kcas_data)
+ (package kcas_data))
+
+(test
+ (name stack_test)
+ (modules stack_test)
+ (libraries kcas kcas_data)
+ (package kcas_data))
+
+(test
+ (name xt_test)
+ (modules xt_test xt_linked_queue xt_stack)
+ (libraries kcas kcas_data)
  (package kcas_data))
