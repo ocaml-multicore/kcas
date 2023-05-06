@@ -459,6 +459,15 @@ let test_validation () =
 
 (* *)
 
+let test_mode () =
+  assert (Loc.get_mode (Loc.make ~mode:Mode.lock_free 0) == Mode.lock_free);
+  assert (
+    Loc.get_mode (Loc.make ~mode:Mode.obstruction_free 0)
+    == Mode.obstruction_free);
+  assert (Loc.get_mode (Loc.make 0) == Mode.obstruction_free)
+
+(* *)
+
 type _ _loc_is_injective =
   | Int : int _loc_is_injective
   | Loc : 'a _loc_is_injective -> 'a Loc.t _loc_is_injective
@@ -491,6 +500,7 @@ let () =
   test_blocking ();
   test_no_unnecessary_wakeups ();
   test_validation ();
+  test_mode ();
   test_xt ();
   Printf.printf "Test suite OK!\n%!"
 
