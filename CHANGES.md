@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.4.0
+
+- Allocation of location ids in a transaction log friendly order (@polytypic)
+- Per location operating mode selection (@Dashy-Dolphin, review: @polytypic)
+- Injectivity `!'a Kcas_data.Dllist.t` annotation (@polytypic)
+
 ## 0.3.1
 
 - Added doubly-linked list `Dllist` to `kcas_data` (@polytypic)
