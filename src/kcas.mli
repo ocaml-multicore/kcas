@@ -61,7 +61,13 @@ module Loc : sig
 
   val make : ?mode:Mode.t -> 'a -> 'a t
   (** [make initial] creates a new shared memory location with the [initial]
-      value. *)
+      value.
+
+      The optional [mode] argument defaults to {!Mode.obstruction_free}.  If
+      explicitly specified as {!Mode.lock_free}, the location will always be
+      accessed using the lock-free operating mode.  This may improve performance
+      in rare cases where a location is updated frequently and obstruction-free
+      read-only accesses would almost certainly suffer from interference. *)
 
   val get_mode : 'a t -> Mode.t
   (** [get_mode r] returns the operating mode of the shared memory location
