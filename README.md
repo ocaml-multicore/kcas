@@ -189,7 +189,6 @@ As our first example of using transactions, let's implement a lock-free stack. A
 stack can be just a shared memory location that holds a list of elements:
 
 ```ocaml
-# type 'a stack = 'a list Loc.t
 type 'a stack = 'a list Loc.t
 ```
 
@@ -308,11 +307,10 @@ Let's then implement a lock-free queue. To keep things simple we just use the
 traditional two-stack queue data structure:
 
 ```ocaml
-# type 'a queue = {
-    front: 'a list Loc.t;
-    back: 'a list Loc.t
-  }
-type 'a queue = { front : 'a list Loc.t; back : 'a list Loc.t; }
+type 'a queue = {
+  front: 'a list Loc.t;
+  back: 'a list Loc.t
+}
 ```
 
 To create a queue we
@@ -530,7 +528,7 @@ long as we don't populate both at the same time
 ```ocaml
 # Xt.commit { tx = push a_stack 2 };
   let x = Xt.commit { tx = pop a_stack } in
-  Xt.commit { tx = enqueue a_queue x };
+  Xt.commit { tx = enqueue a_queue x }
 - : unit = ()
 ```
 
@@ -562,14 +560,12 @@ priority queue.
 First we define a data type to represent the spine of a leftist heap:
 
 ```ocaml
-# type 'v leftist =
-    [ `Null
-    | `Node of 'v leftist Loc.t
-             * int Loc.t
-             * 'v
-             * 'v leftist Loc.t ]
 type 'v leftist =
-    [ `Node of 'v leftist Loc.t * int Loc.t * 'v * 'v leftist Loc.t | `Null ]
+  [ `Null
+  | `Node of 'v leftist Loc.t
+           * int Loc.t
+           * 'v
+           * 'v leftist Loc.t ]
 ```
 
 To create a leftist heap we
@@ -674,7 +670,9 @@ it to
 [`commit`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-commit):
 
 ```ocaml
-# let tx ~xt = List.iter (insert ~xt ~lt a_heap) [3; 1; 4; 1; 5] in
+# let tx ~xt =
+    List.iter (insert ~xt ~lt a_heap) [3; 1; 4; 1; 5]
+  in
   Xt.commit { tx }
 - : unit = ()
 ```
@@ -728,20 +726,15 @@ the tail to momentarily lag behind.
 First we define a type for nodes:
 
 ```ocaml
-# type 'a node = Nil | Node of 'a * 'a node Loc.t
 type 'a node = Nil | Node of 'a * 'a node Loc.t
 ```
 
 A queue is then a pair of pointers to the head and tail of a queue:
 
 ```ocaml
-# type 'a queue = {
-    head : 'a node Loc.t Loc.t;
-    tail : 'a node Loc.t Atomic.t;
-  }
 type 'a queue = {
   head : 'a node Loc.t Loc.t;
-  tail : 'a node Loc.t Atomic.t;
+  tail : 'a node Loc.t Atomic.t
 }
 ```
 
@@ -1160,15 +1153,10 @@ and quickly move the back to the middle stack.
 First we redefine the `queue` type to include a `middle` location:
 
 ```ocaml
-# type 'a queue = {
-    back : 'a list Loc.t;
-    middle : 'a list Loc.t;
-    front : 'a list Loc.t;
-  }
 type 'a queue = {
   back : 'a list Loc.t;
   middle : 'a list Loc.t;
-  front : 'a list Loc.t;
+  front : 'a list Loc.t
 }
 ```
 
@@ -1288,13 +1276,9 @@ implement a hash table without rehashing. For further simplicity, let's just use
 separate chaining. Here is a type for such a basic hash table:
 
 ```ocaml
-# type ('k, 'v) basic_hashtbl = {
-    size: int Loc.t;
-    data: ('k * 'v Loc.t) list Loc.t array Loc.t;
-  }
 type ('k, 'v) basic_hashtbl = {
-  size : int Loc.t;
-  data : ('k * 'v Loc.t) list Loc.t array Loc.t;
+  size: int Loc.t;
+  data: ('k * 'v Loc.t) list Loc.t array Loc.t
 }
 ```
 
@@ -1303,7 +1287,7 @@ The basic hash table constructor just allocates all the locations:
 ```ocaml
 # let basic_hashtbl () = {
     size = Loc.make 0;
-    data = Loc.make (Array.init 4 (fun _ -> Loc.make []))
+    data = Loc.make (Loc.make_array 4 [])
   }
 val basic_hashtbl : unit -> ('a, 'b) basic_hashtbl = <fun>
 ```
@@ -1378,14 +1362,15 @@ are added, performance deteriorates. We could implement a naive rehashing
 operation:
 
 ```ocaml
-let rehash ~xt hashtbl new_capacity =
-  let new_data = Array.init new_capacity (fun _ -> Loc.make []) in
-  Xt.exchange ~xt hashtbl.data new_data
-  |> Array.iter (fun assoc_loc ->
-     Xt.get ~xt assoc_loc
-     |> List.iter (fun ((key, _) as bucket) ->
-        let i = Hashtbl.hash key mod new_capacity in
-        Xt.modify ~xt new_data.(i) (List.cons bucket)));
+# let rehash ~xt hashtbl new_capacity =
+    let new_data = Loc.make_array new_capacity [] in
+    Xt.exchange ~xt hashtbl.data new_data
+    |> Array.iter @@ fun assoc_loc ->
+       Xt.get ~xt assoc_loc
+       |> List.iter @@ fun ((key, _) as bucket) ->
+          let i = Hashtbl.hash key mod new_capacity in
+          Xt.modify ~xt new_data.(i) (List.cons bucket)
+val rehash : xt:'a Xt.t -> ('b, 'c) basic_hashtbl -> int -> unit = <fun>
 ```
 
 But that involves reading all the bucket locations. Any mutation that adds or
@@ -1394,13 +1379,9 @@ removes an association would cause such a rehash to fail.
 To avoid taking on such adversarial races, we can use a level of indirection:
 
 ```ocaml
-# type ('k, 'v) hashtbl = {
-    pending: [`Nothing | `Rehash of int] Loc.t;
-    basic: ('k, 'v) basic_hashtbl;
-  }
 type ('k, 'v) hashtbl = {
-  pending : [ `Nothing | `Rehash of int ] Loc.t;
-  basic : ('k, 'v) basic_hashtbl;
+  pending: [`Nothing | `Rehash of int] Loc.t;
+  basic: ('k, 'v) basic_hashtbl
 }
 ```
 
@@ -1426,8 +1407,11 @@ rehash seems necessary:
       match Xt.get ~xt hashtbl.pending with
       | `Rehash _ -> ()
       | `Nothing ->
-        let size = Int.max 1 (Xt.get ~xt hashtbl.basic.size + delta) in
-        let capacity = Array.length (Xt.get ~xt hashtbl.basic.data) in
+        let size =
+          Int.max 1 (Xt.get ~xt hashtbl.basic.size + delta)
+        and capacity =
+          Array.length (Xt.get ~xt hashtbl.basic.data)
+        in
         if capacity < size * 4 then
           Xt.set ~xt hashtbl.pending (`Rehash (capacity * 2))
         else if size * 8 < capacity then
@@ -1500,7 +1484,7 @@ After creating a constructor function
 ```ocaml
 # let hashtbl () = {
     pending = Loc.make `Nothing;
-    basic = basic_hashtbl ();
+    basic = basic_hashtbl ()
   }
 val hashtbl : unit -> ('a, 'b) hashtbl = <fun>
 ```
@@ -1566,7 +1550,7 @@ decrements `b` in a transaction:
       while not !stop do
         let tx ~xt =
           Xt.incr ~xt a;
-          Xt.decr ~xt b;
+          Xt.decr ~xt b
         in
         Xt.commit { tx }
       done in
@@ -1584,7 +1568,7 @@ using a transaction:
 # with_updater @@ fun () ->
     for _ = 1 to 1_000 do
       let tx ~xt =
-        0 = (Xt.get ~xt a + Xt.get ~xt b)
+        0 = Xt.get ~xt a + Xt.get ~xt b
       in
       if not (Xt.commit { tx }) then
         failwith "torn read"
@@ -1605,7 +1589,7 @@ experiment where we abort the transaction in case we observe that the values of
 # with_updater @@ fun () ->
     for _ = 1 to 1_000 do
       let tx ~xt =
-        if 0 <> (Xt.get ~xt a + Xt.get ~xt b) then
+        if 0 <> Xt.get ~xt a + Xt.get ~xt b then
           failwith "torn read"
       in
       Xt.commit { tx }
@@ -1653,69 +1637,70 @@ package.
 Here is the full toy scheduler module:
 
 ```ocaml
-# module Scheduler : sig
-    type t
-    val spawn : unit -> t
-    val join : t -> unit
-    val fiber : t -> (unit -> 'a) -> 'a Promise.t
-  end = struct
-    type _ Effect.t +=
-      | Suspend : (('a, unit) Effect.Deep.continuation -> unit) -> 'a Effect.t
+module Scheduler : sig
+  type t
+  val spawn : unit -> t
+  val join : t -> unit
+  val fiber : t -> (unit -> 'a) -> 'a Promise.t
+end = struct
+  open Effect.Deep
 
-    type t = { queue: (unit -> unit) Queue.t; domain: unit Domain.t }
+  type _ Effect.t +=
+    | Suspend : (('a, unit) continuation -> unit) -> 'a Effect.t
 
-    let spawn () =
-      let queue = Queue.create () in
-      let rec scheduler work =
-        let effc (type a) : a Effect.t -> _ = function
-          | Suspend ef -> Some ef
-          | _ -> None in
-        Effect.Deep.try_with work () Effect.Deep.{effc};
-        match Queue.take_opt queue with
-        | Some work -> scheduler work
-        | None -> () in
-      let prepare_for_await _ =
-        let state = Atomic.make `Init in
-        let release () =
-          if Atomic.get state != `Released then
-            match Atomic.exchange state `Released with
-            | `Awaiting k ->
-              Queue.add (Effect.Deep.continue k) queue
-            | _ -> () in
-        let await () =
-          if Atomic.get state != `Released then
-            Effect.perform @@ Suspend (fun k ->
-              if not (Atomic.compare_and_set state `Init (`Awaiting k)) then
-                Effect.Deep.continue k ())
-        in
-        Domain_local_await.{ release; await } in
-      let domain = Domain.spawn @@ fun () ->
-        try
-          while true do
-            let work = Queue.take_blocking queue in
-            Domain_local_await.using
-              ~prepare_for_await
-              ~while_running:(fun () -> scheduler work)
-          done
-        with Exit -> () in
-      { queue; domain }
+  type t = {
+    queue: (unit -> unit) Queue.t;
+    domain: unit Domain.t
+  }
 
-    let join t =
-      Queue.add (fun () -> raise Exit) t.queue;
-      Domain.join t.domain
+  let spawn () =
+    let queue = Queue.create () in
+    let rec scheduler work =
+      let effc (type a) : a Effect.t -> _ = function
+        | Suspend ef -> Some ef
+        | _ -> None in
+      try_with work () { effc };
+      match Queue.take_opt queue with
+      | Some work -> scheduler work
+      | None -> () in
+    let prepare_for_await _ =
+      let state = Atomic.make `Init in
+      let release () =
+        if Atomic.get state != `Released then
+          match Atomic.exchange state `Released with
+          | `Awaiting k ->
+            Queue.add (continue k) queue
+          | _ -> () in
+      let await () =
+        if Atomic.get state != `Released then
+          Effect.perform @@ Suspend (fun k ->
+            if not (Atomic.compare_and_set state `Init
+                      (`Awaiting k)) then
+              continue k ())
+      in
+      Domain_local_await.{ release; await } in
+    let domain = Domain.spawn @@ fun () ->
+      try
+        while true do
+          let work = Queue.take_blocking queue in
+          Domain_local_await.using
+            ~prepare_for_await
+            ~while_running:(fun () -> scheduler work)
+        done
+      with Exit -> () in
+    { queue; domain }
 
-    let fiber t thunk =
-      let (promise, resolver) = Promise.create () in
-      Queue.add (fun () -> Promise.resolve resolver (thunk ())) t.queue;
-      promise
-  end
-module Scheduler :
-  sig
-    type t
-    val spawn : unit -> t
-    val join : t -> unit
-    val fiber : t -> (unit -> 'a) -> 'a Promise.t
-  end
+  let join t =
+    Queue.add (fun () -> raise Exit) t.queue;
+    Domain.join t.domain
+
+  let fiber t thunk =
+    let (promise, resolver) = Promise.create () in
+    Queue.add
+      (fun () -> Promise.resolve resolver (thunk ()))
+      t.queue;
+    promise
+end
 ```
 
 The idea is that one can spawn a scheduler to run on a new domain. Then one can
@@ -1761,7 +1746,9 @@ state in between, and then returns their sum:
 # let state = Loc.make 0
 val state : int Loc.t = <abstr>
 # let sync_to target =
-    Loc.get_as (fun current -> Retry.unless (target <= current)) state
+    state
+    |> Loc.get_as @@ fun current ->
+       Retry.unless (target <= current)
 val sync_to : int -> unit = <fun>
 # let a_promise = Scheduler.fiber scheduler @@ fun () ->
     let x = Stack.pop_blocking out_stack in
