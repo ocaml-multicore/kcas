@@ -1601,8 +1601,7 @@ Unfortunately within a transaction attempt things are not as simple. Let's do an
 experiment where we abort the transaction in case we observe that the values of
 `a` and `b` are inconsistent:
 
-<!-- $MDX skip -->
-```ocaml
+```ml
 # with_updater @@ fun () ->
     for _ = 1 to 1_000 do
       let tx ~xt =
