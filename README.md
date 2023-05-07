@@ -674,8 +674,8 @@ it to
 [`commit`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-commit):
 
 ```ocaml
-# Xt.commit { tx = fun ~xt ->
-    List.iter (insert ~xt ~lt a_heap) [3; 1; 4; 1; 5] }
+# let tx ~xt = List.iter (insert ~xt ~lt a_heap) [3; 1; 4; 1; 5] in
+  Xt.commit { tx }
 - : unit = ()
 ```
 
@@ -943,11 +943,13 @@ Consider the following example that swaps the values of the shared memory
 locations `a` and `b`:
 
 ```ocaml
-# Xt.commit { tx = fun ~xt ->
+# let tx ~xt =
     let a_val = Xt.get ~xt a
     and b_val = Xt.get ~xt b in
     Xt.set ~xt a b_val;
-    Xt.set ~xt b a_val }
+    Xt.set ~xt b a_val
+  in
+  Xt.commit { tx }
 - : unit = ()
 ```
 
@@ -956,10 +958,12 @@ The above performs four accesses. Using
 we can reduce that to three:
 
 ```ocaml
-# Xt.commit { tx = fun ~xt ->
+# let tx ~xt =
     let a_val = Xt.get ~xt a in
     let b_val = Xt.exchange ~xt b a_val in
-    Xt.set ~xt a b_val }
+    Xt.set ~xt a b_val
+  in
+  Xt.commit { tx }
 - : unit = ()
 ```
 

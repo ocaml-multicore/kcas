@@ -309,13 +309,15 @@ let test_post_commit () =
      with Exit -> ());
     assert (!count = expect)
   in
-  attempt_with_post_commit ~expect:0 { tx = (fun ~xt:_ -> raise Exit) };
-  attempt_with_post_commit ~expect:1 { tx = (fun ~xt:_ -> ()) };
+  let tx ~xt:_ = raise Exit in
+  attempt_with_post_commit ~expect:0 { tx };
+  let tx ~xt:_ = () in
+  attempt_with_post_commit ~expect:1 { tx };
   let a = Loc.make 0 and b = Loc.make 0 in
   attempt_with_post_commit ~expect:1 { tx = Xt.modify a Fun.id };
   attempt_with_post_commit ~expect:1 { tx = Xt.incr a };
-  attempt_with_post_commit ~expect:1
-    { tx = (fun ~xt -> Xt.set ~xt a (Xt.exchange ~xt b 0)) }
+  let tx ~xt = Xt.set ~xt a (Xt.exchange ~xt b 0) in
+  attempt_with_post_commit ~expect:1 { tx }
 
 (* *)
 
