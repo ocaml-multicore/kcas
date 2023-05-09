@@ -1571,10 +1571,10 @@ using a transaction:
         0 = Xt.get ~xt a + Xt.get ~xt b
       in
       if not (Xt.commit { tx }) then
-        failwith "torn read"
+        failwith "read skew"
     done;
-    "no torn reads"
-- : string = "no torn reads"
+    "no read skew"
+- : string = "no read skew"
 ```
 
 Nice! So, it appears everything works as expected. A transaction can only commit
@@ -1590,24 +1590,49 @@ experiment where we abort the transaction in case we observe that the values of
     for _ = 1 to 1_000 do
       let tx ~xt =
         if 0 <> Xt.get ~xt a + Xt.get ~xt b then
-          failwith "torn read"
+          failwith "read skew"
       in
       Xt.commit { tx }
     done;
-    "no torn reads"
-Exception: Failure "torn read".
+    "no read skew"
+Exception: Failure "read skew".
 ```
 
 Oops! So, within a transaction we may actually observe different locations
 having values from different committed transactions. This is something that
 needs to be kept in mind when writing transactions.
 
-To mitigate issues due to torn reads and to also avoid problems with long
-running transactions, the **kcas** transaction mechanism automatically validates
-the transaction log periodically when an access is made to the transaction log.
+To mitigate issues due to read skew and to also avoid problems with long running
+transactions, the **kcas** transaction mechanism automatically validates the
+transaction log periodically when an access is made to the transaction log.
 Therefore an important guideline for writing transactions is that loops inside a
 transaction should always include an access of some shared memory location
 through the transaction log or should otherwise be guaranteed to be bounded.
+
+In addition to the automatic periodic validation, one can also explicitly
+[`validate`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-validate),
+_after_ reading some locations, that the locations have not been modified
+outside of the transaction:
+
+```ocaml
+# with_updater @@ fun () ->
+    for _ = 1 to 1_000 do
+      let tx ~xt =
+        let a' = Xt.get ~xt a in
+        let b' = Xt.get ~xt b in
+        Xt.validate ~xt a;
+        if 0 <> a' + b' then
+          failwith "read skew"
+      in
+      Xt.commit { tx }
+    done;
+    "no read skew"
+- : string = "no read skew"
+```
+
+Notice that above we only validated the access of `a`, because we know that `a`
+and `b` are always updated atomically and we read `b` after reading `a`. In this
+case that is enough to ensure that read skew is not possible.
 
 ## Scheduler interop
 
