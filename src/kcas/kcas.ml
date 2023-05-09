@@ -504,24 +504,28 @@ module Xt = struct
     mutable post_commit : Action.t;
   }
 
-  let rec validate casn = function
+  let validate_one casn loc state =
+    let before = if is_cmp casn state then eval state else state.before in
+    if before != eval (fenceless_get (as_atomic loc)) then Retry.later ()
+    [@@inline]
+
+  let rec validate_all casn = function
     | NIL -> ()
     | CASN { loc; state; lt; gt; _ } ->
-        if lt != NIL then validate casn lt;
-        let before = if is_cmp casn state then eval state else state.before in
-        if before != eval (fenceless_get (as_atomic loc)) then Retry.later ();
-        validate casn gt
+        if lt != NIL then validate_all casn lt;
+        validate_one casn loc state;
+        validate_all casn gt
 
-  let validate xt =
+  let validate_log xt =
     let p = xt.validate_period * 2 in
     xt.validate_countdown <- p;
     xt.validate_period <- p;
-    validate xt.casn xt.cass
+    validate_all xt.casn xt.cass
     [@@inline never]
 
-  let maybe_validate xt =
+  let maybe_validate_log xt =
     let c = xt.validate_countdown - 1 in
-    if 0 < c then xt.validate_countdown <- c else validate xt
+    if 0 < c then xt.validate_countdown <- c else validate_log xt
     [@@inline]
 
   let update0 loc f xt lt gt =
@@ -555,7 +559,7 @@ module Xt = struct
     [@@inline]
 
   let update loc f xt =
-    maybe_validate xt;
+    maybe_validate_log xt;
     let x = loc.id in
     match xt.cass with
     | NIL -> update0 loc f xt NIL NIL
@@ -602,6 +606,21 @@ module Xt = struct
 
   let post_commit ~xt action =
     xt.post_commit <- Action.append action xt.post_commit
+
+  let validate ~xt loc =
+    let x = loc.id in
+    match xt.cass with
+    | NIL -> ()
+    | CASN { loc = a; lt = NIL; _ } when x < a.id -> ()
+    | CASN { loc = a; gt = NIL; _ } when a.id < x -> ()
+    | CASN { loc = a; state; _ } when Obj.magic a == loc ->
+        validate_one xt.casn a state
+    | cass -> (
+        match splay ~hit_parent:true x cass with
+        | lt, Hit (a, state), gt ->
+            xt.cass <- CASN { loc = a; state; lt; gt; awaiters = [] };
+            if Obj.magic a == loc then validate_one xt.casn a state
+        | _, Miss, _ -> impossible ())
 
   let is_in_log ~xt loc =
     let x = loc.id in

@@ -202,7 +202,7 @@ module Xt : sig
       it is not possible to commit a transaction after it has seen such an
       inconsistent view of the shared memory locations.
 
-      To mitigate potential issues due to this torn read anomaly and due to very
+      To mitigate potential issues due to this read skew anomaly and due to very
       long running transactions, all of the access recording operations in this
       section periodically validate the entire transaction log.  An important
       guideline for writing transactions is that loops inside a transaction
@@ -265,6 +265,18 @@ module Xt : sig
   val post_commit : xt:'x t -> (unit -> unit) -> unit
   (** [post_commit ~xt action] adds the [action] to be performed after the
       transaction has been performed successfully. *)
+
+  (** {1 Validation} *)
+
+  val validate : xt:'x t -> 'a Loc.t -> unit
+  (** [validate ~xt r] determines whether the shared memory location [r] has
+      been modified outside of the transaction and raises {!Retry.Later} in case
+      it has.
+
+      Due to the possibility of read skew, in cases where some important
+      invariant should hold between two or more different shared memory
+      locations, one may explicitly validate the locations, after reading all of
+      them, to ensure that no read skew is possible. *)
 
   (** {1 Advanced} *)
 

@@ -435,7 +435,7 @@ let test_no_unnecessary_wakeups () =
 
 (* *)
 
-let test_validation () =
+let test_periodic_validation () =
   let a = Loc.make 0 and b = Loc.make 0 and looping = ref false in
   let non_zero_difference_domain =
     Domain.spawn @@ fun () ->
@@ -458,6 +458,44 @@ let test_validation () =
   Loc.set a 1;
 
   assert (1 = Domain.join non_zero_difference_domain)
+
+(* *)
+
+let test_explicit_validation () =
+  let a = Loc.make 0 and b = Loc.make 0 in
+
+  let exit = ref false and mutator_running = ref false in
+  let mutator_domain =
+    Domain.spawn @@ fun () ->
+    mutator_running := true;
+    while not !exit do
+      let tx ~xt =
+        Xt.decr ~xt a;
+        Xt.incr ~xt b
+      in
+      Xt.commit { tx };
+      Domain.cpu_relax ()
+    done
+  in
+
+  let n = 100 in
+
+  while not !mutator_running do
+    Domain.cpu_relax ()
+  done;
+
+  for _ = 1 to n do
+    let tx ~xt =
+      let a' = Xt.get ~xt a and b' = Xt.get ~xt b in
+      Xt.validate ~xt a;
+      assert (a' + b' = 0)
+    in
+    Xt.commit { tx }
+  done;
+
+  exit := true;
+
+  Domain.join mutator_domain
 
 (* *)
 
@@ -501,7 +539,8 @@ let () =
   test_backoff ();
   test_blocking ();
   test_no_unnecessary_wakeups ();
-  test_validation ();
+  test_periodic_validation ();
+  test_explicit_validation ();
   test_mode ();
   test_xt ();
   Printf.printf "Test suite OK!\n%!"
