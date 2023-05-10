@@ -203,7 +203,7 @@ module Xt = struct
             let initial_state = Array.length old_buckets in
             while true do
               (* If state is modified outside our expensive tx would fail. *)
-              Retry.unless (Loc.fenceless_get state = initial_state);
+              if Loc.fenceless_get state != initial_state then Retry.invalid ();
               rehash_a_few_buckets ~xt
             done
           else
@@ -217,7 +217,7 @@ module Xt = struct
         assert (not must_be_done_in_this_tx);
         let buckets = Xt.get ~xt t.buckets in
         (* Check state to ensure that buckets have not been updated. *)
-        Retry.unless (0 <= Loc.fenceless_get state);
+        if Loc.fenceless_get state < 0 then Retry.invalid ();
         let snapshot =
           get_or_alloc snapshot @@ fun () ->
           Array.make (Array.length buckets) []
@@ -239,7 +239,7 @@ module Xt = struct
         assert (not must_be_done_in_this_tx);
         let old_buckets = Xt.get ~xt t.buckets in
         (* Check state to ensure that buckets have not been updated. *)
-        Retry.unless (0 <= Loc.fenceless_get state);
+        if Loc.fenceless_get state < 0 then Retry.invalid ();
         let new_capacity = Array.length old_buckets in
         let new_buckets =
           get_or_alloc new_buckets @@ fun () -> Loc.make_array new_capacity []
