@@ -249,7 +249,7 @@ let invalid_retry () = failwith "kcas: invalid use of retry" [@@inline never]
 
 type splay = Miss : splay | Hit : 'a loc * 'a state -> splay
 
-let casn (loc, state, lt, gt) = CASN { loc; state; lt; gt; awaiters = [] }
+let make_casn loc state lt gt = CASN { loc; state; lt; gt; awaiters = [] }
   [@@inline]
 
 let rec splay ~hit_parent x = function
@@ -261,22 +261,22 @@ let rec splay ~hit_parent x = function
         | CASN { loc = pa; state = ps; lt = ll; gt = lr; _ } ->
             if x < pa.id && ((not hit_parent) || ll != NIL) then
               let lll, n, llr = splay ~hit_parent x ll in
-              (lll, n, casn (pa, ps, llr, casn (a, s, lr, r)))
+              (lll, n, make_casn pa ps llr (make_casn a s lr r))
             else if pa.id < x && ((not hit_parent) || lr != NIL) then
               let lrl, n, lrr = splay ~hit_parent x lr in
-              (casn (pa, ps, ll, lrl), n, casn (a, s, lrr, r))
-            else (ll, Hit (pa, ps), casn (a, s, lr, r))
+              (make_casn pa ps ll lrl, n, make_casn a s lrr r)
+            else (ll, Hit (pa, ps), make_casn a s lr r)
       else if a.id < x && ((not hit_parent) || r != NIL) then
         match r with
         | NIL -> (t, Miss, NIL)
         | CASN { loc = pa; state = ps; lt = rl; gt = rr; _ } ->
             if x < pa.id && ((not hit_parent) || rl != NIL) then
               let rll, n, rlr = splay ~hit_parent x rl in
-              (casn (a, s, l, rll), n, casn (pa, ps, rlr, rr))
+              (make_casn a s l rll, n, make_casn pa ps rlr rr)
             else if pa.id < x && ((not hit_parent) || rr != NIL) then
               let rrl, n, rrr = splay ~hit_parent x rr in
-              (casn (pa, ps, casn (a, s, l, rl), rrl), n, rrr)
-            else (casn (a, s, l, rl), Hit (pa, ps), rr)
+              (make_casn pa ps (make_casn a s l rl) rrl, n, rrr)
+            else (make_casn a s l rl, Hit (pa, ps), rr)
       else (l, Hit (a, s), r)
 
 let new_state after =
@@ -682,7 +682,7 @@ module Xt = struct
     | result -> (
         match xt.cass with
         | NIL -> Action.run xt.post_commit result
-        | CASN { loc; state; lt = NIL; gt = NIL; awaiters = _ } ->
+        | CASN { loc; state; lt = NIL; gt = NIL; _ } ->
             if is_cmp xt.casn state then Action.run xt.post_commit result
             else
               let before = state.before in
