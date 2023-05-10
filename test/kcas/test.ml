@@ -491,6 +491,42 @@ let test_explicit_validation () =
 
 (* *)
 
+let test_rollback () =
+  let n_iter = 1_000 in
+
+  let n_locs = 20 in
+
+  let locs = Loc.make_array n_locs 0 in
+
+  let accum = ref 0 in
+
+  for _ = 1 to n_iter do
+    let n_permanent = Random.int n_locs in
+    let n_rollbacks = Random.int n_locs in
+
+    let tx ~xt =
+      in_place_shuffle locs;
+      for i = 0 to n_permanent - 1 do
+        Xt.incr ~xt locs.(i)
+      done;
+
+      let snap = Xt.snapshot ~xt in
+      in_place_shuffle locs;
+      for i = 0 to n_rollbacks - 1 do
+        Xt.incr ~xt locs.(i)
+      done;
+      Xt.rollback ~xt snap
+    in
+    Xt.commit { tx };
+
+    accum := n_permanent + !accum
+  done;
+
+  let sum = Array.map Loc.get locs |> Array.fold_left ( + ) 0 in
+  assert (!accum = sum)
+
+(* *)
+
 let test_mode () =
   assert (Loc.get_mode (Loc.make ~mode:Mode.lock_free 0) == Mode.lock_free);
   assert (
@@ -533,6 +569,7 @@ let () =
   test_no_unnecessary_wakeups ();
   test_periodic_validation ();
   test_explicit_validation ();
+  test_rollback ();
   test_mode ();
   test_xt ();
   Printf.printf "Test suite OK!\n%!"

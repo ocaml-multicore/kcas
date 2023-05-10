@@ -293,6 +293,10 @@ module Retry = struct
 
   let later () = raise Later [@@inline never]
   let unless condition = if not condition then later () [@@inline]
+
+  exception Invalid
+
+  let invalid () = raise Invalid [@@inline never]
 end
 
 let add_awaiter loc before awaiter =
@@ -506,7 +510,7 @@ module Xt = struct
 
   let validate_one casn loc state =
     let before = if is_cmp casn state then eval state else state.before in
-    if before != eval (fenceless_get (as_atomic loc)) then Retry.later ()
+    if before != eval (fenceless_get (as_atomic loc)) then Retry.invalid ()
     [@@inline]
 
   let rec validate_all casn = function
@@ -636,6 +640,45 @@ module Xt = struct
             Obj.magic a == loc
         | _, Miss, _ -> impossible ())
 
+  let rec rollback casn cass_snap cass =
+    if cass_snap == cass then cass
+    else
+      match cass with
+      | NIL -> NIL
+      | CASN { loc; state; lt; gt; _ } -> (
+          match splay ~hit_parent:false loc.id cass_snap with
+          | lt_mark, Miss, gt_mark ->
+              let lt = rollback casn lt_mark lt
+              and gt = rollback casn gt_mark gt in
+              let state =
+                if is_cmp casn state then state
+                else
+                  let current = fenceless_get (as_atomic loc) in
+                  if state.before != eval current then Retry.invalid ()
+                  else current
+              in
+              CASN { loc; state; lt; gt; awaiters = [] }
+          | lt_mark, Hit (loc, state), gt_mark ->
+              let lt = rollback casn lt_mark lt
+              and gt = rollback casn gt_mark gt in
+              CASN { loc; state; lt; gt; awaiters = [] })
+
+  type 'x snap = cass
+
+  let snapshot ~xt = xt.cass
+  let rollback ~xt snap = xt.cass <- rollback xt.casn snap xt.cass
+
+  let rec first ~xt tx = function
+    | [] -> tx ~xt
+    | tx' :: txs -> (
+        match tx ~xt with
+        | value -> value
+        | exception Retry.Later -> first ~xt tx' txs)
+
+  let first ~xt = function
+    | [] -> Retry.later ()
+    | tx :: txs -> first ~xt tx txs
+
   type 'a tx = { tx : 'x. xt:'x t -> 'a } [@@unboxed]
 
   let call { tx } = tx [@@inline]
@@ -697,6 +740,8 @@ module Xt = struct
             | exception Mode.Interference ->
                 commit (Backoff.once backoff) Mode.lock_free
                   (reset Mode.lock_free xt) tx))
+    | exception Retry.Invalid ->
+        commit (Backoff.once backoff) mode (reset_quick xt) tx
     | exception Retry.Later -> (
         if xt.cass == NIL then invalid_retry ();
         let t = Domain_local_await.prepare_for_await () in

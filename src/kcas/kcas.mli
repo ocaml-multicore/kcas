@@ -19,6 +19,14 @@ module Retry : sig
 
   val unless : bool -> unit
   (** [unless condition] is equivalent to [if not condition then later ()]. *)
+
+  exception Invalid
+  (** Exception that may be raised to signal that the transaction log is no
+      longer valid, e.g. because shared memory locations have been changed
+      outside of the transaction, and the transaction should be retried. *)
+
+  val invalid : unit -> 'a
+  (** [invalid ()] is equivalent to [raise Invalid]. *)
 end
 
 (** Operating modes of the [k-CAS-n-CMP] algorithm. *)
@@ -260,6 +268,44 @@ module Xt : sig
   (** [to_nonblocking ~xt tx] converts the blocking transaction [tx] to a
       non-blocking transaction by returning [None] on retry. *)
 
+  (** {1 Nested transactions}
+
+      The transaction mechanism does not implicitly rollback changes recorded in
+      the transaction log.  Using {!snapshot} and {!rollback} it is possible to
+      implement nested conditional transactions that may tentatively record
+      changes in the transaction log and then later discard those changes. *)
+
+  type 'x snap
+  (** Type of a {!snapshot} of a transaction log. *)
+
+  val snapshot : xt:'x t -> 'x snap
+  (** [snapshot ~xt] returns a snapshot of the transaction log.
+
+      Taking a snapshot is a fast constant time [O(1)] operation. *)
+
+  val rollback : xt:'x t -> 'x snap -> unit
+  (** [rollback ~xt snap] discards any changes of shared memory locations
+      recorded in the transaction log after the [snap] was taken by {!snapshot}.
+
+      Performing a rollback is potentially as expensive as linear time [O(n)] in
+      the number of locations accessed, but, depending on the exact access
+      patterns, may also be performed more quickly.  The implementation is
+      optimized with the assumption that a rollback is performed at most once
+      per snapshot.
+
+      {b NOTE}: Only changes are discarded.  Any location newly accessed after
+      the snapshot was taken will remain recorded in the log as a read-only
+      entry. *)
+
+  val first : xt:'x t -> (xt:'x t -> 'a) list -> 'a
+  (** [first ~xt txs] calls each transaction in the given list in turn and
+      either returns the value returned by the first transaction in the list or
+      raises {!Retry.Later} in case all of the transactions raised
+      {!Retry.Later}.
+
+      {b NOTE}: [first] does not automatically rollback changes made by the
+      transactions. *)
+
   (** {1 Post commit actions} *)
 
   val post_commit : xt:'x t -> (unit -> unit) -> unit
@@ -270,8 +316,8 @@ module Xt : sig
 
   val validate : xt:'x t -> 'a Loc.t -> unit
   (** [validate ~xt r] determines whether the shared memory location [r] has
-      been modified outside of the transaction and raises {!Retry.Later} in case
-      it has.
+      been modified outside of the transaction and raises {!Retry.Invalid} in
+      case it has.
 
       Due to the possibility of read skew, in cases where some important
       invariant should hold between two or more different shared memory
@@ -297,9 +343,9 @@ module Xt : sig
   val commit : ?backoff:Backoff.t -> ?mode:Mode.t -> 'a tx -> 'a
   (** [commit tx] repeatedly calls [tx] to record a log of shared memory
       accesses and attempts to perform them atomically until it succeeds and
-      then returns whatever [tx] returned.  [tx] may raise {!Retry.Later} to
-      explicitly request a retry or any other exception to abort the
-      transaction.
+      then returns whatever [tx] returned.  [tx] may raise {!Retry.Later} or
+      {!Retry.Invalid} to explicitly request a retry or any other exception to
+      abort the transaction.
 
       The default for [commit] is {!Mode.obstruction_free}.  However, after
       enough attempts have failed during the verification step, [commit]

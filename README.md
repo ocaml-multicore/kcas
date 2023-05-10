@@ -58,7 +58,7 @@ is distributed under the [ISC license](LICENSE.md).
 - [Designing lock-free algorithms with k-CAS](#designing-lock-free-algorithms-with-k-cas)
   - [Minimize accesses](#minimize-accesses)
     - [Prefer compound accesses](#prefer-compound-accesses)
-    - [Log updates optimistically and abort](#log-updates-optimistically-and-abort)
+    - [Log updates optimistically](#log-updates-optimistically)
   - [Postcompute](#postcompute)
   - [Race to cooperate](#race-to-cooperate)
     - [Understanding transactions](#understanding-transactions)
@@ -975,7 +975,7 @@ The above will likely perform slightly better.
 > [`update`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-update),
 > that only performs a single access to the transaction log.
 
-#### Log updates optimistically and abort
+#### Log updates optimistically
 
 Transactional write accesses to shared memory locations are only attempted after
 the transaction log construction finishes successfully. Therefore it is entirely
@@ -1030,6 +1030,60 @@ can see
 ```
 
 the updates are only done in case of success.
+
+A problem with the `transfer` function above is that it is not a composable
+transaction. The transaction mechanism provided by **kcas** does not implicitly
+perform rollbacks of changes made to locations, but it does offer low level
+support for nested conditional transactions.
+
+By explicitly calling
+[`snapshot`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-snapshot)
+and
+[`rollback`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-rollback)
+one can scope tentative changes and create a composable version of `transfer`:
+
+```ocaml
+# let transfer ~xt amount ~source ~target =
+    let snap = Xt.snapshot ~xt in
+    if Xt.fetch_and_add ~xt source (-amount) < amount then
+      Retry.later (Xt.rollback ~xt snap);
+    Xt.fetch_and_add ~xt target amount |> ignore
+val transfer :
+  xt:'a Xt.t -> int -> source:int Loc.t -> target:int Loc.t -> unit = <fun>
+```
+
+Given a bunch of locations
+
+```ocaml
+let a = Loc.make 10
+and b = Loc.make 20
+and c = Loc.make 30
+and d = Loc.make 27
+```
+
+we can now attempt `transfer`s and perform the
+[`first`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-first)
+of them that succeeds:
+
+```ocaml
+# Xt.commit {
+    tx = Xt.first [
+      transfer 15 ~source:a ~target:d;
+      transfer 15 ~source:b ~target:d;
+      transfer 15 ~source:c ~target:d;
+    ]
+  }
+- : unit = ()
+```
+
+A look at the locations
+
+```ocaml
+# List.map Loc.get [a; b; c; d]
+- : int list = [10; 5; 30; 42]
+```
+
+confirms the expected result.
 
 ### Postcompute
 
