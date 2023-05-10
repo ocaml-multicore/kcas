@@ -254,11 +254,19 @@ module Xt : sig
 
   val to_blocking : xt:'x t -> (xt:'x t -> 'a option) -> 'a
   (** [to_blocking ~xt tx] converts the non-blocking transaction [tx] to a
-      blocking transaction by retrying on [None]. *)
+      blocking transaction by retrying on [None].
+
+      {b NOTE}: The assumption is that when the non-blocking transaction returns
+      [None] it has not made any updates to the transaction log that would need
+      to be rolled back. *)
 
   val to_nonblocking : xt:'x t -> (xt:'x t -> 'a) -> 'a option
   (** [to_nonblocking ~xt tx] converts the blocking transaction [tx] to a
-      non-blocking transaction by returning [None] on retry. *)
+      non-blocking transaction by returning [None] on retry.
+
+      {b NOTE}: The assumption is that when the blocking transaction raises
+      {!Retry.Later} it has not made any updates to the transaction log that
+      would need to be rolled back. *)
 
   (** {1 Post commit actions} *)
 
