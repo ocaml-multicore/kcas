@@ -198,6 +198,8 @@ let test_stress n nb_loop =
 
 (* test 5 *)
 
+(** Various tests make accesses in random order to exercise the internal splay
+    tree based transaction log handling. *)
 let in_place_shuffle array =
   let n = Array.length array in
   for i = 0 to n - 2 do
@@ -246,16 +248,6 @@ let test_presort_and_is_in_log_xt () =
   let barrier = Barrier.make n_domains in
 
   let locs = Array.init n_locs (fun _ -> Loc.make 0) in
-
-  let in_place_shuffle array =
-    let n = Array.length array in
-    for i = 0 to n - 2 do
-      let j = Random.int (n - i) + i in
-      let t = array.(i) in
-      array.(i) <- array.(j);
-      array.(j) <- t
-    done
-  in
 
   let thread () =
     let locs = Array.copy locs in
