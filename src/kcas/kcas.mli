@@ -241,7 +241,7 @@ module Xt : sig
         if actual == before then after else actual
       ]} *)
 
-  val fetch_and_add : xt:'c t -> int Loc.t -> int -> int
+  val fetch_and_add : xt:'x t -> int Loc.t -> int -> int
   (** [fetch_and_add ~xt r n] is equivalent to [update ~xt r ((+) n)]. *)
 
   val incr : xt:'x t -> int Loc.t -> unit
