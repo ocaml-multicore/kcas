@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.5.0
+
+- Add nested conditional transaction support (@polytypic)
+- Add explicit location validation support (@polytypic)
+
 ## 0.4.0
 
 - Allocation of location ids in a transaction log friendly order (@polytypic)
