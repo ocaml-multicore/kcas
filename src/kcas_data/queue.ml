@@ -1,9 +1,9 @@
 open Kcas
 
 type 'a t = {
-  back : 'a Elems.t Loc.t;
-  middle : 'a Elems.t Loc.t;
   front : 'a Elems.t Loc.t;
+  middle : 'a Elems.t Loc.t;
+  back : 'a Elems.t Loc.t;
 }
 
 let alloc ~front ~middle ~back =
@@ -19,12 +19,12 @@ let create () = alloc ~front:Elems.empty ~middle:Elems.empty ~back:Elems.empty
 let copy q =
   let tx ~xt = (Xt.get ~xt q.front, Xt.get ~xt q.middle, Xt.get ~xt q.back) in
   let front, middle, back = Xt.commit { tx } in
-  alloc ~back ~middle ~front
+  alloc ~front ~middle ~back
 
 module Xt = struct
   let is_empty ~xt { back; middle; front } =
-    (* We access locations in reverse order of allocation to make most efficient
-       use of the splay-tree based transaction log. *)
+    (* We access locations in order of allocation to make most efficient use of
+       the splay-tree based transaction log. *)
     Xt.get ~xt front == Elems.empty
     && Xt.get ~xt middle == Elems.empty
     && Xt.get ~xt back == Elems.empty
@@ -38,7 +38,7 @@ module Xt = struct
   let push = add
 
   (** Cooperative helper to move elems from back to middle. *)
-  let back_to_middle ~back ~middle =
+  let back_to_middle ~middle ~back =
     let tx ~xt =
       let xs = Xt.exchange ~xt back Elems.empty in
       if xs == Elems.empty || Xt.exchange ~xt middle xs != Elems.empty then
@@ -56,7 +56,7 @@ module Xt = struct
     if elems != Elems.empty then Elems.hd_opt elems
     else (
       if not (Xt.is_in_log ~xt middle || Xt.is_in_log ~xt back) then
-        back_to_middle ~back ~middle;
+        back_to_middle ~middle ~back;
       let elems = Xt.exchange ~xt middle Elems.empty in
       if elems != Elems.empty then take_opt_finish ~xt front elems
       else
@@ -75,7 +75,7 @@ module Xt = struct
     if elems != Elems.empty then Elems.hd_opt elems
     else (
       if not (Xt.is_in_log ~xt middle || Xt.is_in_log ~xt back) then
-        back_to_middle ~back ~middle;
+        back_to_middle ~middle ~back;
       let elems = Xt.exchange ~xt middle Elems.empty in
       if elems != Elems.empty then peek_opt_finish ~xt front elems
       else
@@ -100,24 +100,24 @@ module Xt = struct
     Xt.set ~xt q1.middle middle;
     Xt.set ~xt q1.back back
 
-  let seq_of ~back ~middle ~front =
+  let seq_of ~front ~middle ~back =
     (* Sequence construction is lazy, so this function is O(1). *)
     Seq.empty
     |> Elems.rev_prepend_to_seq back
     |> Elems.rev_prepend_to_seq middle
     |> Elems.prepend_to_seq front
 
-  let to_seq ~xt { back; middle; front } =
+  let to_seq ~xt { front; middle; back } =
     let front = Xt.get ~xt front
     and middle = Xt.get ~xt middle
     and back = Xt.get ~xt back in
-    seq_of ~back ~middle ~front
+    seq_of ~front ~middle ~back
 
-  let take_all ~xt { back; middle; front } =
+  let take_all ~xt { front; middle; back } =
     let front = Xt.exchange ~xt front Elems.empty
     and middle = Xt.exchange ~xt middle Elems.empty
     and back = Xt.exchange ~xt back Elems.empty in
-    seq_of ~back ~middle ~front
+    seq_of ~front ~middle ~back
 end
 
 let is_empty q = Kcas.Xt.commit { tx = Xt.is_empty q }
