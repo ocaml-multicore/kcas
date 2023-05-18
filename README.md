@@ -54,6 +54,7 @@ is distributed under the [ISC license](LICENSE.md).
     - [Blocking transactions](#blocking-transactions)
     - [A transactional lock-free leftist heap](#a-transactional-lock-free-leftist-heap)
   - [Programming with transactional data structures](#programming-with-transactional-data-structures)
+    - [The dining philosophers problem](#the-dining-philosophers-problem)
     - [A transactional LRU cache](#a-transactional-lru-cache)
   - [Programming with primitive operations](#programming-with-primitive-operations)
 - [Designing lock-free algorithms with k-CAS](#designing-lock-free-algorithms-with-k-cas)
@@ -742,6 +743,94 @@ first we need to `#require` the package and we'll also open it for convenience:
 # #require "kcas_data"
 # open Kcas_data
 ```
+
+#### The dining philosophers problem
+
+The
+[dining philosophers problem](https://en.wikipedia.org/wiki/Dining_philosophers_problem)
+is a well known classic synchronization problem. It is easy to solve with
+**kcas**. If you are unfamiliar with the problem, please take a moment to read
+the description of the problem.
+
+A handy concurrent data structure for solving the dining philosophers problem is
+the
+[`Mvar`](https://ocaml-multicore.github.io/kcas/doc/kcas_data/Kcas_data/Mvar/index.html)
+or synchronizing variable. A `'a Mvar.t` is basically like a `'a option Loc.t`
+with blocking semantics for both
+[`take`](https://ocaml-multicore.github.io/kcas/doc/kcas_data/Kcas_data/Mvar/index.html#val-take)
+and
+[`put`](https://ocaml-multicore.github.io/kcas/doc/kcas_data/Kcas_data/Mvar/index.html#val-put).
+For the dining philosophers problem, we can use `Mvar`s to store the forks.
+
+The problem statement doesn't actually say when to stop. The gist of the
+problem, of course, is that no philosopher should starve. So, we'll make it so
+that we keep a record of how many times each philosopher has eaten. We'll then
+end the experiment as soon as each philosopher has eaten some minimum number of
+times. Programming a philosopher is now straightforward:
+
+```ocaml
+# let philosopher ~fork_lhs ~fork_rhs ~eaten ~continue =
+    let eat () =
+      let take_forks ~xt =
+        ( Mvar.Xt.take ~xt fork_lhs,
+          Mvar.Xt.take ~xt fork_rhs )
+      in
+      let (lhs, rhs) = Xt.commit { tx = take_forks } in
+
+      Loc.incr eaten;
+
+      let drop_forks () =
+        Mvar.put fork_lhs lhs;
+        Mvar.put fork_rhs rhs
+      in
+      drop_forks ()
+    in
+
+    while continue () do
+      eat ()
+    done
+val philosopher :
+  fork_lhs:'a Mvar.t ->
+  fork_rhs:'b Mvar.t -> eaten:int Loc.t -> continue:(unit -> bool) -> unit =
+  <fun>
+```
+
+The dining philosophers main routine then creates the data structures and spawns
+the philosophers:
+
+```ocaml
+# let dinining_philosophers ~philosophers ~min_rounds =
+    assert (3 <= philosophers && 0 <= min_rounds);
+    let eaten = Loc.make_array philosophers 0 in
+    let continue () =
+      eaten
+      |> Array.exists @@ fun eaten ->
+         Loc.get eaten < min_rounds
+    in
+    let forks =
+      Array.init philosophers @@ fun i ->
+      Mvar.create (Some i)
+    in
+    Array.iter Domain.join @@ Array.init philosophers @@ fun i ->
+      Domain.spawn @@ fun () ->
+      let fork_lhs = forks.(i)
+      and fork_rhs = forks.((i + 1) mod philosophers)
+      and eaten = eaten.(i) in
+      philosopher ~fork_lhs ~fork_rhs ~eaten ~continue
+val dinining_philosophers : philosophers:int -> min_rounds:int -> unit =
+  <fun>
+```
+
+We can now run our solution and confirm that it terminates after each
+philosopher has eaten at least a given number of times:
+
+```ocaml
+# dinining_philosophers ~philosophers:5 ~min_rounds:1_000
+- : unit = ()
+```
+
+What makes dining philosophers so easy to solve with transactions is that we can
+simply compose two `take` operations to take both forks.
 
 #### A transactional LRU cache
 
