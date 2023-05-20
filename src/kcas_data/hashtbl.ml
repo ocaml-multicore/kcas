@@ -187,7 +187,7 @@ module Xt = struct
             Array.unsafe_get old_buckets i
             |> Xt.get ~xt
             |> Assoc.iter_rev @@ fun ((k, _) as kv) ->
-               Xt.modify ~xt
+               Xt.unsafe_modify ~xt
                  (Array.unsafe_get new_buckets (hash k land mask))
                  (List.cons kv)
           done
@@ -285,7 +285,7 @@ module Xt = struct
     let mask = Array.length buckets - 1 in
     let bucket = Array.unsafe_get buckets (t.hash k land mask) in
     let change = ref `None in
-    Xt.modify ~xt bucket (fun kvs ->
+    Xt.unsafe_modify ~xt bucket (fun kvs ->
         let kvs' = Assoc.remove t.equal change k kvs in
         if !change != `None then kvs' else kvs);
     if !change == `Removed then (
@@ -301,7 +301,7 @@ module Xt = struct
     let buckets = Xt.get ~xt t.buckets in
     let mask = Array.length buckets - 1 in
     let bucket = Array.unsafe_get buckets (t.hash k land mask) in
-    Xt.modify ~xt bucket (List.cons (k, v));
+    Xt.unsafe_modify ~xt bucket (List.cons (k, v));
     Accumulator.Xt.incr ~xt t.length;
     if mask + 1 < t.max_buckets && Random.bits () land mask = 0 then
       let capacity = mask + 1 in
@@ -315,7 +315,7 @@ module Xt = struct
     let mask = Array.length buckets - 1 in
     let bucket = Array.unsafe_get buckets (t.hash k land mask) in
     let change = ref `None in
-    Xt.modify ~xt bucket (fun kvs ->
+    Xt.unsafe_modify ~xt bucket (fun kvs ->
         let kvs' = Assoc.replace t.equal change k v kvs in
         if !change != `None then kvs' else kvs);
     if !change == `Added then (
