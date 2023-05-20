@@ -18,3 +18,4 @@ val prepend_to_seq : 'a t -> 'a Seq.t -> 'a Seq.t
 val to_seq : 'a t -> 'a Seq.t
 val of_seq_rev : 'a Seq.t -> 'a t
 val rev_prepend_to_seq : 'a t -> 'a Seq.t -> 'a Seq.t
+val of_list_rev : 'a list -> 'a t

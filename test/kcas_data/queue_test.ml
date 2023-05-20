@@ -1,6 +1,18 @@
 open Kcas
 open Kcas_data
 
+let capacity () =
+  let s = Queue.create ~capacity:2 () in
+  assert (Queue.try_add 101 s);
+  assert (Queue.try_add 42 s);
+  assert (not (Queue.try_add 15 s));
+  let d = Domain.spawn @@ fun () -> Queue.add 5 s in
+  assert (Queue.take s = 101);
+  let tx ~xt = Retry.unless (Queue.Xt.take_blocking ~xt s = 42) in
+  Xt.commit { tx };
+  assert (Queue.take_blocking s = 5);
+  Domain.join d
+
 let basics () =
   let q = Queue.create () in
   Queue.add 101 q;
@@ -31,4 +43,8 @@ let basics () =
   assert (Queue.take_opt r = None)
 
 let () =
-  Alcotest.run "Queue" [ ("basics", [ Alcotest.test_case "" `Quick basics ]) ]
+  Alcotest.run "Queue"
+    [
+      ("basics", [ Alcotest.test_case "" `Quick basics ]);
+      ("capacity", [ Alcotest.test_case "" `Quick capacity ]);
+    ]

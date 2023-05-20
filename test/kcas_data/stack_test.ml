@@ -1,4 +1,17 @@
+open Kcas
 open Kcas_data
+
+let capacity () =
+  let s = Stack.create ~capacity:2 () in
+  assert (Stack.try_push 101 s);
+  assert (Stack.try_push 42 s);
+  assert (not (Stack.try_push 15 s));
+  let d = Domain.spawn @@ fun () -> Stack.push 5 s in
+  assert (Stack.pop s = 42);
+  let tx ~xt = Retry.unless (Stack.Xt.pop_blocking ~xt s = 5) in
+  Xt.commit { tx };
+  assert (Stack.pop s = 101);
+  Domain.join d
 
 let basics () =
   let s = Stack.create () in
@@ -21,4 +34,8 @@ let basics () =
   assert (Stack.pop_opt t = None)
 
 let () =
-  Alcotest.run "Stack" [ ("basics", [ Alcotest.test_case "" `Quick basics ]) ]
+  Alcotest.run "Stack"
+    [
+      ("basics", [ Alcotest.test_case "" `Quick basics ]);
+      ("capacity", [ Alcotest.test_case "" `Quick capacity ]);
+    ]

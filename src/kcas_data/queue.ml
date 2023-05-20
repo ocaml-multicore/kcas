@@ -2,52 +2,78 @@ open Kcas
 
 type 'a t = {
   front : 'a Elems.t Loc.t;
-  middle : 'a Elems.t Loc.t;
-  back : 'a Elems.t Loc.t;
+  back : 'a List_with_capacity.t Loc.t;
+  middle : 'a List_with_capacity.t Loc.t;
 }
 
-let alloc ~front ~middle ~back =
+let alloc ~front ~back ~middle =
   (* We allocate locations in specific order to make most efficient use of the
      splay-tree based transaction log. *)
   let front = Loc.make ~padded:true front
-  and middle = Loc.make ~padded:true middle
-  and back = Loc.make ~padded:true back in
+  and back = Loc.make ~padded:true back
+  and middle = Loc.make ~padded:true middle in
   Multicore_magic.copy_as_padded { back; middle; front }
 
-let create () = alloc ~front:Elems.empty ~middle:Elems.empty ~back:Elems.empty
+let create ?(capacity = Int.max_int) () =
+  if capacity < 0 then invalid_arg "Queue.create: capacity must be non-negative";
+  let back = List_with_capacity.make_empty ~capacity in
+  alloc ~front:Elems.empty ~back ~middle:List_with_capacity.empty_unlimited
 
 let copy q =
-  let tx ~xt = (Xt.get ~xt q.front, Xt.get ~xt q.middle, Xt.get ~xt q.back) in
-  let front, middle, back = Xt.commit { tx } in
-  alloc ~front ~middle ~back
+  let tx ~xt = (Xt.get ~xt q.front, Xt.get ~xt q.back, Xt.get ~xt q.middle) in
+  let front, back, middle = Xt.commit { tx } in
+  alloc ~front ~back ~middle
 
 module Xt = struct
   let is_empty ~xt t =
     (* We access locations in order of allocation to make most efficient use of
        the splay-tree based transaction log. *)
     Xt.get ~xt t.front == Elems.empty
-    && Xt.get ~xt t.middle == Elems.empty
-    && Xt.get ~xt t.back == Elems.empty
+    && List_with_capacity.is_empty (Xt.get ~xt t.back)
+    && Xt.get ~xt t.middle == List_with_capacity.empty_unlimited
 
-  let length ~xt { back; middle; front } =
-    Elems.length (Xt.get ~xt front)
-    + Elems.length (Xt.get ~xt middle)
-    + Elems.length (Xt.get ~xt back)
+  let length ~xt q =
+    Elems.length (Xt.get ~xt q.front)
+    + List_with_capacity.length (Xt.get ~xt q.back)
+    + List_with_capacity.length (Xt.get ~xt q.middle)
 
-  let add ~xt x q = Xt.modify ~xt q.back @@ Elems.cons x
+  let try_add ~xt x q =
+    let lwc = Xt.update ~xt q.back (List_with_capacity.cons_safe x) in
+    let capacity = List_with_capacity.capacity lwc in
+    capacity = Int.max_int
+    ||
+    let back_length = List_with_capacity.length lwc in
+    back_length < List_with_capacity.limit lwc
+    ||
+    let other_length =
+      List_with_capacity.length (Xt.get ~xt q.middle)
+      + Elems.length (Xt.get ~xt q.front)
+    in
+    let limit = capacity - other_length in
+    back_length < limit
+    &&
+    (Xt.set ~xt q.back
+       (List_with_capacity.make ~capacity ~length:(back_length + 1)
+          ~list:(x :: List_with_capacity.list lwc)
+          ~limit);
+     true)
+
+  let add ~xt x q = Retry.unless (try_add ~xt x q)
   let push = add
 
   (** Cooperative helper to move elems from back to middle. *)
-  let back_to_middle ~middle ~back =
+  let back_to_middle ~back ~middle =
     let tx ~xt =
-      let xs = Xt.exchange ~xt back Elems.empty in
-      if xs == Elems.empty || Xt.exchange ~xt middle xs != Elems.empty then
-        raise_notrace Exit
+      let xs = Xt.update ~xt back List_with_capacity.move in
+      if
+        List_with_capacity.length xs = 0
+        || Xt.exchange ~xt middle xs != List_with_capacity.empty_unlimited
+      then raise_notrace Exit
     in
     try Xt.commit { tx } with Exit -> ()
 
-  let take_opt_finish ~xt front elems =
-    let elems = Elems.rev elems in
+  let take_opt_finish ~xt front lwc =
+    let elems = List_with_capacity.to_rev_elems lwc in
     Xt.set ~xt front (Elems.tl_safe elems);
     Elems.hd_opt elems
 
@@ -58,17 +84,19 @@ module Xt = struct
     else
       let middle = t.middle and back = t.back in
       if not (Xt.is_in_log ~xt middle || Xt.is_in_log ~xt back) then
-        back_to_middle ~middle ~back;
-      let elems = Xt.exchange ~xt middle Elems.empty in
-      if elems != Elems.empty then take_opt_finish ~xt front elems
+        back_to_middle ~back ~middle;
+      let lwc = Xt.exchange ~xt middle List_with_capacity.empty_unlimited in
+      if lwc != List_with_capacity.empty_unlimited then
+        take_opt_finish ~xt front lwc
       else
-        let elems = Xt.exchange ~xt back Elems.empty in
-        if elems != Elems.empty then take_opt_finish ~xt front elems else None
+        let lwc = Xt.update ~xt back List_with_capacity.move_last in
+        if List_with_capacity.length lwc <> 0 then take_opt_finish ~xt front lwc
+        else None
 
   let take_blocking ~xt q = Xt.to_blocking ~xt (take_opt q)
 
-  let peek_opt_finish ~xt front elems =
-    let elems = Elems.rev elems in
+  let peek_opt_finish ~xt front lwc =
+    let elems = List_with_capacity.to_rev_elems lwc in
     Xt.set ~xt front elems;
     Elems.hd_opt elems
 
@@ -79,57 +107,72 @@ module Xt = struct
     else
       let middle = t.middle and back = t.back in
       if not (Xt.is_in_log ~xt middle || Xt.is_in_log ~xt back) then
-        back_to_middle ~middle ~back;
-      let elems = Xt.exchange ~xt middle Elems.empty in
-      if elems != Elems.empty then peek_opt_finish ~xt front elems
+        back_to_middle ~back ~middle;
+      let lwc = Xt.exchange ~xt middle List_with_capacity.empty_unlimited in
+      if lwc != List_with_capacity.empty_unlimited then
+        peek_opt_finish ~xt front lwc
       else
-        let elems = Xt.exchange ~xt back Elems.empty in
-        if elems != Elems.empty then peek_opt_finish ~xt front elems else None
+        let lwc = Xt.update ~xt back List_with_capacity.move_last in
+        if List_with_capacity.length lwc <> 0 then peek_opt_finish ~xt front lwc
+        else None
 
   let peek_blocking ~xt q = Xt.to_blocking ~xt (peek_opt q)
 
   let clear ~xt t =
     Xt.set ~xt t.front Elems.empty;
-    Xt.set ~xt t.middle Elems.empty;
-    Xt.set ~xt t.back Elems.empty
+    Xt.modify ~xt t.back List_with_capacity.clear;
+    Xt.set ~xt t.middle List_with_capacity.empty_unlimited
 
   let swap ~xt q1 q2 =
     let front = Xt.get ~xt q1.front
-    and middle = Xt.get ~xt q1.middle
-    and back = Xt.get ~xt q1.back in
+    and back = Xt.get ~xt q1.back
+    and middle = Xt.get ~xt q1.middle in
     let front = Xt.exchange ~xt q2.front front
-    and middle = Xt.exchange ~xt q2.middle middle
-    and back = Xt.exchange ~xt q2.back back in
+    and back = Xt.exchange ~xt q2.back back
+    and middle = Xt.exchange ~xt q2.middle middle in
     Xt.set ~xt q1.front front;
-    Xt.set ~xt q1.middle middle;
-    Xt.set ~xt q1.back back
+    Xt.set ~xt q1.back back;
+    Xt.set ~xt q1.middle middle
 
   let seq_of ~front ~middle ~back =
     (* Sequence construction is lazy, so this function is O(1). *)
     Seq.empty
-    |> Elems.rev_prepend_to_seq back
-    |> Elems.rev_prepend_to_seq middle
+    |> List_with_capacity.rev_prepend_to_seq back
+    |> List_with_capacity.rev_prepend_to_seq middle
     |> Elems.prepend_to_seq front
 
   let to_seq ~xt t =
     let front = Xt.get ~xt t.front
-    and middle = Xt.get ~xt t.middle
-    and back = Xt.get ~xt t.back in
+    and back = Xt.get ~xt t.back
+    and middle = Xt.get ~xt t.middle in
     seq_of ~front ~middle ~back
 
   let take_all ~xt t =
     let front = Xt.exchange ~xt t.front Elems.empty
-    and middle = Xt.exchange ~xt t.middle Elems.empty
-    and back = Xt.exchange ~xt t.back Elems.empty in
+    and back = Xt.update ~xt t.back List_with_capacity.clear
+    and middle = Xt.exchange ~xt t.middle List_with_capacity.empty_unlimited in
     seq_of ~front ~middle ~back
 end
 
 let is_empty q = Kcas.Xt.commit { tx = Xt.is_empty q }
 let length q = Kcas.Xt.commit { tx = Xt.length q }
 
+let try_add x q =
+  (* Fenceless is safe as we revert to a transaction in case we didn't update. *)
+  let lwc = Loc.fenceless_update q.back (List_with_capacity.cons_safe x) in
+  let capacity = List_with_capacity.capacity lwc in
+  capacity = Int.max_int
+  ||
+  let back_length = List_with_capacity.length lwc in
+  back_length < List_with_capacity.limit lwc
+  || Kcas.Xt.commit { tx = Xt.try_add x q }
+
 let add x q =
-  (* Fenceless is safe as we always update. *)
-  Loc.fenceless_modify q.back @@ Elems.cons x
+  (* Fenceless is safe as we revert to a transaction in case we didn't update. *)
+  let lwc = Loc.fenceless_update q.back (List_with_capacity.cons_safe x) in
+  if List_with_capacity.capacity lwc <> Int.max_int then
+    if List_with_capacity.length lwc = List_with_capacity.limit lwc then
+      Kcas.Xt.commit { tx = Xt.add x q }
 
 let push = add
 
