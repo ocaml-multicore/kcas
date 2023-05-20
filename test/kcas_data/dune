@@ -17,6 +17,12 @@
  (package kcas_data))
 
 (test
+ (name mvar_test)
+ (modules mvar_test)
+ (libraries kcas kcas_data)
+ (package kcas_data))
+
+(test
  (name queue_test)
  (modules queue_test)
  (libraries kcas kcas_data)

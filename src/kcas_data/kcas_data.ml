@@ -56,6 +56,7 @@ module Stack = Stack
 
 (** {1 Communication and synchronization primitives}  *)
 
+module Mvar = Mvar
 module Promise = Promise
 
 (** {1 Linked data structures} *)
