@@ -562,7 +562,7 @@ module Xt = struct
       current
     [@@inline]
 
-  let update loc f xt =
+  let unsafe_update ~xt loc f =
     maybe_validate_log xt;
     let x = loc.id in
     match xt.cass with
@@ -586,19 +586,22 @@ module Xt = struct
     y
     [@@inline]
 
-  let get ~xt loc = update loc Fun.id xt
-  let set ~xt loc after = update loc (fun _ -> after) xt |> ignore
-  let modify ~xt loc f = update loc (protect xt f) xt |> ignore
+  let get ~xt loc = unsafe_update ~xt loc Fun.id
+  let set ~xt loc after = unsafe_update ~xt loc (fun _ -> after) |> ignore
+  let modify ~xt loc f = unsafe_update ~xt loc (protect xt f) |> ignore
 
   let compare_and_swap ~xt loc before after =
-    update loc (fun actual -> if actual == before then after else actual) xt
+    unsafe_update ~xt loc (fun actual ->
+        if actual == before then after else actual)
 
-  let exchange ~xt loc after = update loc (fun _ -> after) xt
-  let fetch_and_add ~xt loc n = update loc (( + ) n) xt
-  let incr ~xt loc = update loc inc xt |> ignore
-  let decr ~xt loc = update loc dec xt |> ignore
-  let update ~xt loc f = update loc (protect xt f) xt
+  let exchange ~xt loc after = unsafe_update ~xt loc (fun _ -> after)
+  let fetch_and_add ~xt loc n = unsafe_update ~xt loc (( + ) n)
+  let incr ~xt loc = unsafe_update ~xt loc inc |> ignore
+  let decr ~xt loc = unsafe_update ~xt loc dec |> ignore
+  let update ~xt loc f = unsafe_update ~xt loc (protect xt f)
   let swap ~xt l1 l2 = set ~xt l1 @@ exchange ~xt l2 @@ get ~xt l1
+  let unsafe_modify ~xt loc f = unsafe_update ~xt loc f |> ignore
+  let unsafe_update ~xt loc f = unsafe_update ~xt loc f
 
   let to_blocking ~xt tx =
     match tx ~xt with None -> Retry.later () | Some value -> value

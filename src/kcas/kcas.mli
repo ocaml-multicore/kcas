@@ -351,6 +351,16 @@ module Xt : sig
       enough attempts have failed during the verification step, [commit]
       switches to {!Mode.lock_free}.  Note that [commit] never raises the
       {!Mode.Interference} exception. *)
+
+  (**/**)
+
+  val unsafe_modify : xt:'x t -> 'a Loc.t -> ('a -> 'a) -> unit
+  (** [unsafe_modify ~xt r f] is equivalent to [modify ~xt r f], but does not
+      assert against misuse. *)
+
+  val unsafe_update : xt:'x t -> 'a Loc.t -> ('a -> 'a) -> 'a
+  (** [unsafe_update ~xt r f] is equivalent to [update ~xt r f], but does not
+      assert against misuse. *)
 end
 
 (** {2 Multi-word compare-and-set operations}
