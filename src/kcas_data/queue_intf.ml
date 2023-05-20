@@ -22,7 +22,7 @@ module type Ops = sig
       and modifications of the queue have no effect on the sequence. *)
 
   val add : ('x, 'a -> 'a t -> unit) fn
-  (** [add q x] adds the element [x] at the end of the queue [q]. *)
+  (** [add x q] adds the element [x] at the end of the queue [q]. *)
 
   val push : ('x, 'a -> 'a t -> unit) fn
   (** [push] is a synonym for {!add}. *)
