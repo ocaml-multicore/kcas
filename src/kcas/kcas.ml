@@ -535,13 +535,17 @@ module Xt = struct
   let update0 loc f xt lt gt =
     let state = fenceless_get (as_atomic loc) in
     let before = eval state in
-    let after = f before in
-    let state =
-      if before == after && is_obstruction_free xt.casn loc then state
-      else { before; after; casn = xt.casn; awaiters = [] }
-    in
-    xt.cass <- CASN { loc; state; lt; gt; awaiters = [] };
-    before
+    match f before with
+    | after ->
+        let state =
+          if before == after && is_obstruction_free xt.casn loc then state
+          else { before; after; casn = xt.casn; awaiters = [] }
+        in
+        xt.cass <- CASN { loc; state; lt; gt; awaiters = [] };
+        before
+    | exception exn ->
+        xt.cass <- CASN { loc; state; lt; gt; awaiters = [] };
+        raise exn
     [@@inline]
 
   let update loc f xt state' lt gt =

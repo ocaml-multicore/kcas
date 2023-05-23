@@ -328,7 +328,13 @@ let test_backoff () =
 let test_blocking () =
   let state = Loc.make `Spawned in
   let await state' =
-    Loc.get_as (fun state -> Retry.unless (state == state')) state
+    (* Intentionally test that [Xt.modify] allows retry. *)
+    let tx ~xt =
+      Xt.modify ~xt state @@ fun state ->
+      Retry.unless (state == state');
+      state
+    in
+    Xt.commit { tx }
   in
 
   let a = Loc.make 0 and bs = Array.init 10 @@ fun _ -> Loc.make 0 in
