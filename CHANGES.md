@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.5.1
+
+- Add synchronizing variable `Mvar` to `kcas_data` (@polytypic)
+- Fix to allow retry from within `Xt.update` and `Xt.modify` (@polytypic)
+
 ## 0.5.0
 
 - Add nested conditional transaction support (@polytypic)
