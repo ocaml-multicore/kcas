@@ -106,6 +106,7 @@ let make_loc state id = { state = Atomic.make state; id } [@@inline]
 *)
 
 let is_cmp casn state = state.casn != casn [@@inline]
+let is_cas casn state = state.casn == casn [@@inline]
 
 module Mode = struct
   type t = determined
@@ -163,10 +164,9 @@ let finish casn (`Undetermined cass as undetermined) (status : determined) =
   then release casn cass status
   else fenceless_get casn == `After
 
-let a_cas = 1
-and a_cmp = 2
-
-let a_cas_and_a_cmp = a_cas lor a_cmp
+let a_cmp = 1
+let a_cas = 2
+let a_cmp_followed_by_a_cas = 4
 
 let rec determine casn status = function
   | NIL -> status
@@ -176,7 +176,11 @@ let rec determine casn status = function
       else
         let current = Atomic.get (as_atomic loc) in
         if state == current then
-          determine casn (status lor (1 + Bool.to_int (is_cmp casn state))) gt
+          let a_cas_or_a_cmp = 1 + Bool.to_int (is_cas casn state) in
+          let a_cmp_followed_by_a_cas = a_cas_or_a_cmp * 2 land (status * 4) in
+          determine casn
+            (status lor a_cas_or_a_cmp lor a_cmp_followed_by_a_cas)
+            gt
         else
           let matches_expected () =
             let expected = state.before in
@@ -204,7 +208,10 @@ let rec determine casn status = function
                 | [] -> ()
                 | awaiters -> record.awaiters <- awaiters);
                 if Atomic.compare_and_set (as_atomic loc) current state then
-                  determine casn (status lor a_cas) gt
+                  let a_cmp_followed_by_a_cas = a_cas * 2 land (status * 4) in
+                  determine casn
+                    (status lor a_cas lor a_cmp_followed_by_a_cas)
+                    gt
                 else determine casn status eq
             | #determined -> raise Exit
           else -1
@@ -215,7 +222,7 @@ and is_after casn =
       match determine casn 0 cass with
       | status ->
           finish casn undetermined
-            (if a_cas_and_a_cmp = status then verify casn cass
+            (if a_cmp_followed_by_a_cas < status then verify casn cass
              else if 0 <= status then `After
              else `Before)
       | exception Exit -> fenceless_get casn == `After)
@@ -229,7 +236,7 @@ let determine_for_owner casn cass =
   fenceless_set casn undetermined;
   match determine casn 0 cass with
   | status ->
-      if a_cas_and_a_cmp = status then
+      if a_cmp_followed_by_a_cas < status then
         (* We only want to [raise Interference] in case it is the verify step
            that fails.  The idea is that in [lock_free] mode the attempt might
            have succeeded as the compared locations would have been set in
