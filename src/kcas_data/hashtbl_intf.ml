@@ -15,6 +15,9 @@ module type Ops = sig
   val clear : ('x, ('k, 'v) t -> unit) fn
   (** [clear] is a synonym for {!reset}. *)
 
+  val swap : ('x, ('k, 'v) t -> ('k, 'v) t -> unit) fn
+  (** [swap t1 t2] exchanges the contents of the hash tables [t1] and [t2]. *)
+
   val remove : ('x, ('k, 'v) t -> 'k -> unit) fn
   (** [remove t k] removes the most recent existing binding of key [k], if any,
       from the hash table [t] thereby revealing the earlier binding of [k], if

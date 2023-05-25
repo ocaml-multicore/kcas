@@ -55,10 +55,12 @@ let () =
   assert (
     Hashtbl.to_seq t |> List.of_seq = [ ("key", 3); ("key", 2); ("key", 1) ]);
   let u = Hashtbl.to_seq t |> Hashtbl.of_seq in
-  assert (Hashtbl.find u "key" = 1);
-  assert (Hashtbl.find t "key" = 3);
-  Hashtbl.filter_map_inplace (fun _ v -> if v = 1 then None else Some (-v)) t;
-  assert (Hashtbl.find_all t "key" = [ -3; -2 ]);
+  Hashtbl.swap t u;
+  assert (Hashtbl.find t "key" = 1);
+  assert (Hashtbl.find u "key" = 3);
+  Hashtbl.filter_map_inplace (fun _ v -> if v = 1 then None else Some (-v)) u;
+  assert (Hashtbl.find_all u "key" = [ -3; -2 ]);
+  Hashtbl.swap u t;
   assert (Hashtbl.length t = 2);
   (match
      Hashtbl.filter_map_inplace
