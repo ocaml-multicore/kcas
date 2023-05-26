@@ -11,6 +11,7 @@ depends: [
   "dune" {>= "3.3"}
   "kcas" {= version}
   "mdx" {>= "1.10.0" & with-test}
+  "multicore-magic" {>= "1.0.0" & with-test}
   "odoc" {with-doc}
 ]
 build: [
