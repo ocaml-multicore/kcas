@@ -7,7 +7,10 @@ module Int = struct
 end
 
 let bench ~n_domains ~n_ops ~n_keys ~percent_read =
-  let t = Hashtbl.create ~hashed_type:(module Int) () in
+  let t =
+    Hashtbl.create ~hashed_type:(module Int) ()
+    |> Multicore_magic.copy_as_padded
+  in
 
   for i = 0 to n_keys - 1 do
     Hashtbl.replace t i i
@@ -15,7 +18,7 @@ let bench ~n_domains ~n_ops ~n_keys ~percent_read =
 
   let barrier = Atomic.make n_domains in
 
-  let n_ops_todo = Atomic.make n_ops in
+  let n_ops_todo = Atomic.make n_ops |> Multicore_magic.copy_as_padded in
   let rec alloc_ops () =
     let n = Atomic.get n_ops_todo in
     if n = 0 then 0

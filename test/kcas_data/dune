@@ -7,7 +7,7 @@
 (test
  (name hashtbl_bench)
  (modules hashtbl_bench)
- (libraries kcas kcas_data unix)
+ (libraries kcas kcas_data unix multicore-magic)
  (package kcas_data))
 
 (test
