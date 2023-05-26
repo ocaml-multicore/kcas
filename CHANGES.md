@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.5.2
+
+- Improve `Hashtbl` read-write performance and add `swap` (@polytypic)
+- Avoid some unnecessary verifies of read-only CMP operations (@polytypic)
+
 ## 0.5.1
 
 - Add synchronizing variable `Mvar` to `kcas_data` (@polytypic)
