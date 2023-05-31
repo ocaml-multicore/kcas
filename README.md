@@ -53,6 +53,8 @@ is distributed under the [ISC license](LICENSE.md).
     - [Composing transactions](#composing-transactions)
     - [Blocking transactions](#blocking-transactions)
     - [A transactional lock-free leftist heap](#a-transactional-lock-free-leftist-heap)
+  - [Programming with transactional data structures](#programming-with-transactional-data-structures)
+    - [A transactional LRU cache](#a-transactional-lru-cache)
   - [Programming with primitive operations](#programming-with-primitive-operations)
 - [Designing lock-free algorithms with k-CAS](#designing-lock-free-algorithms-with-k-cas)
   - [Minimize accesses](#minimize-accesses)
@@ -712,6 +714,142 @@ Notice how we were able to use a `while` loop, rather than recursion, in
 > This leftist tree implementation is unlikely to be the best performing
 > lock-free heap implementation, but it was pretty straightforward to implement
 > using k-CAS based on a textbook imperative implementation.
+
+### Programming with transactional data structures
+
+When was the last time you implemented a non-trivial data structure or algorithm
+from scratch? For most professionals the answer might be along the lines of
+_"when I took my data structures course at the university"_ or _"when I
+interviewed for the software engineering position at Big Co"_.
+
+**kcas** aims to be usable both
+
+- for experts implementing correct and performant lock-free data structures, and
+- for everyone gluing together programs using such data structures.
+
+Many of the examples in this introduction are data structures of some sort.
+However, implementing basic data structures from scratch is not something
+everyone should be doing every time they are writing concurrent programs.
+Instead programmers should be able to reuse carefully constructed data
+structures.
+
+One source of ready-made data structures is the
+[**kcas_data**](https://ocaml-multicore.github.io/kcas/doc/kcas_data/Kcas_data/index.html)
+package. Let's explore how we can leverage those data structures. Of course,
+first we need to `#require` the package and we'll also open it for convenience:
+
+```ocaml
+# #require "kcas_data"
+# open Kcas_data
+```
+
+#### A transactional LRU cache
+
+A LRU or least-recently-used cache is essentially a bounded association table.
+When the capacity of the cache is exceeded, some association is dropped. The LRU
+or least-recently-used policy is to drop the association that was accessed least
+recently.
+
+A simple way to implement a LRU cache is to use a hash table to store the
+associations and a doubly-linked list to keep track of the order in which
+associations have been accessed. Whenever an association is accessed, the
+corresponding linked list node is added or moved to one end of the list. When
+the cache overflows, the association whose node is at the other end the list is
+removed.
+
+The **kcas_data** package conveniently provides a
+[`Hashtbl`](https://ocaml-multicore.github.io/kcas/doc/kcas_data/Kcas_data/Hashtbl/index.html)
+module providing a hash table implementation that mimics the Stdlib
+[`Hashtbl`](https://v2.ocaml.org/api/Hashtbl.html) module and a
+[`Dllist`](https://ocaml-multicore.github.io/kcas/doc/kcas_data/Kcas_data/Dllist/index.html)
+providing a doubly-linked list implementation. We'll also keep track of the
+space in the cache using a separate shared memory location so that it is
+possible to change the capacity of the cache dynamically:
+
+```ocaml
+type ('k, 'v) cache = {
+  space: int Loc.t;
+  table: ('k, 'k Dllist.node * 'v) Hashtbl.t;
+  order: 'k Dllist.t;
+}
+```
+
+To create a cache we just create the data structures:
+
+```ocaml
+# let cache ?hashed_type capacity =
+    { space = Loc.make capacity;
+      table = Hashtbl.create ?hashed_type ();
+      order = Dllist.create () }
+val cache : ?hashed_type:'a Hashtbl.hashed_type -> int -> ('a, 'b) cache =
+  <fun>
+```
+
+Note that above we just passed the optional `hashed_type` argument to the hash
+table constructor. The hash table
+[`create`](https://ocaml-multicore.github.io/kcas/doc/kcas_data/Kcas_data/Hashtbl/index.html#val-create)
+function takes some more optional arguments some of which might make sense to
+pass through.
+
+To access an association in the cache we provide a `get_opt` operation
+
+```ocaml
+# let get_opt ~xt {table; order; _} key =
+    Hashtbl.Xt.find_opt ~xt table key
+    |> Option.map @@ fun (node, value) ->
+       Dllist.Xt.move_l ~xt node order;
+       value
+val get_opt : xt:'a Xt.t -> ('b, 'c) cache -> 'b -> 'c option = <fun>
+```
+
+that, as explained previously, moves the node corresponding to the accessed
+association to the left end of the list.
+
+To introduce associations we provide the `set` operation
+
+```ocaml
+# let set ~xt {table; order; space; _} key value =
+    let node =
+      match Hashtbl.Xt.find_opt ~xt table key with
+      | None ->
+        if 0 = Xt.update ~xt space (fun n -> Int.max 0 (n-1)) then
+          Dllist.Xt.take_opt_r ~xt order
+          |> Option.iter (Hashtbl.Xt.remove ~xt table);
+        Dllist.Xt.add_l ~xt key order
+      | Some (node, _) ->
+        Dllist.Xt.move_l ~xt node order;
+        node
+    in
+    Hashtbl.Xt.replace ~xt table key (node, value)
+val set : xt:'a Xt.t -> ('b, 'c) cache -> 'b -> 'c -> unit = <fun>
+```
+
+that, like `get_opt`, either moves or adds the node of the accessed association
+to the left end of the list. In case a new association is added, the space is
+decremented. If there was no space, an association is first removed. As
+described previously, the association to remove is determined by removing the
+rightmost element from the list.
+
+We can then test that the cache works as expected:
+
+```ocaml
+# let a_cache : (int, string) cache = cache 2
+val a_cache : (int, string) cache =
+  {space = <abstr>; table = <abstr>; order = <abstr>}
+# Xt.commit { tx = set a_cache 101 "basics" }
+- : unit = ()
+# Xt.commit { tx = set a_cache 42 "answer" }
+- : unit = ()
+# Xt.commit { tx = get_opt a_cache 101 }
+- : string option = Some "basics"
+# Xt.commit { tx = set a_cache 2023 "year" }
+- : unit = ()
+# Xt.commit { tx = get_opt a_cache 42 }
+- : string option = None
+```
+
+As an exercise, implement an operation to `remove` associations from a cache and
+an operation to change the capacity of the cache.
 
 ### Programming with primitive operations
 
@@ -1392,7 +1530,7 @@ accessing the association list location corresponding to specified key:
 # let access ~xt basic_hashtbl key =
     let data = Xt.get ~xt basic_hashtbl.data in
     let n = Array.length data in
-    let i = Hashtbl.hash key mod n in
+    let i = Stdlib.Hashtbl.hash key mod n in
     data.(i)
 val access :
   xt:'a Xt.t -> ('b, 'c) basic_hashtbl -> 'd -> ('b * 'c Loc.t) list Loc.t =
@@ -1457,7 +1595,7 @@ operation:
     |> Array.iter @@ fun assoc_loc ->
        Xt.get ~xt assoc_loc
        |> List.iter @@ fun ((key, _) as bucket) ->
-          let i = Hashtbl.hash key mod new_capacity in
+          let i = Stdlib.Hashtbl.hash key mod new_capacity in
           Xt.modify ~xt new_data.(i) (List.cons bucket)
 val rehash : xt:'a Xt.t -> ('b, 'c) basic_hashtbl -> int -> unit = <fun>
 ```
@@ -1742,11 +1880,6 @@ and
 implementations that are conveniently provided by the
 [**kcas_data**](https://ocaml-multicore.github.io/kcas/doc/kcas_data/Kcas_data/index.html)
 package.
-
-```ocaml
-# #require "kcas_data"
-# open Kcas_data
-```
 
 Here is the full toy scheduler module:
 

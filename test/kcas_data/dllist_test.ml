@@ -38,3 +38,28 @@ let () =
   Dllist.add_l 3 l |> ignore;
   Dllist.add_r 4 l |> ignore;
   assert (take_as_list Dllist.take_opt_l l = [ 3; 1; 4 ])
+
+let () =
+  let t1 = Dllist.create () in
+  let n1 = Dllist.add_l 5.3 t1 in
+  Dllist.move_l n1 t1;
+  assert (Dllist.to_list_l t1 = [ 5.3 ]);
+  Dllist.move_r n1 t1;
+  assert (Dllist.to_list_l t1 = [ 5.3 ]);
+  let n2 = Dllist.add_l 5.2 t1 in
+  assert (Dllist.to_list_l t1 = [ 5.2; 5.3 ]);
+  Dllist.move_r n2 t1;
+  assert (Dllist.to_list_l t1 = [ 5.3; 5.2 ]);
+  Dllist.move_l n2 t1;
+  assert (Dllist.to_list_l t1 = [ 5.2; 5.3 ]);
+  let t2 = Dllist.create () in
+  Dllist.move_l n1 t2;
+  assert (Dllist.to_list_l t1 = [ 5.2 ]);
+  assert (Dllist.to_list_l t2 = [ 5.3 ]);
+  Dllist.move_r n2 t2;
+  assert (Dllist.to_list_l t2 = [ 5.3; 5.2 ]);
+  Dllist.move_l n1 t1;
+  assert (Dllist.to_list_l t2 = [ 5.2 ]);
+  assert (Dllist.to_list_l t1 = [ 5.3 ])
+
+let () = Printf.printf "Test Dllist OK!\n%!"

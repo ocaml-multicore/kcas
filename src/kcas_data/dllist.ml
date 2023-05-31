@@ -59,6 +59,28 @@ module Xt = struct
     Xt.set ~xt prev.next (as_list node);
     node
 
+  let move_l ~xt node list =
+    let node = as_list node in
+    let list_next = Xt.exchange ~xt list.next node in
+    if list_next != node then (
+      let node_prev = Xt.exchange ~xt node.prev list in
+      let node_next = Xt.exchange ~xt node.next list_next in
+      if node_prev != node then (
+        Xt.set ~xt node_prev.next node_next;
+        Xt.set ~xt node_next.prev node_prev);
+      Xt.set ~xt list_next.prev node)
+
+  let move_r ~xt node list =
+    let node = as_list node in
+    let list_prev = Xt.exchange ~xt list.prev node in
+    if list_prev != node then (
+      let node_next = Xt.exchange ~xt node.next list in
+      let node_prev = Xt.exchange ~xt node.prev list_prev in
+      if node_next != node then (
+        Xt.set ~xt node_prev.next node_next;
+        Xt.set ~xt node_next.prev node_prev);
+      Xt.set ~xt list_prev.next node)
+
   let take_opt_l ~xt list =
     let next = Xt.get ~xt list.next in
     if next == list then None
@@ -140,6 +162,8 @@ let add_r value list =
   let node = create_node ~prev:list ~next:list value in
   Kcas.Xt.commit { tx = Xt.add_node_r node list }
 
+let move_l node list = Kcas.Xt.commit { tx = Xt.move_l node list }
+let move_r node list = Kcas.Xt.commit { tx = Xt.move_r node list }
 let take_opt_l list = Kcas.Xt.commit { tx = Xt.take_opt_l list }
 let take_opt_r list = Kcas.Xt.commit { tx = Xt.take_opt_r list }
 let take_blocking_l list = Kcas.Xt.commit { tx = Xt.take_blocking_l list }
