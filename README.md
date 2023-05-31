@@ -843,8 +843,8 @@ A simple way to implement a LRU cache is to use a hash table to store the
 associations and a doubly-linked list to keep track of the order in which
 associations have been accessed. Whenever an association is accessed, the
 corresponding linked list node is added or moved to one end of the list. When
-the cache overflows, the association whose node is at the other end the list is
-removed.
+the cache overflows, the association whose node is at the other end of the list
+is removed.
 
 The **kcas_data** package conveniently provides a
 [`Hashtbl`](https://ocaml-multicore.github.io/kcas/doc/kcas_data/Kcas_data/Hashtbl/index.html)
