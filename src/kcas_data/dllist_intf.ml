@@ -8,12 +8,12 @@ module type Ops = sig
       [remove] is idempotent. *)
 
   val move_l : ('x, 'a node -> 'a t -> unit) fn
-  (** [move_to_l n l] removes the node [n] from the doubly linked list it is
-      part of and then add it to the left of list [l]. *)
+  (** [move_l n l] removes the node [n] from the doubly-linked list it is part
+      of and then adds it to the left of the list [l]. *)
 
   val move_r : ('x, 'a node -> 'a t -> unit) fn
-  (** [move_to_r n l] removes the node [n] from the doubly linked list it is
-      part of and then add it to the right of list [l]. *)
+  (** [move_r n l] removes the node [n] from the doubly-linked list it is part
+      of and then adds it to the right of the list [l]. *)
 
   val is_empty : ('x, 'a t -> bool) fn
   (** [is_empty l] determines whether the doubly-linked list [l] is empty or
