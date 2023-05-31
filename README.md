@@ -853,12 +853,10 @@ an operation to change the capacity of the cache.
 
 ### Programming with primitive operations
 
-The [`Op`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Op/index.html)
-module is probably most suitable when using **kcas** as a means to design and
-implement new lock-free algorithms.
-
-To program with primitive operations one simply makes a list of CAS operations
-using
+In addition to the transactional interface, **kcas** also provides the
+[`Op`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Op/index.html)
+interface for performing a list of primitive operations. To program with
+primitive operations one simply makes a list of CAS operations using
 [`make_cas`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Op/index.html#val-make_cas)
 and then attempts them using
 [`atomically`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Op/index.html#val-atomically).
