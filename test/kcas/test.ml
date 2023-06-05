@@ -32,6 +32,13 @@ let assert_kcas loc expected_v =
   let present_v = Loc.get loc in
   assert (present_v == expected_v)
 
+let run_domains = function
+  | [] -> ()
+  | main :: others ->
+      let others = List.map Domain.spawn others in
+      main ();
+      List.iter Domain.join others
+
 let test_non_linearizable () =
   let barrier = Barrier.make 2
   and n_iter = 100_000
@@ -70,62 +77,17 @@ let test_non_linearizable () =
     test_finished := true
   in
 
-  [ thread2; thread1 ] |> List.map Domain.spawn |> List.iter Domain.join
+  run_domains [ thread2; thread1 ]
 
-(* test 1 *)
+(* *)
+
 let test_set () =
   let a = Loc.make 0 in
   assert_kcas a 0;
   Loc.set a 1;
   assert_kcas a 1
 
-(* test 2 *)
-let thread1 barrier test_finished (a1, a2) () =
-  let c1 = [ Op.make_cas a1 0 1; Op.make_cas a2 0 1 ] in
-  let c2 = [ Op.make_cas a1 1 0; Op.make_cas a2 1 0 ] in
-
-  Barrier.await barrier;
-
-  for _ = 1 to nb_iter do
-    assert_kcas a1 0;
-    assert_kcas a2 0;
-
-    let out1 = Op.atomically c1 in
-    assert out1;
-
-    assert_kcas a1 1;
-    assert_kcas a2 1;
-
-    let out2 = Op.atomically c2 in
-    assert out2
-  done;
-  Atomic.set test_finished true
-
-let thread2 barrier test_finished (a1, a2) () =
-  let c1 = [ Op.make_cas a1 1 0; Op.make_cas a2 0 1 ] in
-  let c2 = [ Op.make_cas a1 0 1; Op.make_cas a2 1 0 ] in
-
-  Barrier.await barrier;
-
-  while not (Atomic.get test_finished) do
-    let out1 = Op.atomically c1 in
-    let out2 = Op.atomically c2 in
-    assert (not out1);
-    assert (not out2)
-  done
-
-let thread3 barrier test_finished (a1, a2) () =
-  let c1 = [ Op.make_cas a1 0 1; Op.make_cas a2 1 0 ] in
-  let c2 = [ Op.make_cas a1 1 0; Op.make_cas a2 0 1 ] in
-
-  Barrier.await barrier;
-
-  while not (Atomic.get test_finished) do
-    let out1 = Op.atomically c1 in
-    let out2 = Op.atomically c2 in
-    assert (not out1);
-    assert (not out2)
-  done
+(* *)
 
 let test_casn () =
   let barrier = Barrier.make 3 in
@@ -134,27 +96,55 @@ let test_casn () =
   let a1 = Loc.make 0 in
   let a2 = Loc.make 0 in
 
-  let domains = [ thread1; thread2; thread3 ] in
-  List.map (fun f -> Domain.spawn (f barrier test_finished (a1, a2))) domains
-  |> List.iter Domain.join
+  let thread1 () =
+    let c1 = [ Op.make_cas a1 0 1; Op.make_cas a2 0 1 ] in
+    let c2 = [ Op.make_cas a1 1 0; Op.make_cas a2 1 0 ] in
 
-(* test 3 *)
+    Barrier.await barrier;
 
-let thread4 barrier test_finished (a1, a2) () =
-  Barrier.await barrier;
-  for i = 0 to nb_iter do
-    let c = [ Op.make_cas a1 i (i + 1); Op.make_cas a2 i (i + 1) ] in
-    assert (Op.atomically c)
-  done;
-  Atomic.set test_finished true
+    for _ = 1 to nb_iter do
+      assert_kcas a1 0;
+      assert_kcas a2 0;
 
-let thread5 barrier test_finished (a1, a2) () =
-  Barrier.await barrier;
-  while not (Atomic.get test_finished) do
-    let a = Loc.get a1 in
-    let b = Loc.get a2 in
-    assert (a <= b)
-  done
+      let out1 = Op.atomically c1 in
+      assert out1;
+
+      assert_kcas a1 1;
+      assert_kcas a2 1;
+
+      let out2 = Op.atomically c2 in
+      assert out2
+    done;
+    Atomic.set test_finished true
+  and thread2 () =
+    let c1 = [ Op.make_cas a1 1 0; Op.make_cas a2 0 1 ] in
+    let c2 = [ Op.make_cas a1 0 1; Op.make_cas a2 1 0 ] in
+
+    Barrier.await barrier;
+
+    while not (Atomic.get test_finished) do
+      let out1 = Op.atomically c1 in
+      let out2 = Op.atomically c2 in
+      assert (not out1);
+      assert (not out2)
+    done
+  and thread3 () =
+    let c1 = [ Op.make_cas a1 0 1; Op.make_cas a2 1 0 ] in
+    let c2 = [ Op.make_cas a1 1 0; Op.make_cas a2 0 1 ] in
+
+    Barrier.await barrier;
+
+    while not (Atomic.get test_finished) do
+      let out1 = Op.atomically c1 in
+      let out2 = Op.atomically c2 in
+      assert (not out1);
+      assert (not out2)
+    done
+  in
+
+  run_domains [ thread1; thread2; thread3 ]
+
+(* *)
 
 let test_read_casn () =
   let barrier = Barrier.make 2 in
@@ -163,31 +153,43 @@ let test_read_casn () =
   let a1 = Loc.make 0 in
   let a2 = Loc.make 0 in
 
-  let domains = [ thread4; thread5 ] in
-  List.map (fun f -> Domain.spawn (f barrier test_finished (a1, a2))) domains
-  |> List.iter Domain.join
-
-(* test 4 *)
-
-let make_loc n =
-  let rec loop n out =
-    if n > 0 then loop (n - 1) (Loc.make 0 :: out) else out
+  let mutator () =
+    Barrier.await barrier;
+    for i = 0 to nb_iter do
+      let c = [ Op.make_cas a1 i (i + 1); Op.make_cas a2 i (i + 1) ] in
+      assert (Op.atomically c)
+    done;
+    Atomic.set test_finished true
+  and getter () =
+    Barrier.await barrier;
+    while not (Atomic.get test_finished) do
+      let a = Loc.get a1 in
+      let b = Loc.get a2 in
+      assert (a <= b)
+    done
   in
-  loop n []
 
-let make_kcas0 r_l =
-  let rec loop r_l out =
-    match r_l with h :: t -> loop t (Op.make_cas h 0 1 :: out) | [] -> out
-  in
-  loop r_l []
+  run_domains [ mutator; getter ]
 
-let make_kcas1 r_l =
-  let rec loop r_l out =
-    match r_l with h :: t -> loop t (Op.make_cas h 1 0 :: out) | [] -> out
-  in
-  loop r_l []
+(* *)
 
 let test_stress n nb_loop =
+  let make_loc n =
+    let rec loop n out =
+      if n > 0 then loop (n - 1) (Loc.make 0 :: out) else out
+    in
+    loop n []
+  and make_kcas0 r_l =
+    let rec loop r_l out =
+      match r_l with h :: t -> loop t (Op.make_cas h 0 1 :: out) | [] -> out
+    in
+    loop r_l []
+  and make_kcas1 r_l =
+    let rec loop r_l out =
+      match r_l with h :: t -> loop t (Op.make_cas h 1 0 :: out) | [] -> out
+    in
+    loop r_l []
+  in
   let r_l = make_loc n in
   let kcas0 = make_kcas0 r_l in
   let kcas1 = make_kcas1 r_l in
@@ -196,7 +198,7 @@ let test_stress n nb_loop =
     assert (Op.atomically kcas1)
   done
 
-(* test 5 *)
+(* *)
 
 (** Various tests make accesses in random order to exercise the internal splay
     tree based transaction log handling. *)
@@ -234,8 +236,7 @@ let test_presort () =
     done
   in
 
-  Array.make n_domains thread
-  |> Array.map Domain.spawn |> Array.iter Domain.join;
+  run_domains (List.init n_domains (Fun.const thread));
 
   locs |> Array.iter (fun r -> assert (Loc.get r = n_incs * n_domains))
 
@@ -266,8 +267,7 @@ let test_presort_and_is_in_log_xt () =
     done
   in
 
-  Array.make n_domains thread
-  |> Array.map Domain.spawn |> Array.iter Domain.join;
+  run_domains (List.init n_domains (Fun.const thread));
 
   let sum = locs |> Array.map Loc.get |> Array.fold_left ( + ) 0 in
   assert (sum = n_incs * n_locs_half * n_domains)
@@ -579,7 +579,3 @@ let () =
   test_mode ();
   test_xt ();
   Printf.printf "Test suite OK!\n%!"
-
-(*
-  ####
-  *)
