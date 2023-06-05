@@ -353,11 +353,13 @@ end
 
 let find_opt t k =
   let t = Loc.get t in
+  (* Fenceless is safe as we have a fence above. *)
   t.buckets |> bucket_of t.hash k |> Loc.fenceless_get
   |> Assoc.find_opt t.equal k
 
 let find_all t k =
   let t = Loc.get t in
+  (* Fenceless is safe as we have a fence above. *)
   t.buckets |> bucket_of t.hash k |> Loc.fenceless_get
   |> Assoc.find_all t.equal k
 
@@ -365,6 +367,7 @@ let find t k = match find_opt t k with None -> raise Not_found | Some v -> v
 
 let mem t k =
   let t = Loc.get t in
+  (* Fenceless is safe as we have a fence above. *)
   t.buckets |> bucket_of t.hash k |> Loc.fenceless_get |> Assoc.mem t.equal k
 
 let clear t = Kcas.Xt.commit { tx = Xt.clear t }
@@ -388,6 +391,7 @@ let snapshot ?length ?record t =
   in
   Kcas.Xt.commit { tx };
   Kcas.Xt.commit { tx = Xt.perform_pending t } |> ignore;
+  (* Fenceless is safe as commit above has fences. *)
   Loc.fenceless_get snapshot
 
 let to_seq t =
@@ -463,6 +467,7 @@ let filter_map_inplace fn t =
   in
   Kcas.Xt.commit { tx };
   Kcas.Xt.commit { tx = Xt.perform_pending t } |> ignore;
+  (* Fenceless is safe as commit above has fences. *)
   match Loc.fenceless_get raised with Done -> () | exn -> raise exn
 
 let stats t =

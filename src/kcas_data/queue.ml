@@ -122,15 +122,25 @@ end
 
 let is_empty q = Kcas.Xt.commit { tx = Xt.is_empty q }
 let length q = Kcas.Xt.commit { tx = Xt.length q }
-let add x q = Loc.modify q.back @@ Elems.cons x
+
+let add x q =
+  (* Fenceless is safe as we always update. *)
+  Loc.fenceless_modify q.back @@ Elems.cons x
+
 let push = add
 
 let take_opt q =
-  match Loc.update q.front Elems.tl_safe |> Elems.hd_opt with
+  (* Fenceless is safe as we revert to a transaction in case we didn't update. *)
+  match Loc.fenceless_update q.front Elems.tl_safe |> Elems.hd_opt with
   | None -> Kcas.Xt.commit { tx = Xt.take_opt q }
   | some -> some
 
-let take_blocking q = Kcas.Xt.commit { tx = Xt.take_blocking q }
+let take_blocking q =
+  (* Fenceless is safe as we revert to a transaction in case we didn't update. *)
+  match Loc.fenceless_update q.front Elems.tl_safe |> Elems.hd_opt with
+  | None -> Kcas.Xt.commit { tx = Xt.take_blocking q }
+  | Some elem -> elem
+
 let take_all q = Kcas.Xt.commit { tx = Xt.take_all q }
 
 let peek_opt q =
