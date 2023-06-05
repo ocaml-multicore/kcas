@@ -141,6 +141,14 @@ module Loc : sig
   val fenceless_get : 'a t -> 'a
   (** [fenceless_get r] is like [get r] except that [fenceless_get]s may be
       reordered. *)
+
+  val fenceless_update : ?backoff:Backoff.t -> 'a t -> ('a -> 'a) -> 'a
+  (** [fenceless_update r f] is like [update r f] except that in case [f x == x]
+      the update may be reordered. *)
+
+  val fenceless_modify : ?backoff:Backoff.t -> 'a t -> ('a -> 'a) -> unit
+  (** [fenceless_modify r f] is like [modify r f] except that in case [f x == x]
+      the modify may be reordered. *)
 end
 
 (** {1 Manipulating multiple locations atomically}

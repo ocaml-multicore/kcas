@@ -147,7 +147,7 @@ let test_casn () =
 (* *)
 
 let test_read_casn () =
-  let barrier = Barrier.make 2 in
+  let barrier = Barrier.make 4 in
   let test_finished = Atomic.make false in
 
   let a1 = Loc.make 0 in
@@ -167,9 +167,23 @@ let test_read_casn () =
       let b = Loc.get a2 in
       assert (a <= b)
     done
+  and committer () =
+    Barrier.await barrier;
+    while not (Atomic.get test_finished) do
+      let a = Xt.commit { tx = Xt.get a1 } in
+      let b = Xt.commit { tx = Xt.get a2 } in
+      assert (a <= b)
+    done
+  and updater () =
+    Barrier.await barrier;
+    while not (Atomic.get test_finished) do
+      let a = Loc.update a1 Fun.id in
+      let b = Loc.update a2 Fun.id in
+      assert (a <= b)
+    done
   in
 
-  run_domains [ mutator; getter ]
+  run_domains [ mutator; getter; committer; updater ]
 
 (* *)
 

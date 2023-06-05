@@ -148,12 +148,14 @@ let rec verify casn = function
   | NIL -> `After
   | CASN { loc; state; lt; gt; _ } -> (
       if lt == NIL then
+        (* Fenceless is safe as [finish] has a fence after. *)
         if is_cmp casn state && fenceless_get (as_atomic loc) != state then
           `Before
         else verify casn gt
       else
         match verify casn lt with
         | `After ->
+            (* Fenceless is safe as [finish] has a fence after. *)
             if is_cmp casn state && fenceless_get (as_atomic loc) != state then
               `Before
             else verify casn gt
@@ -162,7 +164,9 @@ let rec verify casn = function
 let finish casn (`Undetermined cass as undetermined) (status : determined) =
   if Atomic.compare_and_set casn (undetermined :> status) (status :> status)
   then release casn cass status
-  else fenceless_get casn == `After
+  else
+    (* Fenceless is safe as we have a fence above. *)
+    fenceless_get casn == `After
 
 let a_cmp = 1
 let a_cas = 2
@@ -190,6 +194,7 @@ let rec determine casn status = function
                && (current.casn == casn_before || not (is_after current.casn))
           in
           if (not (is_cmp casn state)) && matches_expected () then
+            (* Fenceless is safe as there are fences before and after. *)
             match fenceless_get casn with
             | `Undetermined _ ->
                 (* We now know that the operation wasn't finished when we read
@@ -217,6 +222,7 @@ let rec determine casn status = function
           else -1
 
 and is_after casn =
+  (* Fenceless at most gives old [Undetermined] and causes extra work. *)
   match fenceless_get casn with
   | `Undetermined cass as undetermined -> (
       match determine casn 0 cass with
@@ -225,14 +231,17 @@ and is_after casn =
             (if a_cmp_followed_by_a_cas < status then verify casn cass
              else if 0 <= status then `After
              else `Before)
-      | exception Exit -> fenceless_get casn == `After)
+      | exception Exit ->
+          (* Fenceless is safe as there was a fence before. *)
+          fenceless_get casn == `After)
   | `After -> true
   | `Before -> false
 
 let determine_for_owner casn cass =
-  let undetermined = `Undetermined cass in
   (* The end result is a cyclic data structure, which is why we cannot
      initialize the [casn] atomic directly. *)
+  let undetermined = `Undetermined cass in
+  (* Fenceless is safe as [casn] is private at this point. *)
   fenceless_set casn undetermined;
   match determine casn 0 cass with
   | status ->
@@ -247,7 +256,9 @@ let determine_for_owner casn cass =
       else
         a_cmp = status
         || finish casn undetermined (if 0 <= status then `After else `Before)
-  | exception Exit -> fenceless_get casn == `After
+  | exception Exit ->
+      (* Fenceless is safe as there was a fence before. *)
+      fenceless_get casn == `After
   [@@inline]
 
 let impossible () = failwith "impossible" [@@inline never]
@@ -307,6 +318,7 @@ module Retry = struct
 end
 
 let add_awaiter loc before awaiter =
+  (* Fenceless is safe as we have fence after. *)
   let state_old = fenceless_get (as_atomic loc) in
   let state_new =
     let awaiters = awaiter :: state_old.awaiters in
@@ -322,6 +334,7 @@ let[@tail_mod_cons] rec remove_first x' removed = function
   | x :: xs -> if x == x' then xs else x :: remove_first x' removed xs
 
 let rec remove_awaiter loc before awaiter =
+  (* Fenceless is safe as we have fence after. *)
   let state_old = fenceless_get (as_atomic loc) in
   if before == eval state_old then
     let removed = ref true in
@@ -340,40 +353,56 @@ let block loc before =
       raise cancellation_exn)
 
 let rec update_no_alloc backoff loc state f =
-  let state' = fenceless_get (as_atomic loc) in
-  let before = eval state' in
+  (* Fenceless is safe as we have had a fence before if needed and there is a fence after. *)
+  let state_old = fenceless_get (as_atomic loc) in
+  let before = eval state_old in
   match f before with
   | after ->
       state.after <- after;
       if before == after then before
-      else if Atomic.compare_and_set (as_atomic loc) state' state then (
+      else if Atomic.compare_and_set (as_atomic loc) state_old state then (
         state.before <- after;
-        resume_awaiters before state'.awaiters)
+        resume_awaiters before state_old.awaiters)
       else update_no_alloc (Backoff.once backoff) loc state f
   | exception Retry.Later ->
       block loc before;
       update_no_alloc backoff loc state f
 
+let update_with_state backoff loc f state_old =
+  let before = eval state_old in
+  match f before with
+  | after ->
+      if before == after then before
+      else
+        let state = new_state after in
+        if Atomic.compare_and_set (as_atomic loc) state_old state then
+          resume_awaiters before state_old.awaiters
+        else update_no_alloc (Backoff.once backoff) loc state f
+  | exception Retry.Later ->
+      let state = new_state before in
+      block loc before;
+      update_no_alloc backoff loc state f
+
 let rec exchange_no_alloc backoff loc state =
-  let state' = fenceless_get (as_atomic loc) in
-  let before = eval state' in
+  let state_old = Atomic.get (as_atomic loc) in
+  let before = eval state_old in
   if before == state.after then before
-  else if Atomic.compare_and_set (as_atomic loc) state' state then
-    resume_awaiters before state'.awaiters
+  else if Atomic.compare_and_set (as_atomic loc) state_old state then
+    resume_awaiters before state_old.awaiters
   else exchange_no_alloc (Backoff.once backoff) loc state
 
 let is_obstruction_free casn loc =
+  (* Fenceless is safe as we are accessing a private location. *)
   fenceless_get casn == (Mode.obstruction_free :> status) && 0 <= loc.id
   [@@inline]
 
-let cas loc before state =
-  let state' = fenceless_get (as_atomic loc) in
-  let before' = state'.before and after' = state'.after in
+let cas_with_state loc before state state_old =
+  let before' = state_old.before and after' = state_old.after in
   ((before == before' && before == after')
-  || before == if is_after state'.casn then after' else before')
+  || before == if is_after state_old.casn then after' else before')
   && (before == state.after
-     || Atomic.compare_and_set (as_atomic loc) state' state
-        && resume_awaiters true state'.awaiters)
+     || Atomic.compare_and_set (as_atomic loc) state_old state
+        && resume_awaiters true state_old.awaiters)
   [@@inline]
 
 let inc x = x + 1
@@ -415,23 +444,18 @@ module Loc = struct
 
   let compare_and_set loc before after =
     let state = new_state after in
-    cas loc before state
+    let state_old = Atomic.get (as_atomic loc) in
+    cas_with_state loc before state state_old
+
+  let fenceless_update ?(backoff = Backoff.default) loc f =
+    update_with_state backoff loc f (fenceless_get (as_atomic loc))
+
+  let fenceless_modify ?backoff loc f =
+    fenceless_update ?backoff loc f |> ignore
+    [@@inline]
 
   let update ?(backoff = Backoff.default) loc f =
-    let state' = fenceless_get (as_atomic loc) in
-    let before = eval state' in
-    match f before with
-    | after ->
-        if before == after then before
-        else
-          let state = new_state after in
-          if Atomic.compare_and_set (as_atomic loc) state' state then
-            resume_awaiters before state'.awaiters
-          else update_no_alloc (Backoff.once backoff) loc state f
-    | exception Retry.Later ->
-        let state = new_state before in
-        block loc before;
-        update_no_alloc backoff loc state f
+    update_with_state backoff loc f (Atomic.get (as_atomic loc))
 
   let modify ?backoff loc f = update ?backoff loc f |> ignore [@@inline]
 
@@ -439,9 +463,20 @@ module Loc = struct
     exchange_no_alloc backoff loc (new_state value)
 
   let set ?backoff loc value = exchange ?backoff loc value |> ignore
-  let fetch_and_add ?backoff loc n = update ?backoff loc (( + ) n)
-  let incr ?backoff loc = update ?backoff loc inc |> ignore
-  let decr ?backoff loc = update ?backoff loc dec |> ignore
+
+  let fetch_and_add ?backoff loc n =
+    if n = 0 then get loc
+    else
+      (* Fenceless is safe as we always update. *)
+      fenceless_update ?backoff loc (( + ) n)
+
+  let incr ?backoff loc =
+    (* Fenceless is safe as we always update. *)
+    fenceless_update ?backoff loc inc |> ignore
+
+  let decr ?backoff loc =
+    (* Fenceless is safe as we always update. *)
+    fenceless_update ?backoff loc dec |> ignore
 
   let has_awaiters loc =
     let state = Atomic.get (as_atomic loc) in
@@ -489,6 +524,7 @@ module Op = struct
           | [] -> determine_for_owner casn cass
           | CAS (loc, before, after) :: rest ->
               if before == after && is_obstruction_free casn loc then
+                (* Fenceless is safe as there are fences in [determine]. *)
                 let state = fenceless_get (as_atomic loc) in
                 before == eval state && run (insert cass loc state) rest
               else
@@ -498,6 +534,7 @@ module Op = struct
         in
         let (CAS (loc, before, after)) = first in
         if before == after && is_obstruction_free casn loc then
+          (* Fenceless is safe as there are fences in [determine]. *)
           let state = fenceless_get (as_atomic loc) in
           before == eval state
           && run (CASN { loc; state; lt = NIL; gt = NIL; awaiters = [] }) rest
@@ -517,6 +554,7 @@ module Xt = struct
 
   let validate_one casn loc state =
     let before = if is_cmp casn state then eval state else state.before in
+    (* Fenceless is safe inside transactions as each log update has a fence. *)
     if before != eval (fenceless_get (as_atomic loc)) then Retry.invalid ()
     [@@inline]
 
@@ -540,6 +578,7 @@ module Xt = struct
     [@@inline]
 
   let update0 loc f xt lt gt =
+    (* Fenceless is safe inside transactions as each log update has a fence. *)
     let state = fenceless_get (as_atomic loc) in
     let before = eval state in
     match f before with
@@ -667,6 +706,7 @@ module Xt = struct
               let state =
                 if is_cmp casn state then state
                 else
+                  (* Fenceless is safe inside transactions as each log update has a fence. *)
                   let current = fenceless_get (as_atomic loc) in
                   if state.before != eval current then Retry.invalid ()
                   else current
@@ -745,7 +785,10 @@ module Xt = struct
               let before = state.before in
               state.before <- state.after;
               state.casn <- casn_after;
-              if cas loc before state then Action.run xt.post_commit result
+              (* Fenceless is safe inside transactions as each log update has a fence. *)
+              let state_old = fenceless_get (as_atomic loc) in
+              if cas_with_state loc before state state_old then
+                Action.run xt.post_commit result
               else commit (Backoff.once backoff) mode (reset_quick xt) tx
         | cass -> (
             match determine_for_owner xt.casn cass with

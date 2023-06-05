@@ -25,12 +25,18 @@ module Xt = struct
 end
 
 let is_empty mv = Magic_option.is_none (Loc.get mv)
-let put mv value = Loc.modify mv (Magic_option.put_or_retry value)
+
+let put mv value =
+  (* Fenceless is safe as we always update. *)
+  Loc.fenceless_modify mv (Magic_option.put_or_retry value)
 
 let try_put mv value =
   Loc.compare_and_set mv Magic_option.none (Magic_option.some value)
 
-let take mv = Magic_option.get_unsafe (Loc.update mv Magic_option.take_or_retry)
+let take mv =
+  (* Fenceless is safe as we always update. *)
+  Magic_option.get_unsafe (Loc.fenceless_update mv Magic_option.take_or_retry)
+
 let take_opt mv = Magic_option.to_option (Loc.exchange mv Magic_option.none)
 let peek mv = Loc.get_as Magic_option.get_or_retry mv
 let peek_opt mv = Magic_option.to_option (Loc.get mv)
