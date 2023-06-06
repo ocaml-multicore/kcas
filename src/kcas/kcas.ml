@@ -396,13 +396,23 @@ let is_obstruction_free casn loc =
   fenceless_get casn == (Mode.obstruction_free :> status) && 0 <= loc.id
   [@@inline]
 
-let cas_with_state loc before state state_old =
+let rec cas_with_state loc before state state_old =
   let before' = state_old.before and after' = state_old.after in
   ((before == before' && before == after')
   || before == if is_after state_old.casn then after' else before')
   && (before == state.after
-     || Atomic.compare_and_set (as_atomic loc) state_old state
-        && resume_awaiters true state_old.awaiters)
+     ||
+     if Atomic.compare_and_set (as_atomic loc) state_old state then
+       resume_awaiters true state_old.awaiters
+     else
+       (* We must retry, because compare is by value rather than by state.
+
+          Because we don't usually change location state on no-op updates (to
+          avoid unnecessary wakeups), we should mostly fail spuriously due to
+          some other thread having installed or removed a waiter.
+
+          Fenceless is safe as there was a fence before. *)
+       cas_with_state loc before state (fenceless_get (as_atomic loc)))
   [@@inline]
 
 let inc x = x + 1
