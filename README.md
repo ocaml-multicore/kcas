@@ -52,6 +52,7 @@ is distributed under the [ISC license](LICENSE.md).
     - [A transactional lock-free queue](#a-transactional-lock-free-queue)
     - [Composing transactions](#composing-transactions)
     - [Blocking transactions](#blocking-transactions)
+    - [Timeouts](#timeouts)
     - [A transactional lock-free leftist heap](#a-transactional-lock-free-leftist-heap)
   - [Programming with transactional data structures](#programming-with-transactional-data-structures)
     - [The dining philosophers problem](#the-dining-philosophers-problem)
@@ -75,6 +76,12 @@ is distributed under the [ISC license](LICENSE.md).
 ## A quick tour
 
 To use the library
+
+<!--
+```ocaml
+# #thread
+```
+-->
 
 ```ocaml
 # #require "kcas"
@@ -561,6 +568,74 @@ the transaction can finish.
 The retry mechanism essentially allows a transaction to wait for an arbitrary
 condition and can function as a fairly expressive communication and
 synchronization mechanism.
+
+#### Timeouts
+
+> If you block, will they come?
+
+That is a good question. Blocking indefinitely is often not acceptable.
+
+A blocked transaction can be waken up by a write to any shared memory location
+that was accessed by the transaction. This means that, given a suitable timeout
+mechanism, one could e.g. setup a timeout that writes to a boolean shared memory
+location that is accessed by a blocking transaction:
+
+```ocaml
+# let pop_or_raise_if ~xt timeout stack =
+    (* Check if timeout has expired: *)
+    if Xt.get ~xt timeout then raise Exit;
+    pop stack
+val pop_or_raise_if :
+  xt:'a Xt.t -> bool Loc.t -> 'b list Loc.t -> xt:'c Xt.t -> 'b = <fun>
+```
+
+This works, but creating, checking, and canceling timeouts properly can be a lot
+of work. Therefore **kcas** also directly supports an optional `timeoutf`
+argument for potentially blocking operations. For example, to perform a blocking
+pop with a timeout, one can simply explicitly pass the desired timeout in
+seconds:
+
+```ocaml
+# let an_empty_stack = stack () in
+  Xt.commit ~timeoutf:0.1 { tx = pop an_empty_stack }
+Exception: Failure "Domain_local_timeout.set_timeoutf not implemented".
+```
+
+Oops! What happened above is that the
+[_domain local timeout_](https://github.com/ocaml-multicore/domain-local-timeout)
+mechanism used by **kcas** was not implemented on the current domain. The idea
+is that, in the future, concurrent schedulers provide the mechanism out of the
+box, but there is also a default implementation using the Stdlib `Thread` and
+`Unix` modules that works on most platforms. However, to avoid direct
+dependencies to `Thread` and `Unix`, we need to explicitly tell the library that
+it can use those modules:
+
+```ocaml
+# Domain_local_timeout.set_system (module Thread) (module Unix)
+- : unit = ()
+```
+
+This initialization, if needed, should be done by application code rather than
+by libraries.
+
+If we now retry the previous example we will get a
+[`Timeout`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Timeout/index.html#exception-Timeout)
+exception as expected:
+
+```ocaml
+# let an_empty_stack = stack () in
+  Xt.commit ~timeoutf:0.1 { tx = pop an_empty_stack }
+Exception: Kcas.Timeout.Timeout.
+```
+
+Besides
+[`commit`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-commit),
+potentially blocking single location operations such as
+[`get_as`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Loc/index.html#val-get_as),
+[`update`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Loc/index.html#val-update),
+and
+[`modify`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Loc/index.html#val-modify)
+support the optional `timeoutf` argument.
 
 #### A transactional lock-free leftist heap
 

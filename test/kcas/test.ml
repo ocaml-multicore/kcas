@@ -167,6 +167,13 @@ let test_read_casn () =
       let b = Loc.get a2 in
       assert (a <= b)
     done
+  and getaser () =
+    Barrier.await barrier;
+    while not (Atomic.get test_finished) do
+      let a = Loc.get_as Fun.id a1 in
+      let b = Loc.get_as Fun.id a2 in
+      assert (a <= b)
+    done
   and committer () =
     Barrier.await barrier;
     while not (Atomic.get test_finished) do
@@ -183,7 +190,7 @@ let test_read_casn () =
     done
   in
 
-  run_domains [ mutator; getter; committer; updater ]
+  run_domains [ mutator; getter; getaser; committer; updater ]
 
 (* *)
 
@@ -564,6 +571,47 @@ let test_call () =
 
 (* *)
 
+(** This is a non-deterministic test that might fail occasionally. *)
+let test_timeout () =
+  Domain_local_timeout.set_system (module Thread) (module Unix);
+
+  let check (op : ?timeoutf:float -> bool Loc.t -> unit) () =
+    let x = Loc.make false in
+    let finally =
+      Domain_local_timeout.set_timeoutf 0.3 @@ fun () -> Loc.set x true
+    in
+    Fun.protect ~finally @@ fun () ->
+    (match op ~timeoutf:0.1 x with
+    | () -> assert false
+    | exception Timeout.Timeout -> ());
+    op ~timeoutf:0.5 x
+  in
+  run_domains
+    [
+      check (fun ?timeoutf x ->
+          Loc.get_as ?timeoutf (fun x -> if x then () else Retry.later ()) x);
+      check (fun ?timeoutf x ->
+          Loc.update ?timeoutf x (fun x -> x || Retry.later ()) |> ignore);
+      check (fun ?timeoutf x ->
+          Loc.modify ?timeoutf x (fun x -> x || Retry.later ()));
+      check (fun ?timeoutf x ->
+          let y = Loc.make false in
+          let tx ~xt =
+            if not (Xt.get ~xt x) then Retry.later ();
+            Xt.swap ~xt x y
+          in
+          Xt.commit ?timeoutf { tx });
+      check (fun ?timeoutf x ->
+          let y = Loc.make false in
+          let tx ~xt =
+            if not (Xt.get ~xt x) then Retry.invalid ();
+            Xt.swap ~xt x y
+          in
+          Xt.commit ?timeoutf { tx });
+    ]
+
+(* *)
+
 let test_mode () =
   assert (Loc.get_mode (Loc.make ~mode:Mode.lock_free 0) == Mode.lock_free);
   assert (
@@ -618,4 +666,6 @@ let () =
       ("call", [ Alcotest.test_case "" `Quick test_call ]);
       ("mode", [ Alcotest.test_case "" `Quick test_mode ]);
       ("xt", [ Alcotest.test_case "" `Quick test_xt ]);
+      ( "timeout (non-deterministic)",
+        [ Alcotest.test_case "" `Quick test_timeout ] );
     ]

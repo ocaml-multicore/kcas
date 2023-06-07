@@ -5,7 +5,7 @@
 
 (test
  (name test)
- (libraries kcas barrier unix alcotest)
+ (libraries kcas barrier threads alcotest)
  (modules test)
  (package kcas))
 

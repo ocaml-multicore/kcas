@@ -2,6 +2,14 @@
 
 module Backoff : module type of Backoff
 
+(** Timeout support. *)
+module Timeout : sig
+  exception Timeout
+  (** Exception that may be raised by operations such as {!Loc.get_as},
+      {!Loc.update}, {!Loc.modify}, or {!Xt.commit} when given a [~timeoutf] in
+      seconds. *)
+end
+
 (** Retry support. *)
 module Retry : sig
   exception Later
@@ -60,7 +68,11 @@ end
 
     - [backoff] specifies the configuration for the {!Backoff} mechanism.  In
       special cases, having more detailed knowledge of the application, one
-      might adjust the configuration to improve performance. *)
+      might adjust the configuration to improve performance.
+
+    - [timeoutf] specifies a timeout in seconds and, if specified, the
+      {!Timeout.Timeout} may be raised by the operation to signal that the
+      timeout expired. *)
 
 (** Shared memory locations. *)
 module Loc : sig
@@ -91,7 +103,7 @@ module Loc : sig
   val get : 'a t -> 'a
   (** [get r] reads the current value of the shared memory location [r]. *)
 
-  val get_as : ('a -> 'b) -> 'a t -> 'b
+  val get_as : ?timeoutf:float -> ('a -> 'b) -> 'a t -> 'b
   (** [get_as f loc] is equivalent to [f (get loc)].  The given function [f] may
       raise the {!Retry.Later} exception to signal that the conditional load
       should be retried only after the location has been modified outside of the
@@ -103,7 +115,7 @@ module Loc : sig
       location [r] to the [after] value if the current value of [r] is the
       [before] value. *)
 
-  val update : ?backoff:Backoff.t -> 'a t -> ('a -> 'a) -> 'a
+  val update : ?timeoutf:float -> ?backoff:Backoff.t -> 'a t -> ('a -> 'a) -> 'a
   (** [update r f] repeats [let b = get r in compare_and_set r b (f b)] until it
       succeeds and then returns the [b] value.  The given function [f] may raise
       the {!Retry.Later} exception to signal that the update should only be
@@ -111,7 +123,8 @@ module Loc : sig
       also safe for the given function [f] to raise any other exception to abort
       the update. *)
 
-  val modify : ?backoff:Backoff.t -> 'a t -> ('a -> 'a) -> unit
+  val modify :
+    ?timeoutf:float -> ?backoff:Backoff.t -> 'a t -> ('a -> 'a) -> unit
   (** [modify r f] is equivalent to [update r f |> ignore]. *)
 
   val exchange : ?backoff:Backoff.t -> 'a t -> 'a -> 'a
@@ -142,11 +155,13 @@ module Loc : sig
   (** [fenceless_get r] is like [get r] except that [fenceless_get]s may be
       reordered. *)
 
-  val fenceless_update : ?backoff:Backoff.t -> 'a t -> ('a -> 'a) -> 'a
+  val fenceless_update :
+    ?timeoutf:float -> ?backoff:Backoff.t -> 'a t -> ('a -> 'a) -> 'a
   (** [fenceless_update r f] is like [update r f] except that in case [f x == x]
       the update may be reordered. *)
 
-  val fenceless_modify : ?backoff:Backoff.t -> 'a t -> ('a -> 'a) -> unit
+  val fenceless_modify :
+    ?timeoutf:float -> ?backoff:Backoff.t -> 'a t -> ('a -> 'a) -> unit
   (** [fenceless_modify r f] is like [modify r f] except that in case [f x == x]
       the modify may be reordered. *)
 end
@@ -348,7 +363,8 @@ module Xt : sig
   val call : xt:'x t -> 'a tx -> 'a
   (** [call ~xt tx] is equivalent to [tx.Xt.tx ~xt]. *)
 
-  val commit : ?backoff:Backoff.t -> ?mode:Mode.t -> 'a tx -> 'a
+  val commit :
+    ?timeoutf:float -> ?backoff:Backoff.t -> ?mode:Mode.t -> 'a tx -> 'a
   (** [commit tx] repeatedly calls [tx] to record a log of shared memory
       accesses and attempts to perform them atomically until it succeeds and
       then returns whatever [tx] returned.  [tx] may raise {!Retry.Later} or

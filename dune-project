@@ -11,6 +11,7 @@
  (depends 
   (ocaml (>= 5.0))
   (domain-local-await (>= 0.2.0))
+  (domain-local-timeout (>= 0.1.0))
   (alcotest (and (>= 1.7.0) :with-test))
   (mdx (and (>= 1.10.0) :with-test))))
 (package (name kcas_data)
