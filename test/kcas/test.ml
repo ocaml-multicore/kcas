@@ -524,20 +524,28 @@ let test_rollback () =
     let n_permanent = Random.int n_locs in
     let n_rollbacks = Random.int n_locs in
 
+    let expected = ref false in
+    let unexpected = ref false in
+
     let tx ~xt =
       in_place_shuffle locs;
       for i = 0 to n_permanent - 1 do
         Xt.incr ~xt locs.(i)
       done;
+      Xt.post_commit ~xt (fun () -> expected := true);
 
       let snap = Xt.snapshot ~xt in
       in_place_shuffle locs;
       for i = 0 to n_rollbacks - 1 do
         Xt.incr ~xt locs.(i)
       done;
+      Xt.post_commit ~xt (fun () -> unexpected := true);
       Xt.rollback ~xt snap
     in
     Xt.commit { tx };
+
+    assert !expected;
+    assert (not !unexpected);
 
     accum := n_permanent + !accum
   done;

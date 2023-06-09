@@ -727,10 +727,13 @@ module Xt = struct
               and gt = rollback casn gt_mark gt in
               CASN { loc; state; lt; gt; awaiters = [] })
 
-  type 'x snap = cass
+  type 'x snap = cass * Action.t
 
-  let snapshot ~xt = xt.cass
-  let rollback ~xt snap = xt.cass <- rollback xt.casn snap xt.cass
+  let snapshot ~xt = (xt.cass, xt.post_commit)
+
+  let rollback ~xt (snap, post_commit) =
+    xt.cass <- rollback xt.casn snap xt.cass;
+    xt.post_commit <- post_commit
 
   let rec first ~xt tx = function
     | [] -> tx ~xt
