@@ -557,8 +557,7 @@ module Xt = struct
   type 'x t = {
     mutable casn : casn;
     mutable cass : cass;
-    mutable validate_countdown : int;
-    mutable validate_period : int;
+    mutable validate_counter : int;
     mutable post_commit : Action.t;
   }
 
@@ -575,16 +574,12 @@ module Xt = struct
         validate_one casn loc state;
         validate_all casn gt
 
-  let validate_log xt =
-    let p = xt.validate_period * 2 in
-    xt.validate_countdown <- p;
-    xt.validate_period <- p;
-    validate_all xt.casn xt.cass
-    [@@inline never]
-
   let maybe_validate_log xt =
-    let c = xt.validate_countdown - 1 in
-    if 0 < c then xt.validate_countdown <- c else validate_log xt
+    let c0 = xt.validate_counter in
+    let c1 = c0 + 1 in
+    xt.validate_counter <- c1;
+    (* Validate whenever counter reaches next power of 2. *)
+    if c0 land c1 = 0 then validate_all xt.casn xt.cass
     [@@inline]
 
   let update0 loc f xt lt gt =
@@ -777,8 +772,7 @@ module Xt = struct
 
   let reset_quick xt =
     xt.cass <- NIL;
-    xt.validate_countdown <- initial_validate_period;
-    xt.validate_period <- initial_validate_period;
+    xt.validate_counter <- initial_validate_period;
     xt.post_commit <- Action.noop;
     xt
     [@@inline]
@@ -831,10 +825,9 @@ module Xt = struct
   let commit ?(backoff = Backoff.default) ?(mode = Mode.obstruction_free) tx =
     let casn = Atomic.make (mode :> status)
     and cass = NIL
-    and validate_countdown = initial_validate_period
-    and validate_period = initial_validate_period
+    and validate_counter = initial_validate_period
     and post_commit = Action.noop in
-    let xt = { casn; cass; validate_countdown; post_commit; validate_period } in
+    let xt = { casn; cass; validate_counter; post_commit } in
     commit backoff mode xt tx.tx
     [@@inline]
 end
