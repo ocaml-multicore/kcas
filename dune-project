@@ -10,7 +10,7 @@
  (synopsis "Software transactional memory based on lock-free multi-word compare-and-set")
  (depends 
   (ocaml (>= 5.0))
-  (domain-local-await (>= 0.1.0))
+  (domain-local-await (>= 0.2.0))
   (mdx (and (>= 1.10.0) :with-test))))
 (package (name kcas_data)
  (synopsis "Compositional lock-free data structures and primitives for communication and synchronization")
