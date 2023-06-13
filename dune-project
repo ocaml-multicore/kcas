@@ -23,8 +23,10 @@
  (depends
   (kcas (= :version))
   (domain_shims (and (>= 0.1.0) :with-test))
+  (mtime (and (>= 2.0.0) :with-test))
   (alcotest (and (>= 1.7.0) :with-test))
   (mdx (and (>= 1.10.0) :with-test))
   (multicore-magic (and (>= 1.0.0) :with-test))
+  (yojson (and (>= 2.1.0) :with-test))
   (odoc (and (>= 2.2.0) :with-doc))))
 (using mdx 0.2)
