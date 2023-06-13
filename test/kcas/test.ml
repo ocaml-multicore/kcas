@@ -555,6 +555,15 @@ let test_rollback () =
 
 (* *)
 
+let test_call () =
+  let never = Xt.{ tx = (fun ~xt:_ -> Retry.later ()) } in
+  let result =
+    Xt.commit { tx = Xt.first [ Xt.call never; (fun ~xt:_ -> 101) ] }
+  in
+  assert (result = 101)
+
+(* *)
+
 let test_mode () =
   assert (Loc.get_mode (Loc.make ~mode:Mode.lock_free 0) == Mode.lock_free);
   assert (
@@ -598,6 +607,7 @@ let () =
   test_periodic_validation ();
   test_explicit_validation ();
   test_rollback ();
+  test_call ();
   test_mode ();
   test_xt ();
   Printf.printf "Test suite OK!\n%!"

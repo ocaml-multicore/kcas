@@ -345,7 +345,7 @@ module Xt : sig
       explicit transaction log.  The universal quantification helps to ensure
       that the transaction log cannot accidentally escape. *)
 
-  val call : 'a tx -> xt:'x t -> 'a
+  val call : xt:'x t -> 'a tx -> 'a
   (** [call ~xt tx] is equivalent to [tx.Xt.tx ~xt]. *)
 
   val commit : ?backoff:Backoff.t -> ?mode:Mode.t -> 'a tx -> 'a
