@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.5.3
+
+- Fix to also snapshot and rollback post commit actions (@polytypic)
+- Fix `Loc.compare_and_set` to have strong semantics (@polytypic)
+- Fix single location no-op updates to be strictly serializable (@polytypic)
+- Add `Dllist.move_l node list` and `Dllist.move_r node list` (@polytypic)
+
 ## 0.5.2
 
 - Improve `Hashtbl` read-write performance and add `swap` (@polytypic)
