@@ -1,13 +1,4 @@
 (tests
- (names
-  test
-  test_overlapping_loc
-  benchmark
-  xt_benchmark
-  xt_parallel_cmp_bench
-  ms_queue_test
-  example
-  threads
-  loc_modes)
+ (names test test_overlapping_loc ms_queue_test example threads loc_modes)
  (libraries alcotest kcas threads domain_shims)
  (package kcas))

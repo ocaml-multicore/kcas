@@ -1,0 +1,10 @@
+(test
+ (name main)
+ (package kcas_data)
+ (libraries
+  kcas_data
+  yojson
+  domain_shims
+  mtime
+  mtime.clock.os
+  multicore-magic))

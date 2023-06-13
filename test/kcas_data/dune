@@ -1,11 +1,4 @@
 (tests
- (names
-  dllist_test
-  hashtbl_bench
-  hashtbl_test
-  mvar_test
-  queue_test
-  stack_test
-  xt_test)
+ (names dllist_test hashtbl_test mvar_test queue_test stack_test xt_test)
  (libraries alcotest kcas kcas_data multicore-magic domain_shims)
  (package kcas_data))
