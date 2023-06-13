@@ -5,13 +5,13 @@
 
 (test
  (name test)
- (libraries kcas barrier unix)
+ (libraries kcas barrier unix alcotest)
  (modules test)
  (package kcas))
 
 (test
  (name test_overlapping_loc)
- (libraries kcas)
+ (libraries kcas alcotest)
  (modules test_overlapping_loc)
  (package kcas))
 
@@ -35,7 +35,7 @@
 
 (test
  (name ms_queue_test)
- (libraries kcas)
+ (libraries kcas alcotest)
  (modules ms_queue_test)
  (package kcas))
 
@@ -47,7 +47,7 @@
 
 (test
  (name threads)
- (libraries kcas threads)
+ (libraries kcas threads alcotest)
  (modules threads)
  (package kcas))
 

@@ -1,7 +1,7 @@
 open Kcas
 open Kcas_data
 
-let () =
+let basics () =
   let q = Queue.create () in
   Queue.add 101 q;
   let tx ~xt =
@@ -11,9 +11,7 @@ let () =
     assert (Queue.Xt.take_opt ~xt q = Some 42);
     assert (Queue.Xt.take_opt ~xt q = None)
   in
-  Xt.commit { tx }
-
-let () =
+  Xt.commit { tx };
   let q = Queue.create () in
   assert (Queue.length q = 0);
   assert (Queue.is_empty q);
@@ -30,6 +28,7 @@ let () =
   assert (Queue.take_opt q = None);
   assert (Queue.take_opt r = Some 101);
   assert (Queue.take_opt r = Some 42);
-  assert (Queue.take_opt r = None);
+  assert (Queue.take_opt r = None)
 
-  Printf.printf "Test Queue OK!\n%!"
+let () =
+  Alcotest.run "Queue" [ ("basics", [ Alcotest.test_case "" `Quick basics ]) ]

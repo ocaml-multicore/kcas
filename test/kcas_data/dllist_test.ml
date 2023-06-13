@@ -3,7 +3,7 @@ open Kcas_data
 let[@tail_mod_cons] rec take_as_list take l =
   match take l with None -> [] | Some x -> x :: take_as_list take l
 
-let () =
+let basics () =
   let t1 = Dllist.create () in
   let t1' = Dllist.take_all t1 in
   assert (Dllist.to_list_r t1 = [] && Dllist.to_list_l t1' = []);
@@ -32,14 +32,14 @@ let () =
   assert (Dllist.take_opt_l t2 = None);
   assert (take_as_list Dllist.take_opt_r t1 = [ 4; 3; 2; 1 ])
 
-let () =
+let add () =
   let l = Dllist.create () in
   Dllist.add_l 1 l |> ignore;
   Dllist.add_l 3 l |> ignore;
   Dllist.add_r 4 l |> ignore;
   assert (take_as_list Dllist.take_opt_l l = [ 3; 1; 4 ])
 
-let () =
+let move () =
   let t1 = Dllist.create () in
   let n1 = Dllist.add_l 5.3 t1 in
   Dllist.move_l n1 t1;
@@ -62,4 +62,10 @@ let () =
   assert (Dllist.to_list_l t2 = [ 5.2 ]);
   assert (Dllist.to_list_l t1 = [ 5.3 ])
 
-let () = Printf.printf "Test Dllist OK!\n%!"
+let () =
+  Alcotest.run "Dllist"
+    [
+      ("basics", [ Alcotest.test_case "" `Quick basics ]);
+      ("add", [ Alcotest.test_case "" `Quick add ]);
+      ("move", [ Alcotest.test_case "" `Quick move ]);
+    ]

@@ -11,11 +11,13 @@
  (depends 
   (ocaml (>= 5.0))
   (domain-local-await (>= 0.2.0))
+  (alcotest (and (>= 1.7.0) :with-test))
   (mdx (and (>= 1.10.0) :with-test))))
 (package (name kcas_data)
  (synopsis "Compositional lock-free data structures and primitives for communication and synchronization")
  (depends
   (kcas (= :version))
+  (alcotest (and (>= 1.7.0) :with-test))
   (mdx (and (>= 1.10.0) :with-test))
   (multicore-magic (and (>= 1.0.0) :with-test))))
 (using mdx 0.2)

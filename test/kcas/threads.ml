@@ -1,6 +1,6 @@
 open Kcas
 
-let () =
+let await_between_threads () =
   let x = Loc.make 0 in
   let y = Loc.make 0 in
 
@@ -16,6 +16,11 @@ let () =
 
   Thread.join a_thread;
 
-  assert (Loc.get x + Loc.get y = 42);
+  assert (Loc.get x + Loc.get y = 42)
 
-  Printf.printf "Test threads OK!\n%!"
+let () =
+  Alcotest.run "threads"
+    [
+      ( "await between threads",
+        [ Alcotest.test_case "" `Quick await_between_threads ] );
+    ]

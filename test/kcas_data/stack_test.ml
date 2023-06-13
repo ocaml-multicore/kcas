@@ -1,6 +1,6 @@
 open Kcas_data
 
-let () =
+let basics () =
   let s = Stack.create () in
   assert (Stack.length s = 0);
   assert (Stack.is_empty s);
@@ -18,6 +18,7 @@ let () =
   assert (Stack.length t = 2);
   assert (Stack.pop_opt t = Some 42);
   assert (Stack.pop_opt t = Some 101);
-  assert (Stack.pop_opt t = None);
+  assert (Stack.pop_opt t = None)
 
-  Printf.printf "Test Stack OK!\n%!"
+let () =
+  Alcotest.run "Stack" [ ("basics", [ Alcotest.test_case "" `Quick basics ]) ]
