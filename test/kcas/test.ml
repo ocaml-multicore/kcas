@@ -592,22 +592,30 @@ let test_xt () =
   assert (Loc.get rx = Loc.get ry)
 
 let () =
-  test_non_linearizable ();
-  test_set ();
-  test_casn ();
-  test_read_casn ();
-  test_stress 1_000 1_000;
-  test_presort ();
-  test_presort_and_is_in_log_xt ();
-  test_updates ();
-  test_post_commit ();
-  test_backoff ();
-  test_blocking ();
-  test_no_unnecessary_wakeups ();
-  test_periodic_validation ();
-  test_explicit_validation ();
-  test_rollback ();
-  test_call ();
-  test_mode ();
-  test_xt ();
-  Printf.printf "Test suite OK!\n%!"
+  Alcotest.run "kcas"
+    [
+      ( "non linearizable",
+        [ Alcotest.test_case "" `Quick test_non_linearizable ] );
+      ("set", [ Alcotest.test_case "" `Quick test_set ]);
+      ("casn", [ Alcotest.test_case "" `Quick test_casn ]);
+      ("read casn", [ Alcotest.test_case "" `Quick test_read_casn ]);
+      ( "stress",
+        [ Alcotest.test_case "" `Quick (fun () -> test_stress 1_000 1_0) ] );
+      ("presort", [ Alcotest.test_case "" `Quick test_presort ]);
+      ( "is_in_log",
+        [ Alcotest.test_case "" `Quick test_presort_and_is_in_log_xt ] );
+      ("updates", [ Alcotest.test_case "" `Quick test_updates ]);
+      ("post commit", [ Alcotest.test_case "" `Quick test_post_commit ]);
+      ("backoff", [ Alcotest.test_case "" `Quick test_backoff ]);
+      ("blocking", [ Alcotest.test_case "" `Quick test_blocking ]);
+      ( "no unnecessary wakeups",
+        [ Alcotest.test_case "" `Quick test_no_unnecessary_wakeups ] );
+      ( "pediodic validation",
+        [ Alcotest.test_case "" `Quick test_periodic_validation ] );
+      ( "explicit validation",
+        [ Alcotest.test_case "" `Quick test_explicit_validation ] );
+      ("rollback", [ Alcotest.test_case "" `Quick test_rollback ]);
+      ("call", [ Alcotest.test_case "" `Quick test_call ]);
+      ("mode", [ Alcotest.test_case "" `Quick test_mode ]);
+      ("xt", [ Alcotest.test_case "" `Quick test_xt ]);
+    ]

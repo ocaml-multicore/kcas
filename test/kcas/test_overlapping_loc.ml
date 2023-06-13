@@ -1,7 +1,7 @@
 module Loc = Kcas.Loc
 module Op = Kcas.Op
 
-let test_1 () =
+let conflicting_overlap () =
   (* [cas_2] acts on the same location as [cas_1]
      and has conflicting values. kCAS should be failing.
   *)
@@ -13,7 +13,7 @@ let test_1 () =
   | exception _ -> ()
   | _ -> assert false
 
-let test_2 () =
+let conflicting_duplicate () =
   (* [cas_2] acts on the same location as [cas_1]
      and has conflicting values. kCAS should fail.
 
@@ -30,7 +30,7 @@ let test_2 () =
   | exception _ -> ()
   | _ -> assert false
 
-let test_3 () =
+let meldable_overlap () =
   (* [cas_2] acts on the same location as [cas_1].
      This is not something that we can handle in the
      general case, but in this particular one,
@@ -47,8 +47,11 @@ let test_3 () =
   | _ -> assert false
 
 let _ =
-  test_1 ();
-  test_2 ();
-  test_3 ();
-
-  Printf.printf "Test overlapping loc OK!\n%!"
+  Alcotest.run "overlapping loc"
+    [
+      ( "conflicting overlap",
+        [ Alcotest.test_case "" `Quick conflicting_overlap ] );
+      ( "conflicting duplicate",
+        [ Alcotest.test_case "" `Quick conflicting_duplicate ] );
+      ("meldable overlap", [ Alcotest.test_case "" `Quick meldable_overlap ]);
+    ]

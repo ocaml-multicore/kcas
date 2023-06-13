@@ -3,7 +3,7 @@ module Q = Xt_linked_queue
 module P = Kcas_data.Queue
 module S = Xt_stack
 
-let () =
+let basics () =
   let p = P.create () and q = Q.create () and s = S.create () in
 
   (* Populate [p] with two items atomically  *)
@@ -33,6 +33,8 @@ let () =
   assert (Xt.commit { tx = P.Xt.is_empty p });
 
   Xt.commit { tx = Q.push_front q 101 };
-  assert (not (Xt.commit { tx = Q.is_empty q }));
+  assert (not (Xt.commit { tx = Q.is_empty q }))
 
-  Printf.printf "Test Xt OK!\n%!"
+let () =
+  Alcotest.run "Transactions"
+    [ ("basics", [ Alcotest.test_case "" `Quick basics ]) ]

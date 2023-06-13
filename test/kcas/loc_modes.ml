@@ -78,4 +78,4 @@ let accumulator_thread () =
 let () =
   accumulator_thread :: List.init n_counters counter_thread
   |> List.map Domain.spawn |> List.iter Domain.join;
-  Printf.printf "Test loc modes OK!\n%!"
+  Printf.printf "Loc modes OK!\n%!"

@@ -1,7 +1,7 @@
 open Kcas
 open Kcas_data
 
-let () =
+let replace_and_remove () =
   let t = Hashtbl.create () in
   let n = try int_of_string Sys.argv.(1) with _ -> 10_000 in
   for i = 1 to n do
@@ -17,7 +17,7 @@ let () =
   done;
   assert (Hashtbl.length t = 0)
 
-let () =
+let large_tx () =
   let t = Hashtbl.create () in
   let n = 1_000 in
   let tx ~xt =
@@ -34,7 +34,7 @@ let () =
   in
   Xt.commit { tx }
 
-let () =
+let large_ops () =
   let t = Hashtbl.create () in
   Hashtbl.add t "key" 1;
   Hashtbl.add t "key" 2;
@@ -72,7 +72,7 @@ let () =
   assert (Hashtbl.find_all t "key" = [ -3; -2 ]);
   assert (Hashtbl.length t = 2)
 
-let () =
+let basics () =
   let t = Hashtbl.create () in
   assert (Hashtbl.length t = 0);
   Hashtbl.replace t "foo" 101;
@@ -91,4 +91,11 @@ let () =
   assert (Hashtbl.length t = 1);
   assert (Hashtbl.to_seq t |> List.of_seq |> List.sort compare = [ ("bar", 19) ])
 
-let () = Printf.printf "Test Hashtbl OK!\n%!"
+let () =
+  Alcotest.run "Stack"
+    [
+      ("replace and remove", [ Alcotest.test_case "" `Quick replace_and_remove ]);
+      ("large tx", [ Alcotest.test_case "" `Quick large_tx ]);
+      ("large ops", [ Alcotest.test_case "" `Quick large_ops ]);
+      ("basics", [ Alcotest.test_case "" `Quick basics ]);
+    ]

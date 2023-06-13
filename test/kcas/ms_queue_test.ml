@@ -124,6 +124,10 @@ let tail_leak_test n =
 
 let () =
   let n = try int_of_string Sys.argv.(1) with _ -> 1_000 in
-  write_skew_test n;
-  tail_leak_test n;
-  Printf.printf "Test MS queue OK!\n%!"
+  Alcotest.run "MS queue"
+    [
+      ( "write skew",
+        [ Alcotest.test_case "" `Quick (fun () -> write_skew_test n) ] );
+      ( "tail leak",
+        [ Alcotest.test_case "" `Quick (fun () -> tail_leak_test n) ] );
+    ]
