@@ -743,7 +743,7 @@ module Xt = struct
 
   type 'a tx = { tx : 'x. xt:'x t -> 'a } [@@unboxed]
 
-  let call { tx } = tx [@@inline]
+  let call ~xt { tx } = tx ~xt [@@inline]
 
   let rec add_awaiters awaiter casn = function
     | NIL as cont -> cont
