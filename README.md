@@ -97,6 +97,7 @@ One can then manipulate the locations individually:
 ```ocaml
 # Loc.set a 6
 - : unit = ()
+
 # Loc.get a
 - : int = 6
 ```
@@ -251,6 +252,7 @@ useful list manipulation helper functions
     | [] -> None
     | element :: _ -> Some element
 val hd_opt : 'a list -> 'a option = <fun>
+
 # let tl_safe = function
     | [] -> []
     | _ :: rest -> rest
@@ -282,10 +284,13 @@ transactions to `push` and `try_pop` elements:
 ```ocaml
 # let a_stack : int stack = stack ()
 val a_stack : int stack = <abstr>
+
 # Xt.commit { tx = push a_stack 101 }
 - : unit = ()
+
 # Xt.commit { tx = try_pop a_stack }
 - : int option = Some 101
+
 # Xt.commit { tx = try_pop a_stack }
 - : int option = None
 ```
@@ -397,10 +402,13 @@ transactions to `enqueue` and `try_dequeue` elements:
 ```ocaml
 # let a_queue : int queue = queue ()
 val a_queue : int queue = {front = <abstr>; back = <abstr>}
+
 # Xt.commit { tx = enqueue a_queue 76 }
 - : unit = ()
+
 # Xt.commit { tx = try_dequeue a_queue }
 - : int option = Some 76
+
 # Xt.commit { tx = try_dequeue a_queue }
 - : int option = None
 ```
@@ -511,6 +519,7 @@ To test them out, let's create a fresh stack and a queue
 ```ocaml
 # let a_stack : int stack = stack ()
 val a_stack : int stack = <abstr>
+
 # let a_queue : int queue = queue ()
 val a_queue : int queue = {front = <abstr>; back = <abstr>}
 ```
@@ -542,6 +551,7 @@ time
 ```ocaml
 # Xt.commit { tx = push a_stack 4 }
 - : unit = ()
+
 # Domain.join a_domain
 - : string = "I popped 4 and dequeued 2!"
 ```
@@ -925,14 +935,19 @@ We can then test that the cache works as expected:
 # let a_cache : (int, string) cache = cache 2
 val a_cache : (int, string) cache =
   {space = <abstr>; table = <abstr>; order = <abstr>}
+
 # Xt.commit { tx = set a_cache 101 "basics" }
 - : unit = ()
+
 # Xt.commit { tx = set a_cache 42 "answer" }
 - : unit = ()
+
 # Xt.commit { tx = get_opt a_cache 101 }
 - : string option = Some "basics"
+
 # Xt.commit { tx = set a_cache 2023 "year" }
 - : unit = ()
+
 # Xt.commit { tx = get_opt a_cache 42 }
 - : string option = None
 ```
@@ -994,8 +1009,10 @@ Now we can simply call `move`:
 ```ocaml
 # move stack_a stack_b
 - : unit = ()
+
 # Loc.get stack_a
 - : int list = []
+
 # Loc.get stack_b
 - : int list = [19; 76]
 ```
@@ -1117,12 +1134,16 @@ can see
 ```ocaml
 # Loc.get a, Loc.get b
 - : int * int = (10, 52)
+
 # transfer 100 ~source:a ~target:b
 - : unit = ()
+
 # Loc.get a, Loc.get b
 - : int * int = (10, 52)
+
 # transfer 10 ~source:a ~target:b
 - : unit = ()
+
 # Loc.get a, Loc.get b
 - : int * int = (0, 62)
 ```
@@ -1195,6 +1216,7 @@ Consider the following example of computing the size of a stack:
 ```ocaml
 # let a_stack = Loc.make [2; 3]
 val a_stack : int list Loc.t = <abstr>
+
 # let n_elems =
     let tx ~xt =
       Xt.get ~xt a_stack
@@ -1360,10 +1382,13 @@ Using the Michael-Scott style queue is as easy as any other transactional queue:
 ```ocaml
 # let a_queue : int queue = queue ()
 val a_queue : int queue = {head = <abstr>; tail = <abstr>}
+
 # Xt.commit { tx = enqueue a_queue 19 }
 - : unit = ()
+
 # Xt.commit { tx = try_dequeue a_queue }
 - : int option = Some 19
+
 # Xt.commit { tx = try_dequeue a_queue }
 - : int option = None
 ```
@@ -1809,6 +1834,7 @@ for hash tables, we are ready to take it out for a spin:
 # let a_hashtbl : (string, int) hashtbl = hashtbl ()
 val a_hashtbl : (string, int) hashtbl =
   {pending = <abstr>; basic = {size = <abstr>; data = <abstr>}}
+
 # let assoc = [
     ("Intro", 101);
     ("Answer", 42);
@@ -1817,10 +1843,12 @@ val a_hashtbl : (string, int) hashtbl =
   ]
 val assoc : (string * int) list =
   [("Intro", 101); ("Answer", 42); ("OCaml", 5); ("Year", 2023)]
+
 # assoc
   |> List.iter @@ fun (key, value) ->
      Xt.commit { tx = replace a_hashtbl key value }
 - : unit = ()
+
 # assoc
   |> List.iter @@ fun (key, _) ->
      Xt.commit { tx = remove a_hashtbl key }
@@ -2056,6 +2084,7 @@ fibers:
 ```ocaml
 # let in_queue : int Queue.t = Queue.create ()
 val in_queue : int Kcas_data.Queue.t = <abstr>
+
 # let out_stack : int Stack.t = Stack.create ()
 val out_stack : int Kcas_data.Stack.t = <abstr>
 ```
@@ -2079,11 +2108,13 @@ state in between, and then returns their sum:
 ```ocaml
 # let state = Loc.make 0
 val state : int Loc.t = <abstr>
+
 # let sync_to target =
     state
     |> Loc.get_as @@ fun current ->
        Retry.unless (target <= current)
 val sync_to : int -> unit = <fun>
+
 # let a_promise = Scheduler.fiber scheduler @@ fun () ->
     let x = Stack.pop_blocking out_stack in
     Printf.printf "First you gave me %d.\n%!" x;
@@ -2102,10 +2133,12 @@ To interact with the fibers, we add some elements to the `in_queue`:
 Giving 14...
 First you gave me 14.
 - : unit = ()
+
 # Queue.add 28 in_queue; sync_to 2
 Giving 28...
 Then you gave me 28.
 - : unit = ()
+
 # Promise.await a_promise
 - : int = 42
 ```
