@@ -218,7 +218,7 @@ let rec determine casn status = function
                     (status lor a_cas lor a_cmp_followed_by_a_cas)
                     gt
                 else determine casn status eq
-            | #determined -> raise Exit
+            | #determined -> raise_notrace Exit
           else -1
 
 and is_after casn =
@@ -252,7 +252,8 @@ let determine_for_owner casn cass =
            [lock_free] mode preventing interference.  If failure happens before
            the verify step then the [lock_free] mode would have likely also
            failed. *)
-        finish casn undetermined (verify casn cass) || raise Mode.Interference
+        finish casn undetermined (verify casn cass)
+        || raise_notrace Mode.Interference
       else
         a_cmp = status
         || finish casn undetermined (if 0 <= status then `After else `Before)
@@ -309,12 +310,12 @@ let eval state =
 module Retry = struct
   exception Later
 
-  let later () = raise Later [@@inline never]
+  let later () = raise_notrace Later [@@inline never]
   let unless condition = if not condition then later () [@@inline]
 
   exception Invalid
 
-  let invalid () = raise Invalid [@@inline never]
+  let invalid () = raise_notrace Invalid [@@inline never]
 end
 
 let add_awaiter loc before awaiter =
@@ -349,8 +350,9 @@ let block loc before =
   if add_awaiter loc before t.release then (
     try t.await ()
     with cancellation_exn ->
+      let backtrace = Printexc.get_raw_backtrace () in
       remove_awaiter loc before t.release;
-      raise cancellation_exn)
+      Printexc.raise_with_backtrace cancellation_exn backtrace)
 
 let rec update_no_alloc backoff loc state f =
   (* Fenceless is safe as we have had a fence before if needed and there is a fence after. *)
@@ -595,8 +597,9 @@ module Xt = struct
         xt.cass <- CASN { loc; state; lt; gt; awaiters = [] };
         before
     | exception exn ->
+        let backtrace = Printexc.get_raw_backtrace () in
         xt.cass <- CASN { loc; state; lt; gt; awaiters = [] };
-        raise exn
+        Printexc.raise_with_backtrace exn backtrace
     [@@inline]
 
   let update loc f xt state' lt gt =
@@ -816,8 +819,9 @@ module Xt = struct
                 remove_awaiters t.release xt.casn NIL xt.cass;
                 commit (Backoff.reset backoff) mode (reset_quick xt) tx
             | exception cancellation_exn ->
+                let backtrace = Printexc.get_raw_backtrace () in
                 remove_awaiters t.release xt.casn NIL xt.cass;
-                raise cancellation_exn)
+                Printexc.raise_with_backtrace cancellation_exn backtrace)
         | CASN _ as stop ->
             remove_awaiters t.release xt.casn stop xt.cass;
             commit (Backoff.once backoff) mode (reset_quick xt) tx)
