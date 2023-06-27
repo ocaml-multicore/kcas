@@ -2,10 +2,13 @@
 opam-version: "2.0"
 synopsis:
   "Compositional lock-free data structures and primitives for communication and synchronization"
+description:
+  "A library of compositional lock-free data structures and primitives for communication and synchronization implemented using kcas."
 maintainer: ["KC Sivaramakrishnan <sk826@cl.cam.ac.uk>"]
 authors: ["KC Sivaramakrishnan <sk826@cl.cam.ac.uk>"]
 license: "ISC"
 homepage: "https://github.com/ocaml-multicore/kcas"
+doc: "https://ocaml-multicore.github.io/kcas/doc/"
 bug-reports: "https://github.com/ocaml-multicore/kcas/issues"
 depends: [
   "dune" {>= "3.3"}
@@ -13,7 +16,7 @@ depends: [
   "alcotest" {>= "1.7.0" & with-test}
   "mdx" {>= "1.10.0" & with-test}
   "multicore-magic" {>= "1.0.0" & with-test}
-  "odoc" {with-doc}
+  "odoc" {>= "2.2.0" & with-doc}
 ]
 build: [
   ["dune" "subst"] {dev}
