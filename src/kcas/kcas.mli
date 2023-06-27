@@ -71,8 +71,8 @@ end
       might adjust the configuration to improve performance.
 
     - [timeoutf] specifies a timeout in seconds and, if specified, the
-      {!Timeout.Timeout} may be raised by the operation to signal that the
-      timeout expired. *)
+      {!Timeout.Timeout} exception may be raised by the operation to signal that
+      the timeout expired. *)
 
 (** Shared memory locations. *)
 module Loc : sig
