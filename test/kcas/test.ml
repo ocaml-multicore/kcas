@@ -576,15 +576,16 @@ let test_timeout () =
   Domain_local_timeout.set_system (module Thread) (module Unix);
 
   let check (op : ?timeoutf:float -> bool Loc.t -> unit) () =
-    let x = Loc.make false in
-    let finally =
-      Domain_local_timeout.set_timeoutf 0.3 @@ fun () -> Loc.set x true
+    let rec loop n =
+      let x = Loc.make false in
+      let (_ : unit -> unit) =
+        Domain_local_timeout.set_timeoutf 0.3 @@ fun () -> Loc.set x true
+      in
+      match op ~timeoutf:0.01 x with
+      | () -> if 0 < n then loop (n - 1) else assert false
+      | exception Timeout.Timeout -> op ~timeoutf:1.0 x
     in
-    Fun.protect ~finally @@ fun () ->
-    (match op ~timeoutf:0.01 x with
-    | () -> assert false
-    | exception Timeout.Timeout -> ());
-    op ~timeoutf:1.0 x
+    loop 5
   in
   run_domains
     [
