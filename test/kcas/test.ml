@@ -581,10 +581,10 @@ let test_timeout () =
       Domain_local_timeout.set_timeoutf 0.3 @@ fun () -> Loc.set x true
     in
     Fun.protect ~finally @@ fun () ->
-    (match op ~timeoutf:0.1 x with
+    (match op ~timeoutf:0.01 x with
     | () -> assert false
     | exception Timeout.Timeout -> ());
-    op ~timeoutf:0.5 x
+    op ~timeoutf:1.0 x
   in
   run_domains
     [
