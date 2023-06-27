@@ -8,7 +8,6 @@ maintainer: ["KC Sivaramakrishnan <sk826@cl.cam.ac.uk>"]
 authors: ["KC Sivaramakrishnan <sk826@cl.cam.ac.uk>"]
 license: "ISC"
 homepage: "https://github.com/ocaml-multicore/kcas"
-doc: "https://ocaml-multicore.github.io/kcas/doc/"
 bug-reports: "https://github.com/ocaml-multicore/kcas/issues"
 depends: [
   "dune" {>= "3.3"}
@@ -34,3 +33,4 @@ build: [
   ]
 ]
 dev-repo: "git+https://github.com/ocaml-multicore/kcas.git"
+doc: "https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/"

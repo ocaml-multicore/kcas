@@ -5,7 +5,6 @@
 (authors "KC Sivaramakrishnan <sk826@cl.cam.ac.uk>")
 (maintainers "KC Sivaramakrishnan <sk826@cl.cam.ac.uk>")
 (homepage "https://github.com/ocaml-multicore/kcas")
-(documentation "https://ocaml-multicore.github.io/kcas/doc/")
 (license ISC)
 (package (name kcas)
  (synopsis "Software transactional memory based on lock-free multi-word compare-and-set")
