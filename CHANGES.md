@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.6.0
+
+- Add timeout support to potentially blocking operations (@polytypic)
+- Add explicit `~xt` parameter to `Xt.call` to make it polymorphic (@polytypic)
+
 ## 0.5.3
 
 - Fix to also snapshot and rollback post commit actions (@polytypic)
