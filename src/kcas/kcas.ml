@@ -135,8 +135,6 @@ let resume_awaiters = function
   | awaiters -> List.iter resume_awaiter awaiters
   [@@inline]
 
-type determined = [ `After | `Before ]
-
 type 'a state = {
   mutable before : 'a;
   mutable after : 'a;
@@ -156,7 +154,11 @@ and cass =
   | NIL : cass
 
 and casn = status Atomic.t
-and status = [ `Undetermined of cass | determined ]
+
+and status =
+  | Before  (** [false] *)
+  | After  (** [true] *)
+  | Undetermined of cass
 
 (* NOTE: You can adjust comment blocks below to select whether or not to use an
    unsafe cast to avoid a level of indirection due to [Atomic.t] and reduce the
@@ -182,16 +184,16 @@ let is_cmp casn state = state.casn != casn [@@inline]
 let is_cas casn state = state.casn == casn [@@inline]
 
 module Mode = struct
-  type t = determined
+  type t = status
 
-  let lock_free = (`After :> t)
-  let obstruction_free = (`Before :> t)
+  let lock_free = After
+  let obstruction_free = Before
 
   exception Interference
 end
 
-let casn_after = Atomic.make `After
-let casn_before = Atomic.make `Before
+let casn_after = Atomic.make After
+let casn_before = Atomic.make Before
 
 let rec release_after casn = function
   | NIL -> true
@@ -215,34 +217,32 @@ let rec release_before casn = function
       end;
       release_before casn gt
 
-let release casn cass = function
-  | `After -> release_after casn cass
-  | `Before -> release_before casn cass
+let release casn cass status =
+  if status == After then release_after casn cass else release_before casn cass
 
 let rec verify casn = function
-  | NIL -> `After
-  | CASN { loc; state; lt; gt; _ } -> begin
+  | NIL -> After
+  | CASN { loc; state; lt; gt; _ } ->
       if lt == NIL then
         (* Fenceless is safe as [finish] has a fence after. *)
         if is_cmp casn state && fenceless_get (as_atomic loc) != state then
-          `Before
+          Before
         else verify casn gt
       else
-        match verify casn lt with
-        | `After ->
-            (* Fenceless is safe as [finish] has a fence after. *)
-            if is_cmp casn state && fenceless_get (as_atomic loc) != state then
-              `Before
-            else verify casn gt
-        | `Before -> `Before
-    end
+        let status = verify casn lt in
+        if status == After then
+          (* Fenceless is safe as [finish] has a fence after. *)
+          if is_cmp casn state && fenceless_get (as_atomic loc) != state then
+            Before
+          else verify casn gt
+        else status
 
-let finish casn (`Undetermined cass as undetermined) (status : determined) =
-  if Atomic.compare_and_set casn (undetermined :> status) (status :> status)
-  then release casn cass status
+let finish casn cass undetermined status =
+  if Atomic.compare_and_set casn undetermined status then
+    release casn cass status
   else
     (* Fenceless is safe as we have a fence above. *)
-    fenceless_get casn == `After
+    fenceless_get casn == After
 
 let a_cmp = 1
 let a_cas = 2
@@ -272,7 +272,7 @@ let rec determine casn status = function
           if (not (is_cmp casn state)) && matches_expected () then
             (* Fenceless is safe as there are fences before and after. *)
             match fenceless_get casn with
-            | `Undetermined _ ->
+            | Undetermined _ ->
                 (* We now know that the operation wasn't finished when we read
                    [current], but it is possible that the [loc]ation has been
                    updated since then by some other domain helping us (or even
@@ -296,30 +296,30 @@ let rec determine casn status = function
                     (status lor a_cas lor a_cmp_followed_by_a_cas)
                     gt
                 else determine casn status eq
-            | #determined -> raise_notrace Exit
+            | After | Before -> raise_notrace Exit
           else -1
 
 and is_after casn =
   (* Fenceless at most gives old [Undetermined] and causes extra work. *)
   match fenceless_get casn with
-  | `Undetermined cass as undetermined -> begin
+  | Undetermined cass as undetermined -> begin
       match determine casn 0 cass with
       | status ->
-          finish casn undetermined
+          finish casn cass undetermined
             (if a_cmp_followed_by_a_cas < status then verify casn cass
-             else if 0 <= status then `After
-             else `Before)
+             else if 0 <= status then After
+             else Before)
       | exception Exit ->
           (* Fenceless is safe as there was a fence before. *)
-          fenceless_get casn == `After
+          fenceless_get casn == After
     end
-  | `After -> true
-  | `Before -> false
+  | After -> true
+  | Before -> false
 
 let determine_for_owner casn cass =
   (* The end result is a cyclic data structure, which is why we cannot
      initialize the [casn] atomic directly. *)
-  let undetermined = `Undetermined cass in
+  let undetermined = Undetermined cass in
   (* Fenceless is safe as [casn] is private at this point. *)
   fenceless_set casn undetermined;
   match determine casn 0 cass with
@@ -331,14 +331,14 @@ let determine_for_owner casn cass =
            [lock_free] mode preventing interference.  If failure happens before
            the verify step then the [lock_free] mode would have likely also
            failed. *)
-        finish casn undetermined (verify casn cass)
+        finish casn cass undetermined (verify casn cass)
         || raise_notrace Mode.Interference
       else
         a_cmp = status
-        || finish casn undetermined (if 0 <= status then `After else `Before)
+        || finish casn cass undetermined (if 0 <= status then After else Before)
   | exception Exit ->
       (* Fenceless is safe as there was a fence before. *)
-      fenceless_get casn == `After
+      fenceless_get casn == After
   [@@inline]
 
 let impossible () = failwith "impossible" [@@inline never]

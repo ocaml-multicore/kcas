@@ -2,6 +2,7 @@ open Kcas
 
 (** Optimized operations on internal association lists with custom equality. *)
 module Assoc = struct
+  type change = Nop | Removed | Replaced | Added
   type ('k, 'v) t = ('k * 'v) list
 
   let iter_rev f = function
@@ -29,20 +30,20 @@ module Assoc = struct
     | [] -> []
     | ((k', _) as kv') :: kvs' ->
         if equal k k' then begin
-          change := `Removed;
+          change := Removed;
           kvs'
         end
         else kv' :: remove equal change k kvs'
 
   let[@tail_mod_cons] rec replace equal change k v = function
     | [] ->
-        change := `Added;
+        change := Added;
         [ (k, v) ]
     | ((k', v') as kv') :: kvs' as original ->
         if equal k k' then
           if v == v' then original
           else begin
-            change := `Replaced;
+            change := Replaced;
             (k, v) :: kvs'
           end
         else kv' :: replace equal change k v kvs'
@@ -310,11 +311,11 @@ module Xt = struct
     let buckets = r.buckets in
     let mask = Array.length buckets - 1 in
     let bucket = Array.unsafe_get buckets (r.hash k land mask) in
-    let change = ref `None in
+    let change = ref Assoc.Nop in
     Xt.unsafe_modify ~xt bucket (fun kvs ->
         let kvs' = Assoc.remove r.equal change k kvs in
-        if !change != `None then kvs' else kvs);
-    if !change == `Removed then begin
+        if !change != Assoc.Nop then kvs' else kvs);
+    if !change == Assoc.Removed then begin
       Accumulator.Xt.decr ~xt r.length;
       if r.min_buckets <= mask && Random.bits () land mask = 0 then
         let capacity = mask + 1 in
@@ -342,11 +343,11 @@ module Xt = struct
     let buckets = r.buckets in
     let mask = Array.length buckets - 1 in
     let bucket = Array.unsafe_get buckets (r.hash k land mask) in
-    let change = ref `None in
+    let change = ref Assoc.Nop in
     Xt.unsafe_modify ~xt bucket (fun kvs ->
         let kvs' = Assoc.replace r.equal change k v kvs in
-        if !change != `None then kvs' else kvs);
-    if !change == `Added then begin
+        if !change != Assoc.Nop then kvs' else kvs);
+    if !change == Assoc.Added then begin
       Accumulator.Xt.incr ~xt r.length;
       if mask + 1 < r.max_buckets && Random.bits () land mask = 0 then
         let capacity = mask + 1 in
