@@ -22,7 +22,7 @@ let push_back ~xt queue value =
 let pop_front ~xt queue =
   match Xt.get ~xt queue.front with
   | Nil -> None
-  | Node (next, value) -> (
+  | Node (next, value) -> begin
       match Xt.get ~xt next with
       | Nil ->
           Xt.set ~xt queue.front Nil;
@@ -30,4 +30,5 @@ let pop_front ~xt queue =
           Some value
       | node ->
           Xt.set ~xt queue.front node;
-          Some value)
+          Some value
+    end

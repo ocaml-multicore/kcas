@@ -197,20 +197,22 @@ let rec release_after casn = function
   | NIL -> true
   | CASN { state; lt; gt; awaiters; _ } ->
       if lt != NIL then release_after casn lt |> ignore;
-      if not (is_cmp casn state) then (
+      if not (is_cmp casn state) then begin
         state.before <- state.after;
         state.casn <- casn_after;
-        resume_awaiters awaiters);
+        resume_awaiters awaiters
+      end;
       release_after casn gt
 
 let rec release_before casn = function
   | NIL -> false
   | CASN { state; lt; gt; awaiters; _ } ->
       if lt != NIL then release_before casn lt |> ignore;
-      if not (is_cmp casn state) then (
+      if not (is_cmp casn state) then begin
         state.after <- state.before;
         state.casn <- casn_before;
-        resume_awaiters awaiters);
+        resume_awaiters awaiters
+      end;
       release_before casn gt
 
 let release casn cass = function
@@ -219,7 +221,7 @@ let release casn cass = function
 
 let rec verify casn = function
   | NIL -> `After
-  | CASN { loc; state; lt; gt; _ } -> (
+  | CASN { loc; state; lt; gt; _ } -> begin
       if lt == NIL then
         (* Fenceless is safe as [finish] has a fence after. *)
         if is_cmp casn state && fenceless_get (as_atomic loc) != state then
@@ -232,7 +234,8 @@ let rec verify casn = function
             if is_cmp casn state && fenceless_get (as_atomic loc) != state then
               `Before
             else verify casn gt
-        | `Before -> `Before)
+        | `Before -> `Before
+    end
 
 let finish casn (`Undetermined cass as undetermined) (status : determined) =
   if Atomic.compare_and_set casn (undetermined :> status) (status :> status)
@@ -282,9 +285,11 @@ let rec determine casn status = function
                    before the [compare_and_set], because afterwards is too
                    late as some other domain might finish the operation after
                    the [compare_and_set] and miss the awaiters. *)
-                (match current.awaiters with
-                | [] -> ()
-                | awaiters -> record.awaiters <- awaiters);
+                begin
+                  match current.awaiters with
+                  | [] -> ()
+                  | awaiters -> record.awaiters <- awaiters
+                end;
                 if Atomic.compare_and_set (as_atomic loc) current state then
                   let a_cmp_followed_by_a_cas = a_cas * 2 land (status * 4) in
                   determine casn
@@ -297,7 +302,7 @@ let rec determine casn status = function
 and is_after casn =
   (* Fenceless at most gives old [Undetermined] and causes extra work. *)
   match fenceless_get casn with
-  | `Undetermined cass as undetermined -> (
+  | `Undetermined cass as undetermined -> begin
       match determine casn 0 cass with
       | status ->
           finish casn undetermined
@@ -306,7 +311,8 @@ and is_after casn =
              else `Before)
       | exception Exit ->
           (* Fenceless is safe as there was a fence before. *)
-          fenceless_get casn == `After)
+          fenceless_get casn == `After
+    end
   | `After -> true
   | `Before -> false
 
@@ -421,13 +427,14 @@ let rec remove_awaiter loc before awaiter =
 let block timeout loc before =
   let t = Domain_local_await.prepare_for_await () in
   let alive = Timeout.await timeout t.release in
-  if add_awaiter loc before t.release then (
+  if add_awaiter loc before t.release then begin
     try t.await ()
     with cancellation_exn ->
       let backtrace = Printexc.get_raw_backtrace () in
       remove_awaiter loc before t.release;
       Timeout.cancel_alive alive;
-      Printexc.raise_with_backtrace cancellation_exn backtrace);
+      Printexc.raise_with_backtrace cancellation_exn backtrace
+  end;
   Timeout.unawait timeout alive
 
 let rec update_no_alloc timeout backoff loc state f =
@@ -437,14 +444,16 @@ let rec update_no_alloc timeout backoff loc state f =
   match f before with
   | after ->
       state.after <- after;
-      if before == after then (
+      if before == after then begin
         Timeout.cancel timeout;
-        before)
-      else if Atomic.compare_and_set (as_atomic loc) state_old state then (
+        before
+      end
+      else if Atomic.compare_and_set (as_atomic loc) state_old state then begin
         state.before <- after;
         resume_awaiters state_old.awaiters;
         Timeout.cancel timeout;
-        before)
+        before
+      end
       else update_no_alloc timeout (Backoff.once backoff) loc state f
   | exception Retry.Later ->
       block timeout loc before;
@@ -457,15 +466,17 @@ let update_with_state timeout backoff loc f state_old =
   let before = eval state_old in
   match f before with
   | after ->
-      if before == after then (
+      if before == after then begin
         Timeout.cancel timeout;
-        before)
+        before
+      end
       else
         let state = new_state after in
-        if Atomic.compare_and_set (as_atomic loc) state_old state then (
+        if Atomic.compare_and_set (as_atomic loc) state_old state then begin
           resume_awaiters state_old.awaiters;
           Timeout.cancel timeout;
-          before)
+          before
+        end
         else update_no_alloc timeout (Backoff.once backoff) loc state f
   | exception Retry.Later ->
       let state = new_state before in
@@ -479,9 +490,10 @@ let rec exchange_no_alloc backoff loc state =
   let state_old = Atomic.get (as_atomic loc) in
   let before = eval state_old in
   if before == state.after then before
-  else if Atomic.compare_and_set (as_atomic loc) state_old state then (
+  else if Atomic.compare_and_set (as_atomic loc) state_old state then begin
     resume_awaiters state_old.awaiters;
-    before)
+    before
+  end
   else exchange_no_alloc (Backoff.once backoff) loc state
 
 let is_obstruction_free casn loc =
@@ -495,9 +507,10 @@ let rec cas_with_state loc before state state_old =
   || before == if is_after state_old.casn then after' else before')
   && (before == state.after
      ||
-     if Atomic.compare_and_set (as_atomic loc) state_old state then (
+     if Atomic.compare_and_set (as_atomic loc) state_old state then begin
        resume_awaiters state_old.awaiters;
-       true)
+       true
+     end
      else
        (* We must retry, because compare is by value rather than by state.
 
@@ -610,10 +623,11 @@ let insert cass loc state =
       CASN { loc; state; lt = NIL; gt = cass; awaiters = [] }
   | CASN { loc = a; gt = NIL; _ } when a.id < x ->
       CASN { loc; state; lt = cass; gt = NIL; awaiters = [] }
-  | _ -> (
+  | _ -> begin
       match splay ~hit_parent:false x cass with
       | _, Hit _, _ -> overlap ()
-      | lt, Miss, gt -> CASN { loc; state; lt; gt; awaiters = [] })
+      | lt, Miss, gt -> CASN { loc; state; lt; gt; awaiters = [] }
+    end
   [@@inline]
 
 module Op = struct
@@ -710,9 +724,10 @@ module Xt = struct
     let c1 = c0 + 1 in
     xt.validate_counter <- c1;
     (* Validate whenever counter reaches next power of 2. *)
-    if c0 land c1 = 0 then (
+    if c0 land c1 = 0 then begin
       Timeout.check (timeout_as_atomic xt);
-      validate_all xt.casn xt.cass)
+      validate_all xt.casn xt.cass
+    end
     [@@inline]
 
   let update0 loc f xt lt gt =
@@ -735,7 +750,7 @@ module Xt = struct
 
   let update loc f xt state' lt gt =
     let state = Obj.magic state' in
-    if is_cmp xt.casn state then (
+    if is_cmp xt.casn state then begin
       let before = eval state in
       let after = f before in
       let state =
@@ -743,7 +758,8 @@ module Xt = struct
         else { before; after; casn = xt.casn; awaiters = [] }
       in
       xt.cass <- CASN { loc; state; lt; gt; awaiters = [] };
-      before)
+      before
+    end
     else
       let current = state.after in
       let state = { state with after = f current } in
@@ -762,10 +778,11 @@ module Xt = struct
         update0 loc f xt cass NIL
     | CASN { loc = a; state; lt; gt; _ } when Obj.magic a == loc ->
         update loc f xt state lt gt
-    | cass -> (
+    | cass -> begin
         match splay ~hit_parent:false x cass with
         | l, Miss, r -> update0 loc f xt l r
-        | l, Hit (_loc', state'), r -> update loc f xt state' l r)
+        | l, Hit (_loc', state'), r -> update loc f xt state' l r
+      end
     [@@inline]
 
   let protect xt f x =
@@ -811,12 +828,13 @@ module Xt = struct
     | CASN { loc = a; gt = NIL; _ } when a.id < x -> ()
     | CASN { loc = a; state; _ } when Obj.magic a == loc ->
         validate_one xt.casn a state
-    | cass -> (
+    | cass -> begin
         match splay ~hit_parent:true x cass with
         | lt, Hit (a, state), gt ->
             xt.cass <- CASN { loc = a; state; lt; gt; awaiters = [] };
             if Obj.magic a == loc then validate_one xt.casn a state
-        | _, Miss, _ -> impossible ())
+        | _, Miss, _ -> impossible ()
+      end
 
   let is_in_log ~xt loc =
     let x = loc.id in
@@ -825,19 +843,20 @@ module Xt = struct
     | CASN { loc = a; lt = NIL; _ } when x < a.id -> false
     | CASN { loc = a; gt = NIL; _ } when a.id < x -> false
     | CASN { loc = a; _ } when Obj.magic a == loc -> true
-    | cass -> (
+    | cass -> begin
         match splay ~hit_parent:true x cass with
         | lt, Hit (a, state), gt ->
             xt.cass <- CASN { loc = a; state; lt; gt; awaiters = [] };
             Obj.magic a == loc
-        | _, Miss, _ -> impossible ())
+        | _, Miss, _ -> impossible ()
+      end
 
   let rec rollback casn cass_snap cass =
     if cass_snap == cass then cass
     else
       match cass with
       | NIL -> NIL
-      | CASN { loc; state; lt; gt; _ } -> (
+      | CASN { loc; state; lt; gt; _ } -> begin
           match splay ~hit_parent:false loc.id cass_snap with
           | lt_mark, Miss, gt_mark ->
               let lt = rollback casn lt_mark lt
@@ -854,7 +873,8 @@ module Xt = struct
           | lt_mark, Hit (loc, state), gt_mark ->
               let lt = rollback casn lt_mark lt
               and gt = rollback casn gt_mark gt in
-              CASN { loc; state; lt; gt; awaiters = [] })
+              CASN { loc; state; lt; gt; awaiters = [] }
+        end
 
   type 'x snap = cass * Action.t
 
@@ -866,10 +886,11 @@ module Xt = struct
 
   let rec first ~xt tx = function
     | [] -> tx ~xt
-    | tx' :: txs -> (
+    | tx' :: txs -> begin
         match tx ~xt with
         | value -> value
-        | exception Retry.Later -> first ~xt tx' txs)
+        | exception Retry.Later -> first ~xt tx' txs
+      end
 
   let first ~xt = function
     | [] -> Retry.later ()
@@ -881,7 +902,7 @@ module Xt = struct
 
   let rec add_awaiters awaiter casn = function
     | NIL as cont -> cont
-    | CASN { loc; state; lt; gt; _ } as stop -> (
+    | CASN { loc; state; lt; gt; _ } as stop -> begin
         match if lt == NIL then lt else add_awaiters awaiter casn lt with
         | NIL ->
             if
@@ -890,17 +911,19 @@ module Xt = struct
                 awaiter
             then add_awaiters awaiter casn gt
             else stop
-        | CASN _ as stop -> stop)
+        | CASN _ as stop -> stop
+      end
 
   let rec remove_awaiters awaiter casn stop = function
     | NIL -> ()
     | CASN { loc; state; lt; gt; _ } as current ->
         if lt != NIL then remove_awaiters awaiter casn stop lt;
-        if current != stop then (
+        if current != stop then begin
           remove_awaiter loc
             (if is_cmp casn state then eval state else state.before)
             awaiter;
-          remove_awaiters awaiter casn stop gt)
+          remove_awaiters awaiter casn stop gt
+        end
 
   let initial_validate_period = 16
 
@@ -917,26 +940,28 @@ module Xt = struct
 
   let rec commit backoff mode xt tx =
     match tx ~xt with
-    | result -> (
+    | result -> begin
         match xt.cass with
         | NIL ->
             Timeout.cancel (timeout_as_atomic xt);
             Action.run xt.post_commit result
         | CASN { loc; state; lt = NIL; gt = NIL; _ } ->
-            if is_cmp xt.casn state then (
+            if is_cmp xt.casn state then begin
               Timeout.cancel (timeout_as_atomic xt);
-              Action.run xt.post_commit result)
+              Action.run xt.post_commit result
+            end
             else
               let before = state.before in
               state.before <- state.after;
               state.casn <- casn_after;
               (* Fenceless is safe inside transactions as each log update has a fence. *)
               let state_old = fenceless_get (as_atomic loc) in
-              if cas_with_state loc before state state_old then (
+              if cas_with_state loc before state state_old then begin
                 Timeout.cancel (timeout_as_atomic xt);
-                Action.run xt.post_commit result)
+                Action.run xt.post_commit result
+              end
               else commit (Backoff.once backoff) mode (reset_quick xt) tx
-        | cass -> (
+        | cass -> begin
             match determine_for_owner xt.casn cass with
             | true ->
                 Timeout.cancel (timeout_as_atomic xt);
@@ -944,16 +969,18 @@ module Xt = struct
             | false -> commit (Backoff.once backoff) mode (reset mode xt) tx
             | exception Mode.Interference ->
                 commit (Backoff.once backoff) Mode.lock_free
-                  (reset Mode.lock_free xt) tx))
+                  (reset Mode.lock_free xt) tx
+          end
+      end
     | exception Retry.Invalid ->
         Timeout.check (timeout_as_atomic xt);
         commit (Backoff.once backoff) mode (reset_quick xt) tx
-    | exception Retry.Later -> (
+    | exception Retry.Later -> begin
         if xt.cass == NIL then invalid_retry ();
         let t = Domain_local_await.prepare_for_await () in
         let alive = Timeout.await (timeout_as_atomic xt) t.release in
         match add_awaiters t.release xt.casn xt.cass with
-        | NIL -> (
+        | NIL -> begin
             match t.await () with
             | () ->
                 remove_awaiters t.release xt.casn NIL xt.cass;
@@ -963,11 +990,13 @@ module Xt = struct
                 let backtrace = Printexc.get_raw_backtrace () in
                 remove_awaiters t.release xt.casn NIL xt.cass;
                 Timeout.cancel_alive alive;
-                Printexc.raise_with_backtrace cancellation_exn backtrace)
+                Printexc.raise_with_backtrace cancellation_exn backtrace
+          end
         | CASN _ as stop ->
             remove_awaiters t.release xt.casn stop xt.cass;
             Timeout.unawait (timeout_as_atomic xt) alive;
-            commit (Backoff.once backoff) mode (reset_quick xt) tx)
+            commit (Backoff.once backoff) mode (reset_quick xt) tx
+      end
     | exception exn ->
         Timeout.cancel (timeout_as_atomic xt);
         raise exn

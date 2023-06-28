@@ -316,10 +316,12 @@ let test_post_commit () =
       tx ~xt;
       Xt.post_commit ~xt @@ fun () -> incr count
     in
-    (try
-       count := 0;
-       Xt.commit ~mode:Mode.obstruction_free { tx }
-     with Exit -> ());
+    begin
+      try
+        count := 0;
+        Xt.commit ~mode:Mode.obstruction_free { tx }
+      with Exit -> ()
+    end;
     assert (!count = expect)
   in
   let tx ~xt:_ = raise Exit in
@@ -391,10 +393,11 @@ let test_blocking () =
           |> Array.find_map @@ fun b ->
              if Xt.get ~xt b = 1 then Some b
              else if Loc.has_awaiters b (* There must be no leaked waiters... *)
-             then (
+             then begin
                (* ...except if main domain just set the loc *)
                assert (Loc.get b = 1);
-               Retry.later ())
+               Retry.later ()
+             end
              else None
         with
         | None -> Retry.later ()
@@ -461,11 +464,12 @@ let test_periodic_validation () =
     let rec tx ~xt =
       let d = Xt.get ~xt a - Xt.get ~xt b in
       if d <> 0 then d
-      else (
+      else begin
         (* We explicitly want this tx to go into infinite loop!  Without
            validation this would never finish. *)
         looping := true;
-        tx ~xt)
+        tx ~xt
+      end
     in
     Xt.commit { tx }
   in
@@ -590,7 +594,7 @@ let test_timeout () =
   run_domains
     [
       check (fun ?timeoutf x ->
-          Loc.get_as ?timeoutf (fun x -> if x then () else Retry.later ()) x);
+          Loc.get_as ?timeoutf (fun x -> if not x then Retry.later ()) x);
       check (fun ?timeoutf x ->
           Loc.update ?timeoutf x (fun x -> x || Retry.later ()) |> ignore);
       check (fun ?timeoutf x ->

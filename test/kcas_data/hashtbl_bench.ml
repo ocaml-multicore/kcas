@@ -39,17 +39,19 @@ let bench ~n_domains ~n_ops ~n_keys ~percent_read =
     let start = Unix.gettimeofday () in
     let rec work () =
       let n = alloc_ops () in
-      if n <> 0 then (
+      if n <> 0 then begin
         for _ = 1 to n do
           let value = Random.State.bits state in
           let op = (value asr 20) mod 100 in
           let key = value mod n_keys in
           if op < percent_read then Hashtbl.find_opt t key |> ignore
-          else (
+          else begin
             Hashtbl.remove t key;
-            Hashtbl.add t key value)
+            Hashtbl.add t key value
+          end
         done;
-        work ())
+        work ()
+      end
     in
     work ();
     Unix.gettimeofday () -. start
