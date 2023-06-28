@@ -3,61 +3,77 @@ open Kcas
 (** Optimized operations on internal association lists with custom equality. *)
 module Assoc = struct
   type change = Nop | Removed | Replaced | Added
-  type ('k, 'v) t = ('k * 'v) list
+  type ('k, 'v) t = Nil | Cons of { k : 'k; v : 'v; kvs : ('k, 'v) t }
 
-  let iter_rev f = function
-    | [] -> ()
-    | [ kv ] -> f kv
-    | kvs -> kvs |> List.rev |> List.iter f
+  let[@inline] cons k v kvs = Cons { k; v; kvs }
 
-  let find_opt equal k = function
-    | [] -> None
-    | (k', v) :: kvs ->
-        if equal k k' then Some v
-        else
-          kvs
-          |> List.find_map @@ fun (k', v) -> if equal k k' then Some v else None
+  let rec fold fn accum = function
+    | Nil -> accum
+    | Cons { k; v; kvs } -> fold fn (fn k v accum) kvs
 
-  let find_all equal k =
-    List.filter_map @@ fun (k', v) -> if equal k k' then Some v else None
+  let length kvs = fold (fun _ _ n -> n + 1) 0 kvs
 
-  let mem equal k = function
-    | [] -> false
-    | (k', _) :: kvs ->
-        equal k k' || kvs |> List.exists @@ fun (k', _) -> equal k k'
+  let rec rev_append kvs accum =
+    match kvs with
+    | Nil -> accum
+    | Cons { k; v; kvs } -> rev_append kvs (Cons { k; v; kvs = accum })
 
-  let[@tail_mod_cons] rec remove equal change k = function
-    | [] -> []
-    | ((k', _) as kv') :: kvs' ->
-        if equal k k' then begin
+  let rev kvs = rev_append kvs Nil
+
+  let rec iter fn = function
+    | Nil -> ()
+    | Cons { k; v; kvs } ->
+        fn k v;
+        iter fn kvs
+
+  let iter_rev fn = function
+    | Nil -> ()
+    | Cons { k; v; kvs = Nil } -> fn k v
+    | kvs -> kvs |> rev |> iter fn
+
+  let rec find_opt equal k' = function
+    | Nil -> None
+    | Cons r -> if equal r.k k' then Some r.v else find_opt equal k' r.kvs
+
+  let[@tail_mod_cons] rec find_all equal k' = function
+    | Nil -> []
+    | Cons { k; v; kvs } ->
+        if equal k k' then v :: find_all equal k' kvs else find_all equal k' kvs
+
+  let rec mem equal k' = function
+    | Nil -> false
+    | Cons r -> equal r.k k' || mem equal k' r.kvs
+
+  let[@tail_mod_cons] rec remove equal change k' = function
+    | Nil -> Nil
+    | Cons r ->
+        if equal r.k k' then begin
           change := Removed;
-          kvs'
+          r.kvs
         end
-        else kv' :: remove equal change k kvs'
+        else Cons { k = r.k; v = r.v; kvs = remove equal change k' r.kvs }
 
-  let[@tail_mod_cons] rec replace equal change k v = function
-    | [] ->
+  let[@tail_mod_cons] rec replace equal change k' v' = function
+    | Nil ->
         change := Added;
-        [ (k, v) ]
-    | ((k', v') as kv') :: kvs' as original ->
-        if equal k k' then
-          if v == v' then original
+        Cons { k = k'; v = v'; kvs = Nil }
+    | Cons r as original ->
+        if equal r.k k' then
+          if r.v == v' then original
           else begin
             change := Replaced;
-            (k, v) :: kvs'
+            Cons { k = r.k; v = v'; kvs = r.kvs }
           end
-        else kv' :: replace equal change k v kvs'
+        else Cons { k = r.k; v = r.v; kvs = replace equal change k' v' r.kvs }
 
   let[@tail_mod_cons] rec filter_map fn delta = function
-    | [] -> []
-    | ((k, v) as original_kv) :: kvs -> begin
+    | Nil -> Nil
+    | Cons { k; v; kvs } -> begin
         match fn k v with
         | None ->
             decr delta;
             filter_map fn delta kvs
-        | Some v' ->
-            let kv = if v == v' then original_kv else (k, v') in
-            kv :: filter_map fn delta kvs
+        | Some v' -> Cons { k; v = v'; kvs = filter_map fn delta kvs }
       end
 end
 
@@ -68,7 +84,7 @@ type ('k, 'v) pending =
       new_capacity : int;
       new_buckets : ('k, 'v) Assoc.t Loc.t array Loc.t;
     }
-  | Snapshot of { state : int Loc.t; snapshot : ('k * 'v) list array Loc.t }
+  | Snapshot of { state : int Loc.t; snapshot : ('k, 'v) Assoc.t array Loc.t }
   | Filter_map of {
       state : int Loc.t;
       fn : 'k -> 'v -> 'v option;
@@ -127,7 +143,7 @@ let create ?hashed_type ?min_buckets ?max_buckets ?n_way () =
     | None -> (Stdlib.Hashtbl.seeded_hash (Random.bits ()), ( = ))
     | Some hashed_type -> HashedType.unpack hashed_type
   and pending = Nothing
-  and buckets = Loc.make_array min_buckets []
+  and buckets = Loc.make_array min_buckets Assoc.Nil
   and length = Accumulator.make ?n_way 0 in
   Loc.set t { pending; length; buckets; hash; equal; min_buckets; max_buckets };
   t
@@ -158,12 +174,12 @@ module Xt = struct
     let r = Xt.get ~xt t in
     r.buckets |> bucket_of r.hash k |> Xt.get ~xt |> Assoc.mem r.equal k
 
-  let get_or_alloc array_loc alloc =
+  let get_or_alloc array_loc make length =
     let tx ~xt =
       let array = Xt.get ~xt array_loc in
       if array != [||] then array
       else
-        let array = alloc () in
+        let array = make length Assoc.Nil in
         Xt.set ~xt array_loc array;
         array
     in
@@ -182,7 +198,7 @@ module Xt = struct
     | Nothing -> r
     | Rehash { state; new_capacity; new_buckets } -> begin
         let new_buckets =
-          get_or_alloc new_buckets @@ fun () -> Loc.make_array new_capacity []
+          get_or_alloc new_buckets Loc.make_array new_capacity
         in
         let old_buckets = r.buckets in
         let r = { r with pending = Nothing; buckets = new_buckets } in
@@ -198,10 +214,10 @@ module Xt = struct
           for i = i - 1 downto Bits.max_0 (i - batch_size) do
             Array.unsafe_get old_buckets i
             |> Xt.get ~xt
-            |> Assoc.iter_rev @@ fun ((k, _) as kv) ->
+            |> Assoc.iter_rev @@ fun k v ->
                Xt.unsafe_modify ~xt
                  (Array.unsafe_get new_buckets (hash k land mask))
-                 (List.cons kv)
+                 (Assoc.cons k v)
           done
         in
         try
@@ -235,8 +251,7 @@ module Xt = struct
         (* Check state to ensure that buckets have not been updated. *)
         if Loc.fenceless_get state < 0 then Retry.invalid ();
         let snapshot =
-          get_or_alloc snapshot @@ fun () ->
-          Array.make (Array.length buckets) []
+          get_or_alloc snapshot Array.make (Array.length buckets)
         in
         let snapshot_a_few_buckets ~xt =
           let i = Xt.fetch_and_add ~xt state (-batch_size) in
@@ -260,7 +275,7 @@ module Xt = struct
         if Loc.fenceless_get state < 0 then Retry.invalid ();
         let new_capacity = Array.length old_buckets in
         let new_buckets =
-          get_or_alloc new_buckets @@ fun () -> Loc.make_array new_capacity []
+          get_or_alloc new_buckets Loc.make_array new_capacity
         in
         let filter_map_a_few_buckets ~xt =
           let i = Xt.fetch_and_add ~xt state (-batch_size) in
@@ -330,7 +345,7 @@ module Xt = struct
     let buckets = r.buckets in
     let mask = Array.length buckets - 1 in
     let bucket = Array.unsafe_get buckets (r.hash k land mask) in
-    Xt.unsafe_modify ~xt bucket (List.cons (k, v));
+    Xt.unsafe_modify ~xt bucket (Assoc.cons k v);
     Accumulator.Xt.incr ~xt r.length;
     if mask + 1 < r.max_buckets && Random.bits () land mask = 0 then
       let capacity = mask + 1 in
@@ -407,12 +422,12 @@ let to_seq t =
   let snapshot = snapshot t in
   let rec loop i kvs () =
     match kvs with
-    | [] ->
+    | Assoc.Nil ->
         if i = Array.length snapshot then Seq.Nil
         else loop (i + 1) (Array.unsafe_get snapshot i) ()
-    | kv :: kvs -> Seq.Cons (kv, loop i kvs)
+    | Cons { k; v; kvs } -> Seq.Cons ((k, v), loop i kvs)
   in
-  loop 0 []
+  loop 0 Nil
 
 let to_seq_keys t = to_seq t |> Seq.map fst
 let to_seq_values t = to_seq t |> Seq.map snd
@@ -453,16 +468,11 @@ let rebuild ?hashed_type ?min_buckets ?max_buckets ?n_way t =
   end
   else
     let t = create ?hashed_type ~min_buckets ~max_buckets ~n_way () in
-    snapshot
-    |> Array.iter (fun bucket ->
-           bucket |> List.rev |> List.iter (fun (k, v) -> add t k v));
+    snapshot |> Array.iter (Assoc.iter_rev (add t));
     t
 
 let copy t = rebuild t
-
-let fold f t a =
-  Array.fold_left (List.fold_left (fun a (k, v) -> f k v a)) a (snapshot t)
-
+let fold fn t a = Array.fold_left (Assoc.fold fn) a (snapshot t)
 let iter f t = fold (fun k v () -> f k v) t ()
 
 let filter_map_inplace fn t =
@@ -485,7 +495,7 @@ let stats t =
   let snapshot = snapshot ~length t in
   let num_bindings = !length in
   let num_buckets = Array.length snapshot in
-  let bucket_lengths = Array.map List.length snapshot in
+  let bucket_lengths = Array.map Assoc.length snapshot in
   let max_bucket_length = Array.fold_left Int.max 0 bucket_lengths in
   let bucket_histogram = Array.make (max_bucket_length + 1) 0 in
   bucket_lengths
