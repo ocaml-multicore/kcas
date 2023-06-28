@@ -59,6 +59,7 @@ is distributed under the [ISC license](LICENSE.md).
     - [A transactional LRU cache](#a-transactional-lru-cache)
   - [Programming with primitive operations](#programming-with-primitive-operations)
 - [Designing lock-free algorithms with k-CAS](#designing-lock-free-algorithms-with-k-cas)
+  - [Understand performance](#understand-performance)
   - [Minimize accesses](#minimize-accesses)
     - [Prefer compound accesses](#prefer-compound-accesses)
     - [Log updates optimistically](#log-updates-optimistically)
@@ -1102,6 +1103,39 @@ The key benefit of k-CAS, or k-CAS-n-CMP, and transactions in particular, is
 that it allows developing lock-free algorithms compositionally. In the following
 sections we discuss a number of basic tips and approaches for making best use of
 k-CAS.
+
+### Understand performance
+
+It is possible to convert imperative sequential data structures to lock-free
+data structures [almost](#beware-of-torn-reads) just by using
+[shared memory locations](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Loc/)
+and wrapping everything inside
+[transactions](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/), but
+doing so will likely not lead to good performance.
+
+On the other hand, if you have a non-blocking data structure implemented using
+plain `Atomic`s, then simply replacing `Atomic` with
+[`Loc`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Loc/) you should
+get a data structure that works the same and will take somewhat more memory and
+operates somewhat more slowly. However, adding transactional operations simply
+by wrapping all accesses of a non-blocking data structure implementation will
+likely not lead to well performing transactional operations.
+
+[Shared memory locations](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Loc/)
+take more memory than ordinary mutable fields or mutable references and mutating
+operations on shared memory locations allocate. The
+[transaction mechanism](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/)
+also allocates and adds lookup overhead to accesses. Updating multiple locations
+in a transaction is more expensive than updating individual locations
+atomically. Contention can cause transactions to retry and perform poorly.
+
+With that said, it is possible to create composable and reasonably well
+performing data structures using **kcas**. If a **kcas** based data structure is
+performing much worse than a similar lock-free or lock-based data structure,
+then there is likely room to improve. Doing so will require good understanding
+of and careful attention to algorithmic details, such as which accessed need to
+be performed transactionally and which do not, operation of the transaction
+mechanism, and performance of individual low level operations.
 
 ### Minimize accesses
 
