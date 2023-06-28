@@ -29,15 +29,15 @@ let of_seq_rev xs = Seq.fold_left (fun t x -> cons x t) empty xs
 let rev_prepend_to_seq t tl =
   if t.length <= 1 then prepend_to_seq t tl
   else
-    let t = ref (`Original t) in
+    let t = ref (Either.Left t) in
     fun () ->
       let t =
         match !t with
-        | `Original t' ->
+        | Left t' ->
             (* This is domain safe as the result is always equivalent. *)
             let t' = rev t' in
-            t := `Reversed t';
+            t := Right t';
             t'
-        | `Reversed t' -> t'
+        | Right t' -> t'
       in
       prepend_to_seq t tl ()
