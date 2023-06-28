@@ -47,10 +47,11 @@ end
 
 let benchmark () =
   let rec loop i =
-    if i > 0 then (
+    if i > 0 then begin
       ignore @@ Op.atomically operation1;
       ignore @@ Op.atomically operation2;
-      loop (i - 1))
+      loop (i - 1)
+    end
   in
   loop num_iter
 

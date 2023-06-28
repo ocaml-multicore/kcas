@@ -54,14 +54,15 @@ module Xt = struct
   let take_opt ~xt { back; middle; front } =
     let elems = Xt.unsafe_update ~xt front Elems.tl_safe in
     if elems != Elems.empty then Elems.hd_opt elems
-    else (
+    else begin
       if not (Xt.is_in_log ~xt middle || Xt.is_in_log ~xt back) then
         back_to_middle ~middle ~back;
       let elems = Xt.exchange ~xt middle Elems.empty in
       if elems != Elems.empty then take_opt_finish ~xt front elems
       else
         let elems = Xt.exchange ~xt back Elems.empty in
-        if elems != Elems.empty then take_opt_finish ~xt front elems else None)
+        if elems != Elems.empty then take_opt_finish ~xt front elems else None
+    end
 
   let take_blocking ~xt q = Xt.to_blocking ~xt (take_opt q)
 
@@ -73,14 +74,15 @@ module Xt = struct
   let peek_opt ~xt { back; middle; front } =
     let elems = Xt.get ~xt front in
     if elems != Elems.empty then Elems.hd_opt elems
-    else (
+    else begin
       if not (Xt.is_in_log ~xt middle || Xt.is_in_log ~xt back) then
         back_to_middle ~middle ~back;
       let elems = Xt.exchange ~xt middle Elems.empty in
       if elems != Elems.empty then peek_opt_finish ~xt front elems
       else
         let elems = Xt.exchange ~xt back Elems.empty in
-        if elems != Elems.empty then peek_opt_finish ~xt front elems else None)
+        if elems != Elems.empty then peek_opt_finish ~xt front elems else None
+    end
 
   let peek_blocking ~xt q = Xt.to_blocking ~xt (peek_opt q)
 

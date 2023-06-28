@@ -22,10 +22,11 @@ module Xt = struct
   let remove ~xt node =
     let list = as_list node in
     let next = Xt.exchange ~xt list.next list in
-    if next != list then (
+    if next != list then begin
       let prev = Xt.exchange ~xt list.prev list in
       Xt.set ~xt next.prev prev;
-      Xt.set ~xt prev.next next)
+      Xt.set ~xt prev.next next
+    end
 
   let is_empty ~xt list = Xt.get ~xt list.prev == list
 
@@ -62,24 +63,28 @@ module Xt = struct
   let move_l ~xt node list =
     let node = as_list node in
     let list_next = Xt.exchange ~xt list.next node in
-    if list_next != node then (
+    if list_next != node then begin
       let node_prev = Xt.exchange ~xt node.prev list in
       let node_next = Xt.exchange ~xt node.next list_next in
-      if node_prev != node then (
+      if node_prev != node then begin
         Xt.set ~xt node_prev.next node_next;
-        Xt.set ~xt node_next.prev node_prev);
-      Xt.set ~xt list_next.prev node)
+        Xt.set ~xt node_next.prev node_prev
+      end;
+      Xt.set ~xt list_next.prev node
+    end
 
   let move_r ~xt node list =
     let node = as_list node in
     let list_prev = Xt.exchange ~xt list.prev node in
-    if list_prev != node then (
+    if list_prev != node then begin
       let node_next = Xt.exchange ~xt node.next list in
       let node_prev = Xt.exchange ~xt node.prev list_prev in
-      if node_next != node then (
+      if node_next != node then begin
         Xt.set ~xt node_prev.next node_next;
-        Xt.set ~xt node_next.prev node_prev);
-      Xt.set ~xt list_prev.next node)
+        Xt.set ~xt node_next.prev node_prev
+      end;
+      Xt.set ~xt list_prev.next node
+    end
 
   let take_opt_l ~xt list =
     let next = Xt.get ~xt list.next in
@@ -102,21 +107,23 @@ module Xt = struct
 
   let transfer_l ~xt t1 t2 =
     let t1_next = Xt.exchange ~xt t1.next t1 in
-    if t1_next != t1 then (
+    if t1_next != t1 then begin
       let t1_prev = Xt.exchange ~xt t1.prev t1 in
       let t2_next = Xt.exchange ~xt t2.next t1_next in
       Xt.set ~xt t2_next.prev t1_prev;
       Xt.set ~xt t1_next.prev t2;
-      Xt.set ~xt t1_prev.next t2_next)
+      Xt.set ~xt t1_prev.next t2_next
+    end
 
   let transfer_r ~xt t1 t2 =
     let t1_next = Xt.exchange ~xt t1.next t1 in
-    if t1_next != t1 then (
+    if t1_next != t1 then begin
       let t1_prev = Xt.exchange ~xt t1.prev t1 in
       let t2_prev = Xt.exchange ~xt t2.prev t1_prev in
       Xt.set ~xt t2_prev.next t1_next;
       Xt.set ~xt t1_prev.next t2;
-      Xt.set ~xt t1_next.prev t2_prev)
+      Xt.set ~xt t1_next.prev t2_prev
+    end
 
   let swap ~xt t1 t2 =
     let t1_next = Xt.get ~xt t1.next in
@@ -186,9 +193,10 @@ let take_all list =
   let open Kcas in
   let tx ~xt =
     let prev = Xt.exchange ~xt list.prev list in
-    if prev == list then (
+    if prev == list then begin
       Loc.set copy.prev copy;
-      Loc.set copy.next copy)
+      Loc.set copy.next copy
+    end
     else
       let next = Xt.exchange ~xt list.next list in
       Xt.set ~xt prev.next copy;

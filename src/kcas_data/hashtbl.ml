@@ -28,9 +28,10 @@ module Assoc = struct
   let[@tail_mod_cons] rec remove equal change k = function
     | [] -> []
     | ((k', _) as kv') :: kvs' ->
-        if equal k k' then (
+        if equal k k' then begin
           change := `Removed;
-          kvs')
+          kvs'
+        end
         else kv' :: remove equal change k kvs'
 
   let[@tail_mod_cons] rec replace equal change k v = function
@@ -40,21 +41,23 @@ module Assoc = struct
     | ((k', v') as kv') :: kvs' as original ->
         if equal k k' then
           if v == v' then original
-          else (
+          else begin
             change := `Replaced;
-            (k, v) :: kvs')
+            (k, v) :: kvs'
+          end
         else kv' :: replace equal change k v kvs'
 
   let[@tail_mod_cons] rec filter_map fn delta = function
     | [] -> []
-    | ((k, v) as original_kv) :: kvs -> (
+    | ((k, v) as original_kv) :: kvs -> begin
         match fn k v with
         | None ->
             decr delta;
             filter_map fn delta kvs
         | Some v' ->
             let kv = if v == v' then original_kv else (k, v') in
-            kv :: filter_map fn delta kvs)
+            kv :: filter_map fn delta kvs
+      end
 end
 
 type ('k, 'v) pending =
@@ -176,7 +179,7 @@ module Xt = struct
     let r = Xt.get ~xt t in
     match r.pending with
     | Nothing -> r
-    | Rehash { state; new_capacity; new_buckets } -> (
+    | Rehash { state; new_capacity; new_buckets } -> begin
         let new_buckets =
           get_or_alloc new_buckets @@ fun () -> Loc.make_array new_capacity []
         in
@@ -221,8 +224,9 @@ module Xt = struct
               Xt.commit { tx = rehash_a_few_buckets }
             done;
           r
-        with Done -> r)
-    | Snapshot { state; snapshot } -> (
+        with Done -> r
+      end
+    | Snapshot { state; snapshot } -> begin
         assert (not must_be_done_in_this_tx);
         let buckets = r.buckets in
         let r = { r with pending = Nothing } in
@@ -246,8 +250,9 @@ module Xt = struct
             Xt.commit { tx = snapshot_a_few_buckets }
           done;
           r
-        with Done -> r)
-    | Filter_map { state; fn; raised; new_buckets } -> (
+        with Done -> r
+      end
+    | Filter_map { state; fn; raised; new_buckets } -> begin
         assert (not must_be_done_in_this_tx);
         let old_buckets = r.buckets in
         (* Check state to ensure that buckets have not been updated. *)
@@ -284,7 +289,8 @@ module Xt = struct
             Loc.compare_and_set raised Done exn |> ignore;
             let r = { r with pending = Nothing } in
             Xt.set ~xt t r;
-            r)
+            r
+      end
 
   let make_rehash old_capacity new_capacity =
     let state = Loc.make old_capacity and new_buckets = Loc.make [||] in
@@ -308,14 +314,15 @@ module Xt = struct
     Xt.unsafe_modify ~xt bucket (fun kvs ->
         let kvs' = Assoc.remove r.equal change k kvs in
         if !change != `None then kvs' else kvs);
-    if !change == `Removed then (
+    if !change == `Removed then begin
       Accumulator.Xt.decr ~xt r.length;
       if r.min_buckets <= mask && Random.bits () land mask = 0 then
         let capacity = mask + 1 in
         let length = Accumulator.Xt.get ~xt r.length in
         if length * 4 < capacity then
           Xt.set ~xt t
-            { r with pending = make_rehash capacity (capacity asr 1) })
+            { r with pending = make_rehash capacity (capacity asr 1) }
+    end
 
   let add ~xt t k v =
     let r = perform_pending ~xt t in
@@ -339,13 +346,14 @@ module Xt = struct
     Xt.unsafe_modify ~xt bucket (fun kvs ->
         let kvs' = Assoc.replace r.equal change k v kvs in
         if !change != `None then kvs' else kvs);
-    if !change == `Added then (
+    if !change == `Added then begin
       Accumulator.Xt.incr ~xt r.length;
       if mask + 1 < r.max_buckets && Random.bits () land mask = 0 then
         let capacity = mask + 1 in
         let length = Accumulator.Xt.get ~xt r.length in
         if capacity < length then
-          Xt.set ~xt t { r with pending = make_rehash capacity (capacity * 2) })
+          Xt.set ~xt t { r with pending = make_rehash capacity (capacity * 2) }
+    end
 
   let length ~xt t = Accumulator.Xt.get ~xt (Xt.get ~xt t).length
   let swap = Xt.swap
@@ -434,13 +442,14 @@ let rebuild ?hashed_type ?min_buckets ?max_buckets ?n_way t =
     | None -> true
     | Some hashed_type -> HashedType.is_same_as r.hash r.equal hashed_type
   and length = !length in
-  if is_same_hashed_type && min_buckets <= length && length <= max_buckets then (
+  if is_same_hashed_type && min_buckets <= length && length <= max_buckets then begin
     let t = Loc.make (Obj.magic ()) in
     let pending = Nothing
     and buckets = Array.map Loc.make snapshot
     and length = Accumulator.make ~n_way length in
     Loc.set t { r with pending; length; buckets; min_buckets; max_buckets };
-    t)
+    t
+  end
   else
     let t = create ?hashed_type ~min_buckets ~max_buckets ~n_way () in
     snapshot

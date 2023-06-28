@@ -54,10 +54,11 @@ end
 
 let benchmark () =
   let rec loop i =
-    if i > 0 then (
+    if i > 0 then begin
       Xt.commit operation1;
       Xt.commit operation2;
-      loop (i - 1))
+      loop (i - 1)
+    end
   in
   loop num_iter
 
