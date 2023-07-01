@@ -430,10 +430,9 @@ let block timeout loc before =
   if add_awaiter loc before t.release then begin
     try t.await ()
     with cancellation_exn ->
-      let backtrace = Printexc.get_raw_backtrace () in
       remove_awaiter loc before t.release;
       Timeout.cancel_alive alive;
-      Printexc.raise_with_backtrace cancellation_exn backtrace
+      raise cancellation_exn
   end;
   Timeout.unawait timeout alive
 
@@ -743,9 +742,8 @@ module Xt = struct
         xt.cass <- CASN { loc; state; lt; gt; awaiters = [] };
         before
     | exception exn ->
-        let backtrace = Printexc.get_raw_backtrace () in
         xt.cass <- CASN { loc; state; lt; gt; awaiters = [] };
-        Printexc.raise_with_backtrace exn backtrace
+        raise exn
     [@@inline]
 
   let update loc f xt state' lt gt =
@@ -987,10 +985,9 @@ module Xt = struct
                 Timeout.unawait (timeout_as_atomic xt) alive;
                 commit (Backoff.reset backoff) mode (reset_quick xt) tx
             | exception cancellation_exn ->
-                let backtrace = Printexc.get_raw_backtrace () in
                 remove_awaiters t.release xt.casn NIL xt.cass;
                 Timeout.cancel_alive alive;
-                Printexc.raise_with_backtrace cancellation_exn backtrace
+                raise cancellation_exn
           end
         | CASN _ as stop ->
             remove_awaiters t.release xt.casn stop xt.cass;
