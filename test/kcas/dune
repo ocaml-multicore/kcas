@@ -1,58 +1,13 @@
-(library
- (name barrier)
- (modules barrier)
- (package kcas))
-
-(test
- (name test)
- (libraries kcas barrier threads alcotest)
- (modules test)
- (package kcas))
-
-(test
- (name test_overlapping_loc)
- (libraries kcas alcotest)
- (modules test_overlapping_loc)
- (package kcas))
-
-(test
- (name benchmark)
- (libraries kcas unix)
- (modules benchmark)
- (package kcas))
-
-(test
- (name xt_benchmark)
- (libraries kcas unix)
- (modules xt_benchmark)
- (package kcas))
-
-(test
- (name xt_parallel_cmp_bench)
- (libraries kcas barrier unix)
- (modules xt_parallel_cmp_bench)
- (package kcas))
-
-(test
- (name ms_queue_test)
- (libraries kcas alcotest)
- (modules ms_queue_test)
- (package kcas))
-
-(test
- (name example)
- (libraries kcas)
- (modules example)
- (package kcas))
-
-(test
- (name threads)
- (libraries kcas threads alcotest)
- (modules threads)
- (package kcas))
-
-(test
- (name loc_modes)
- (libraries kcas barrier)
- (modules loc_modes)
+(tests
+ (names
+  test
+  test_overlapping_loc
+  benchmark
+  xt_benchmark
+  xt_parallel_cmp_bench
+  ms_queue_test
+  example
+  threads
+  loc_modes)
+ (libraries alcotest kcas threads)
  (package kcas))
