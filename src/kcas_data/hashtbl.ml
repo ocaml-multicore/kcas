@@ -194,7 +194,7 @@ module Xt = struct
              operation has already been performed independently of the
              buckets array we read above. *)
           let i = Xt.fetch_and_add ~xt state (-batch_size) in
-          if i <= 0 then raise Done;
+          if i <= 0 then raise_notrace Done;
           for i = i - 1 downto Bits.max_0 (i - batch_size) do
             Array.unsafe_get old_buckets i
             |> Xt.get ~xt
@@ -240,7 +240,7 @@ module Xt = struct
         in
         let snapshot_a_few_buckets ~xt =
           let i = Xt.fetch_and_add ~xt state (-batch_size) in
-          if i <= 0 then raise Done;
+          if i <= 0 then raise_notrace Done;
           for i = i - 1 downto Bits.max_0 (i - batch_size) do
             Array.unsafe_get buckets i |> Xt.get ~xt
             |> Array.unsafe_set snapshot i
@@ -264,7 +264,7 @@ module Xt = struct
         in
         let filter_map_a_few_buckets ~xt =
           let i = Xt.fetch_and_add ~xt state (-batch_size) in
-          if i <= 0 then raise Done;
+          if i <= 0 then raise_notrace Done;
           let a_few_buckets_delta = ref 0 in
           for i = i - 1 downto Bits.max_0 (i - batch_size) do
             Xt.get ~xt (Array.unsafe_get old_buckets i)

@@ -42,7 +42,7 @@ module Xt = struct
     let tx ~xt =
       let xs = Xt.exchange ~xt back Elems.empty in
       if xs == Elems.empty || Xt.exchange ~xt middle xs != Elems.empty then
-        raise Exit
+        raise_notrace Exit
     in
     try Xt.commit { tx } with Exit -> ()
 
