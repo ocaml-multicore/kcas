@@ -197,44 +197,51 @@ let casn_before = Atomic.make Before
 
 let rec release_after casn = function
   | NIL -> true
-  | CASN { state; lt; gt; awaiters; _ } ->
+  | CASN r ->
+      let lt = r.lt in
       if lt != NIL then release_after casn lt |> ignore;
-      if not (is_cmp casn state) then begin
+      let state = r.state in
+      if is_cas casn state then begin
         state.before <- state.after;
         state.casn <- casn_after;
-        resume_awaiters awaiters
+        resume_awaiters r.awaiters
       end;
-      release_after casn gt
+      release_after casn r.gt
 
 let rec release_before casn = function
   | NIL -> false
-  | CASN { state; lt; gt; awaiters; _ } ->
+  | CASN r ->
+      let lt = r.lt in
       if lt != NIL then release_before casn lt |> ignore;
-      if not (is_cmp casn state) then begin
+      let state = r.state in
+      if is_cas casn state then begin
         state.after <- state.before;
         state.casn <- casn_before;
-        resume_awaiters awaiters
+        resume_awaiters r.awaiters
       end;
-      release_before casn gt
+      release_before casn r.gt
 
 let release casn cass status =
   if status == After then release_after casn cass else release_before casn cass
 
 let rec verify casn = function
   | NIL -> After
-  | CASN { loc; state; lt; gt; _ } ->
+  | CASN r ->
+      let lt = r.lt in
       if lt == NIL then
         (* Fenceless is safe as [finish] has a fence after. *)
-        if is_cmp casn state && fenceless_get (as_atomic loc) != state then
+        let state = r.state in
+        if is_cmp casn state && fenceless_get (as_atomic r.loc) != state then
           Before
-        else verify casn gt
+        else verify casn r.gt
       else
         let status = verify casn lt in
         if status == After then
+          let state = r.state in
           (* Fenceless is safe as [finish] has a fence after. *)
-          if is_cmp casn state && fenceless_get (as_atomic loc) != state then
+          if is_cmp casn state && fenceless_get (as_atomic r.loc) != state then
             Before
-          else verify casn gt
+          else verify casn r.gt
         else status
 
 let finish casn cass undetermined status =
@@ -250,17 +257,20 @@ let a_cmp_followed_by_a_cas = 4
 
 let rec determine casn status = function
   | NIL -> status
-  | CASN ({ loc; state; lt; gt; _ } as record) as eq ->
+  | CASN r as eq ->
+      let lt = r.lt in
       let status = if lt != NIL then determine casn status lt else status in
       if status < 0 then status
       else
+        let loc = r.loc in
         let current = Atomic.get (as_atomic loc) in
+        let state = r.state in
         if state == current then
           let a_cas_or_a_cmp = 1 + Bool.to_int (is_cas casn state) in
           let a_cmp_followed_by_a_cas = a_cas_or_a_cmp * 2 land (status * 4) in
           determine casn
             (status lor a_cas_or_a_cmp lor a_cmp_followed_by_a_cas)
-            gt
+            r.gt
         else
           let matches_expected () =
             let expected = state.before in
@@ -288,13 +298,13 @@ let rec determine casn status = function
                 begin
                   match current.awaiters with
                   | [] -> ()
-                  | awaiters -> record.awaiters <- awaiters
+                  | awaiters -> r.awaiters <- awaiters
                 end;
                 if Atomic.compare_and_set (as_atomic loc) current state then
                   let a_cmp_followed_by_a_cas = a_cas * 2 land (status * 4) in
                   determine casn
                     (status lor a_cas lor a_cmp_followed_by_a_cas)
-                    gt
+                    r.gt
                 else determine casn status eq
             | After | Before -> raise_notrace Exit
           else -1
@@ -713,10 +723,11 @@ module Xt = struct
 
   let rec validate_all casn = function
     | NIL -> ()
-    | CASN { loc; state; lt; gt; _ } ->
+    | CASN r ->
+        let lt = r.lt in
         if lt != NIL then validate_all casn lt;
-        validate_one casn loc state;
-        validate_all casn gt
+        validate_one casn r.loc r.state;
+        validate_all casn r.gt
 
   let maybe_validate_log xt =
     let c0 = xt.validate_counter in
@@ -854,12 +865,14 @@ module Xt = struct
     else
       match cass with
       | NIL -> NIL
-      | CASN { loc; state; lt; gt; _ } -> begin
+      | CASN r -> begin
+          let loc = r.loc in
           match splay ~hit_parent:false loc.id cass_snap with
           | lt_mark, Miss, gt_mark ->
-              let lt = rollback casn lt_mark lt
-              and gt = rollback casn gt_mark gt in
+              let lt = rollback casn lt_mark r.lt
+              and gt = rollback casn gt_mark r.gt in
               let state =
+                let state = r.state in
                 if is_cmp casn state then state
                 else
                   (* Fenceless is safe inside transactions as each log update has a fence. *)
@@ -869,8 +882,8 @@ module Xt = struct
               in
               CASN { loc; state; lt; gt; awaiters = [] }
           | lt_mark, Hit (loc, state), gt_mark ->
-              let lt = rollback casn lt_mark lt
-              and gt = rollback casn gt_mark gt in
+              let lt = rollback casn lt_mark r.lt
+              and gt = rollback casn gt_mark r.gt in
               CASN { loc; state; lt; gt; awaiters = [] }
         end
 
@@ -900,27 +913,31 @@ module Xt = struct
 
   let rec add_awaiters awaiter casn = function
     | NIL as cont -> cont
-    | CASN { loc; state; lt; gt; _ } as stop -> begin
+    | CASN r as stop -> begin
+        let lt = r.lt in
         match if lt == NIL then lt else add_awaiters awaiter casn lt with
         | NIL ->
             if
-              add_awaiter loc
-                (if is_cmp casn state then eval state else state.before)
+              add_awaiter r.loc
+                (let state = r.state in
+                 if is_cmp casn state then eval state else state.before)
                 awaiter
-            then add_awaiters awaiter casn gt
+            then add_awaiters awaiter casn r.gt
             else stop
         | CASN _ as stop -> stop
       end
 
   let rec remove_awaiters awaiter casn stop = function
     | NIL -> ()
-    | CASN { loc; state; lt; gt; _ } as current ->
+    | CASN r as current ->
+        let lt = r.lt in
         if lt != NIL then remove_awaiters awaiter casn stop lt;
         if current != stop then begin
-          remove_awaiter loc
-            (if is_cmp casn state then eval state else state.before)
+          remove_awaiter r.loc
+            (let state = r.state in
+             if is_cmp casn state then eval state else state.before)
             awaiter;
-          remove_awaiters awaiter casn stop gt
+          remove_awaiters awaiter casn stop r.gt
         end
 
   let initial_validate_period = 16

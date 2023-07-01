@@ -22,12 +22,12 @@ let copy q =
   alloc ~front ~middle ~back
 
 module Xt = struct
-  let is_empty ~xt { back; middle; front } =
+  let is_empty ~xt t =
     (* We access locations in order of allocation to make most efficient use of
        the splay-tree based transaction log. *)
-    Xt.get ~xt front == Elems.empty
-    && Xt.get ~xt middle == Elems.empty
-    && Xt.get ~xt back == Elems.empty
+    Xt.get ~xt t.front == Elems.empty
+    && Xt.get ~xt t.middle == Elems.empty
+    && Xt.get ~xt t.back == Elems.empty
 
   let length ~xt { back; middle; front } =
     Elems.length (Xt.get ~xt front)
@@ -51,10 +51,12 @@ module Xt = struct
     Xt.set ~xt front (Elems.tl_safe elems);
     Elems.hd_opt elems
 
-  let take_opt ~xt { back; middle; front } =
+  let take_opt ~xt t =
+    let front = t.front in
     let elems = Xt.unsafe_update ~xt front Elems.tl_safe in
     if elems != Elems.empty then Elems.hd_opt elems
-    else begin
+    else
+      let middle = t.middle and back = t.back in
       if not (Xt.is_in_log ~xt middle || Xt.is_in_log ~xt back) then
         back_to_middle ~middle ~back;
       let elems = Xt.exchange ~xt middle Elems.empty in
@@ -62,7 +64,6 @@ module Xt = struct
       else
         let elems = Xt.exchange ~xt back Elems.empty in
         if elems != Elems.empty then take_opt_finish ~xt front elems else None
-    end
 
   let take_blocking ~xt q = Xt.to_blocking ~xt (take_opt q)
 
@@ -71,10 +72,12 @@ module Xt = struct
     Xt.set ~xt front elems;
     Elems.hd_opt elems
 
-  let peek_opt ~xt { back; middle; front } =
+  let peek_opt ~xt t =
+    let front = t.front in
     let elems = Xt.get ~xt front in
     if elems != Elems.empty then Elems.hd_opt elems
-    else begin
+    else
+      let middle = t.middle and back = t.back in
       if not (Xt.is_in_log ~xt middle || Xt.is_in_log ~xt back) then
         back_to_middle ~middle ~back;
       let elems = Xt.exchange ~xt middle Elems.empty in
@@ -82,14 +85,13 @@ module Xt = struct
       else
         let elems = Xt.exchange ~xt back Elems.empty in
         if elems != Elems.empty then peek_opt_finish ~xt front elems else None
-    end
 
   let peek_blocking ~xt q = Xt.to_blocking ~xt (peek_opt q)
 
-  let clear ~xt { back; middle; front } =
-    Xt.set ~xt front Elems.empty;
-    Xt.set ~xt middle Elems.empty;
-    Xt.set ~xt back Elems.empty
+  let clear ~xt t =
+    Xt.set ~xt t.front Elems.empty;
+    Xt.set ~xt t.middle Elems.empty;
+    Xt.set ~xt t.back Elems.empty
 
   let swap ~xt q1 q2 =
     let front = Xt.get ~xt q1.front
@@ -109,16 +111,16 @@ module Xt = struct
     |> Elems.rev_prepend_to_seq middle
     |> Elems.prepend_to_seq front
 
-  let to_seq ~xt { front; middle; back } =
-    let front = Xt.get ~xt front
-    and middle = Xt.get ~xt middle
-    and back = Xt.get ~xt back in
+  let to_seq ~xt t =
+    let front = Xt.get ~xt t.front
+    and middle = Xt.get ~xt t.middle
+    and back = Xt.get ~xt t.back in
     seq_of ~front ~middle ~back
 
-  let take_all ~xt { front; middle; back } =
-    let front = Xt.exchange ~xt front Elems.empty
-    and middle = Xt.exchange ~xt middle Elems.empty
-    and back = Xt.exchange ~xt back Elems.empty in
+  let take_all ~xt t =
+    let front = Xt.exchange ~xt t.front Elems.empty
+    and middle = Xt.exchange ~xt t.middle Elems.empty
+    and back = Xt.exchange ~xt t.back Elems.empty in
     seq_of ~front ~middle ~back
 end
 
