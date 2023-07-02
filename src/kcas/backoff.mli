@@ -18,7 +18,7 @@
 
 (** Randomized exponential backoff mechanism. *)
 
-type t
+type t [@@immediate]
 (** Type of backoff values. *)
 
 val max_wait_log : int
