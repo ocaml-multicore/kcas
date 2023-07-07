@@ -1,0 +1,5 @@
+(mdx
+ (package kcas)
+ (deps
+  (package kcas))
+ (files gkmz-with-read-only-cmp-ops.md))

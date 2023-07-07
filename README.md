@@ -10,8 +10,9 @@ The API was redesigned in version 0.2.0 &mdash; see
 provides a software transactional memory (STM) implementation based on an atomic
 [lock-free](https://en.wikipedia.org/wiki/Non-blocking_algorithm#Lock-freedom)
 multi-word [compare-and-set](https://en.wikipedia.org/wiki/Compare-and-swap)
-(MCAS) algorithm enhanced with read-only compare operations and ability to block
-awaiting for changes.
+(MCAS) algorithm
+[enhanced with read-only compare operations](doc/gkmz-with-read-only-cmp-ops.md)
+and ability to block awaiting for changes.
 
 [**kcas_data**](https://ocaml-multicore.github.io/kcas/doc/kcas_data/Kcas_data/index.html)
 provides compositional lock-free data structures and primitives for
