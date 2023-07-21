@@ -9,7 +9,7 @@ let cons value tl = { value; tl; length = 1 + tl.length } [@@inline]
 let hd_opt t = if t != empty then Some t.value else None [@@inline]
 
 let hd_or_retry t = if t != empty then t.value else Kcas.Retry.later ()
-  [@@inline]
+[@@inline]
 
 let hd_unsafe t = t.value [@@inline]
 let rec fold f a t = if t == empty then a else fold f (f a t.value) t.tl
