@@ -51,5 +51,7 @@ let parallel_cmp_benchmark n_iter =
     (1_000_000_000.0 *. total /. Float.of_int (4 * n_iter))
 
 let () =
-  let n_iter = try int_of_string Sys.argv.(1) with _ -> 1_000_000 in
+  let n_iter =
+    try int_of_string Sys.argv.(1) with _ -> 100 * Util.iter_factor
+  in
   parallel_cmp_benchmark n_iter

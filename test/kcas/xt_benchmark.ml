@@ -2,7 +2,7 @@ open Printf
 open Kcas
 
 let k_kCAS, num_iter =
-  if Array.length Sys.argv < 3 then (2, 1000)
+  if Array.length Sys.argv < 3 then (2, 10 * Util.iter_factor)
   else
     try
       let a = int_of_string Sys.argv.(1) in

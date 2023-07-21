@@ -26,7 +26,7 @@
 
 open Kcas
 
-let nb_iter = 100_000
+let nb_iter = 100 * Util.iter_factor
 
 let assert_kcas loc expected_v =
   let present_v = Loc.get loc in
@@ -41,7 +41,7 @@ let run_domains = function
 
 let test_non_linearizable () =
   let barrier = Barrier.make 2
-  and n_iter = 100_000
+  and n_iter = 100 * Util.iter_factor
   and test_finished = ref false in
 
   let a = Loc.make 0 and b = Loc.make 0 in
@@ -233,7 +233,7 @@ let in_place_shuffle array =
   done
 
 let test_presort () =
-  let n_incs = 10_000 and n_domains = 3 and n_locs = 5 in
+  let n_incs = 10 * Util.iter_factor and n_domains = 3 and n_locs = 5 in
 
   let barrier = Barrier.make n_domains in
 
@@ -264,7 +264,7 @@ let test_presort () =
 (* *)
 
 let test_presort_and_is_in_log_xt () =
-  let n_incs = 10_000 and n_domains = 3 and n_locs = 12 in
+  let n_incs = 10 * Util.iter_factor and n_domains = 3 and n_locs = 12 in
   let n_locs_half = n_locs asr 1 in
 
   let barrier = Barrier.make n_domains in
@@ -362,7 +362,7 @@ let test_blocking () =
 
   let a = Loc.make 0 and bs = Array.init 10 @@ fun _ -> Loc.make 0 in
 
-  let n = 10_000 in
+  let n = 10 * Util.iter_factor in
 
   let num_attempts = ref 0 in
 
@@ -523,7 +523,7 @@ let test_explicit_validation () =
 (* *)
 
 let test_rollback () =
-  let n_iter = 1_000 in
+  let n_iter = 10 * Util.iter_factor in
 
   let n_locs = 20 in
 
@@ -645,7 +645,7 @@ let test_xt () =
   assert (Loc.get rx = Loc.get ry)
 
 let () =
-  Alcotest.run "kcas"
+  Alcotest.run "Kcas"
     [
       ( "non linearizable",
         [ Alcotest.test_case "" `Quick test_non_linearizable ] );
@@ -653,7 +653,10 @@ let () =
       ("casn", [ Alcotest.test_case "" `Quick test_casn ]);
       ("read casn", [ Alcotest.test_case "" `Quick test_read_casn ]);
       ( "stress",
-        [ Alcotest.test_case "" `Quick (fun () -> test_stress 1_000 1_0) ] );
+        [
+          Alcotest.test_case "" `Quick (fun () ->
+              test_stress (10 * Util.iter_factor) 1_0);
+        ] );
       ("presort", [ Alcotest.test_case "" `Quick test_presort ]);
       ( "is_in_log",
         [ Alcotest.test_case "" `Quick test_presort_and_is_in_log_xt ] );

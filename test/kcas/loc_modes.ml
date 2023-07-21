@@ -1,6 +1,6 @@
 open Kcas
 
-let loop_count = try int_of_string Sys.argv.(1) with _ -> 100
+let loop_count = try int_of_string Sys.argv.(1) with _ -> Util.iter_factor
 
 let mode =
   Some

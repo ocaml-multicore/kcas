@@ -123,7 +123,7 @@ let tail_leak_test n =
   List.init m domain |> List.map Domain.spawn |> List.iter Domain.join
 
 let () =
-  let n = try int_of_string Sys.argv.(1) with _ -> 1_000 in
+  let n = try int_of_string Sys.argv.(1) with _ -> 1 * Util.iter_factor in
   Alcotest.run "MS queue"
     [
       ( "write skew",

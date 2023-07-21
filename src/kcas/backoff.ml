@@ -19,6 +19,7 @@
 
 type t = int
 
+let single_mask = Bool.to_int (Domain.recommended_domain_count () = 1) - 1
 let bits = 5
 let max_wait_log = 30 (* [Random.bits] returns 30 random bits. *)
 let mask = (1 lsl bits) - 1
@@ -42,7 +43,7 @@ let reset backoff =
 let once backoff =
   let wait_log = get_wait_log backoff in
   let wait_mask = (1 lsl wait_log) - 1 in
-  let t = Random.bits () land wait_mask in
+  let t = Random.bits () land wait_mask land single_mask in
   for _ = 0 to t do
     Domain.cpu_relax ()
   done;

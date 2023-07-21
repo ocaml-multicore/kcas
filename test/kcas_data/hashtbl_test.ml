@@ -3,7 +3,7 @@ open Kcas_data
 
 let replace_and_remove () =
   let t = Hashtbl.create () in
-  let n = try int_of_string Sys.argv.(1) with _ -> 10_000 in
+  let n = try int_of_string Sys.argv.(1) with _ -> 10 * Util.iter_factor in
   for i = 1 to n do
     Hashtbl.replace t i i
   done;
@@ -92,7 +92,7 @@ let basics () =
   assert (Hashtbl.to_seq t |> List.of_seq |> List.sort compare = [ ("bar", 19) ])
 
 let () =
-  Alcotest.run "Stack"
+  Alcotest.run "Hashtbl"
     [
       ("replace and remove", [ Alcotest.test_case "" `Quick replace_and_remove ]);
       ("large tx", [ Alcotest.test_case "" `Quick large_tx ]);

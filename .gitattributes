@@ -1,3 +1,2 @@
 # To work around MDX issues
-README.md text eol=lf
-doc/gkmz-with-read-only-cmp-ops.md text eol=lf
+*.md text eol=lf
