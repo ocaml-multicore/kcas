@@ -10,7 +10,7 @@
  (synopsis "Software transactional memory based on lock-free multi-word compare-and-set")
  (description "A software transactional memory (STM) implementation based on an atomic lock-free multi-word compare-and-set (MCAS) algorithm enhanced with read-only compare operations and ability to block awaiting for changes.")
  (depends 
-  (ocaml (>= 5.0))
+  (ocaml (>= 4.14.0))
   (domain-local-await (>= 0.2.0))
   (domain-local-timeout (>= 0.1.0))
   (alcotest (and (>= 1.7.0) :with-test))

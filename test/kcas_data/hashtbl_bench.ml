@@ -69,9 +69,11 @@ let bench ~n_domains ~n_ops ~n_keys ~percent_read =
 let () =
   let n_domains =
     try int_of_string Sys.argv.(1)
-    with _ -> Domain.recommended_domain_count () / 2
+    with _ -> Int.max 2 (Domain.recommended_domain_count ()) / 2
   in
-  let n_ops = try int_of_string Sys.argv.(2) with _ -> 100_000 in
+  let n_ops =
+    try int_of_string Sys.argv.(2) with _ -> 100 * Util.iter_factor
+  in
   let n_keys = try int_of_string Sys.argv.(3) with _ -> 1_000 in
   let percent_read = try int_of_string Sys.argv.(4) with _ -> 70 in
   bench ~n_domains ~n_ops ~n_keys ~percent_read

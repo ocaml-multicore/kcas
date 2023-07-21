@@ -47,7 +47,7 @@ let meldable_overlap () =
   | _ -> assert false
 
 let _ =
-  Alcotest.run "overlapping loc"
+  Alcotest.run "Overlapping loc"
     [
       ( "conflicting overlap",
         [ Alcotest.test_case "" `Quick conflicting_overlap ] );

@@ -19,7 +19,7 @@ let await_between_threads () =
   assert (Loc.get x + Loc.get y = 42)
 
 let () =
-  Alcotest.run "threads"
+  Alcotest.run "Threads"
     [
       ( "await between threads",
         [ Alcotest.test_case "" `Quick await_between_threads ] );

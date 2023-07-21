@@ -7,5 +7,5 @@
   queue_test
   stack_test
   xt_test)
- (libraries alcotest kcas kcas_data multicore-magic)
+ (libraries alcotest kcas kcas_data multicore-magic kcas_compat)
  (package kcas_data))
