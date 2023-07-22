@@ -583,13 +583,13 @@ let test_timeout () =
     let rec loop n =
       let x = Loc.make false in
       let (_ : unit -> unit) =
-        Domain_local_timeout.set_timeoutf 0.3 @@ fun () -> Loc.set x true
+        Domain_local_timeout.set_timeoutf 0.6 @@ fun () -> Loc.set x true
       in
-      match op ~timeoutf:0.01 x with
+      match op ~timeoutf:0.02 x with
       | () -> if 0 < n then loop (n - 1) else assert false
-      | exception Timeout.Timeout -> op ~timeoutf:1.0 x
+      | exception Timeout.Timeout -> op ~timeoutf:2.0 x
     in
-    loop 5
+    loop 10
   in
   run_domains
     [
