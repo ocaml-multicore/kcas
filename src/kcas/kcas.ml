@@ -22,7 +22,7 @@ module Backoff = Backoff
 module Timeout = struct
   exception Timeout
 
-  let timeout () = raise Timeout [@@inline never]
+  let[@inline never] timeout () = raise Timeout
 
   type t = Unset | Elapsed | Call of (unit -> unit)
 
@@ -32,7 +32,7 @@ module Timeout = struct
      outside of the library and we don't always need the latest value and, when
      we do, there is a fence after. *)
 
-  let check state = if fenceless_get state == Elapsed then timeout () [@@inline]
+  let[@inline] check state = if fenceless_get state == Elapsed then timeout ()
 
   let set seconds state =
     Domain_local_timeout.set_timeoutf seconds @@ fun () ->
@@ -40,100 +40,90 @@ module Timeout = struct
     | Call release_or_cancel -> release_or_cancel ()
     | Unset | Elapsed -> ()
 
-  let alloc_opt = function
+  let[@inline never] alloc_opt = function
     | None -> unset
     | Some seconds ->
         let state = Atomic.make Unset in
         let cancel = set seconds state in
         fenceless_set state @@ Call cancel;
         state
-  [@@inline never]
 
-  let alloc_opt seconds = if seconds == None then unset else alloc_opt seconds
-  [@@inline]
+  let[@inline] alloc_opt seconds =
+    if seconds == None then unset else alloc_opt seconds
 
-  let set_opt state = function
+  let[@inline never] set_opt state = function
     | None -> ()
     | Some seconds ->
         let cancel = set seconds state in
         fenceless_set state @@ Call cancel
-  [@@inline never]
 
-  let set_opt state seconds = if seconds != None then set_opt state seconds
-  [@@inline]
+  let[@inline] set_opt state seconds =
+    if seconds != None then set_opt state seconds
 
-  let await state release =
+  let[@inline never] await state release =
     match fenceless_get state with
     | Call _ as alive ->
         if Atomic.compare_and_set state alive (Call release) then alive
         else timeout ()
     | Unset | Elapsed -> timeout ()
-  [@@inline never]
 
-  let await state release =
+  let[@inline] await state release =
     let alive = fenceless_get state in
     if alive == Unset then Unset else await state release
-  [@@inline]
 
-  let unawait state alive =
+  let[@inline never] unawait state alive =
     match fenceless_get state with
     | Call _ as await ->
         if not (Atomic.compare_and_set state await alive) then timeout ()
     | Unset | Elapsed -> timeout ()
-  [@@inline never]
 
-  let unawait state alive = if alive != Unset then unawait state alive
-  [@@inline]
+  let[@inline] unawait state alive = if alive != Unset then unawait state alive
 
-  let cancel_alive alive =
+  let[@inline never] cancel_alive alive =
     match alive with Call cancel -> cancel () | Unset | Elapsed -> ()
-  [@@inline never]
 
-  let cancel_alive alive = if alive != Unset then cancel_alive alive [@@inline]
-  let cancel state = cancel_alive (fenceless_get state) [@@inline]
+  let[@inline] cancel_alive alive = if alive != Unset then cancel_alive alive
+  let[@inline] cancel state = cancel_alive (fenceless_get state)
 end
 
 module Id = struct
   let neg_id = Atomic.make (-1)
-  let neg_ids n = Atomic.fetch_and_add neg_id (-n) [@@inline]
-  let neg_id () = neg_ids 1 [@@inline]
+  let[@inline] neg_ids n = Atomic.fetch_and_add neg_id (-n)
+  let[@inline] neg_id () = neg_ids 1
   let nat_id = Atomic.make Int.max_int
-  let nat_ids n = Atomic.fetch_and_add nat_id (-n) [@@inline]
-  let nat_id () = nat_ids 1 [@@inline]
+  let[@inline] nat_ids n = Atomic.fetch_and_add nat_id (-n)
+  let[@inline] nat_id () = nat_ids 1
 end
 
 module Action : sig
   type t
 
   val noop : t
-  val append : (unit -> unit) -> t -> t [@@inline]
+  val append : (unit -> unit) -> t -> t
 
   val run : t -> 'a -> 'a
-  [@@inline]
   (** Always call this last as user code may raise. *)
 end = struct
   type t = unit -> unit
 
   let noop = Fun.id
 
-  let append action t = if t == noop then action else fun x -> action (t x)
-  [@@inline]
+  let[@inline] append action t =
+    if t == noop then action else fun x -> action (t x)
 
-  let run t x =
+  let[@inline] run t x =
     t ();
     x
-  [@@inline]
 end
 
 type awaiter = unit -> unit
 
-let resume_awaiter awaiter = awaiter () [@@inline]
+let[@inline] resume_awaiter awaiter = awaiter ()
 
-let resume_awaiters = function
+let[@inline] resume_awaiters = function
   | [] -> ()
   | [ awaiter ] -> resume_awaiter awaiter
   | awaiters -> List.iter resume_awaiter awaiters
-[@@inline]
 
 type 'a state = {
   mutable before : 'a;
@@ -170,18 +160,18 @@ and 'a loc = { mutable _state : 'a state; id : int }
 
 external as_atomic : 'a loc -> 'a state Atomic.t = "%identity"
 
-let make_loc state id = { _state = state; id } [@@inline]
+let[@inline] make_loc state id = { _state = state; id }
 (**)
 
 (*
 and 'a loc = { state : 'a state Atomic.t; id : int }
 
-let as_atomic loc = loc.state [@@inline]
-let make_loc state id = { state = Atomic.make state; id } [@@inline]
+let[@inline] as_atomic loc = loc.state
+let[@inline] make_loc state id = { state = Atomic.make state; id }
 *)
 
-let is_cmp casn state = state.casn != casn [@@inline]
-let is_cas casn state = state.casn == casn [@@inline]
+let[@inline] is_cmp casn state = state.casn != casn
+let[@inline] is_cas casn state = state.casn == casn
 
 module Mode = struct
   type t = status
@@ -326,7 +316,7 @@ and is_after casn =
   | After -> true
   | Before -> false
 
-let determine_for_owner casn cass =
+let[@inline] determine_for_owner casn cass =
   (* The end result is a cyclic data structure, which is why we cannot
      initialize the [casn] atomic directly. *)
   let undetermined = Undetermined cass in
@@ -349,16 +339,15 @@ let determine_for_owner casn cass =
   | exception Exit ->
       (* Fenceless is safe as there was a fence before. *)
       fenceless_get casn == After
-[@@inline]
 
-let impossible () = failwith "impossible" [@@inline never]
-let overlap () = failwith "kcas: location overlap" [@@inline never]
-let invalid_retry () = failwith "kcas: invalid use of retry" [@@inline never]
+let[@inline never] impossible () = failwith "impossible"
+let[@inline never] overlap () = failwith "kcas: location overlap"
+let[@inline never] invalid_retry () = failwith "kcas: invalid use of retry"
 
 type splay = Miss : splay | Hit : 'a loc * 'a state -> splay
 
-let make_casn loc state lt gt = CASN { loc; state; lt; gt; awaiters = [] }
-[@@inline]
+let[@inline] make_casn loc state lt gt =
+  CASN { loc; state; lt; gt; awaiters = [] }
 
 let rec splay ~hit_parent x = function
   | NIL -> (NIL, Miss, NIL)
@@ -387,24 +376,22 @@ let rec splay ~hit_parent x = function
             else (make_casn a s l rl, Hit (pa, ps), rr)
       else (l, Hit (a, s), r)
 
-let new_state after =
+let[@inline] new_state after =
   { before = after; after; casn = casn_after; awaiters = [] }
-[@@inline]
 
-let eval state =
+let[@inline] eval state =
   let before = state.before and after = state.after in
   if before == after || is_after state.casn then after else before
-[@@inline]
 
 module Retry = struct
   exception Later
 
-  let later () = raise_notrace Later [@@inline never]
-  let unless condition = if not condition then later () [@@inline]
+  let[@inline never] later () = raise_notrace Later
+  let[@inline] unless condition = if not condition then later ()
 
   exception Invalid
 
-  let invalid () = raise_notrace Invalid [@@inline never]
+  let[@inline never] invalid () = raise_notrace Invalid
 end
 
 let add_awaiter loc before awaiter =
@@ -505,12 +492,11 @@ let rec exchange_no_alloc backoff loc state =
   end
   else exchange_no_alloc (Backoff.once backoff) loc state
 
-let is_obstruction_free casn loc =
+let[@inline] is_obstruction_free casn loc =
   (* Fenceless is safe as we are accessing a private location. *)
   fenceless_get casn == (Mode.obstruction_free :> status) && 0 <= loc.id
-[@@inline]
 
-let rec cas_with_state loc before state state_old =
+let[@inline] rec cas_with_state loc before state state_old =
   let before' = state_old.before and after' = state_old.after in
   ((before == before' && before == after')
   || before == if is_after state_old.casn then after' else before')
@@ -529,7 +515,6 @@ let rec cas_with_state loc before state state_old =
 
           Fenceless is safe as there was a fence before. *)
        cas_with_state loc before state (fenceless_get (as_atomic loc)))
-[@@inline]
 
 let inc x = x + 1
 let dec x = x - 1
@@ -553,7 +538,7 @@ module Loc = struct
     in
     Array.init n @@ fun i -> make_loc state (id + i)
 
-  let get_id loc = loc.id [@@inline]
+  let[@inline] get_id loc = loc.id
   let get loc = eval (Atomic.get (as_atomic loc))
 
   let rec get_as timeout f loc state =
@@ -570,13 +555,11 @@ module Loc = struct
         Timeout.cancel timeout;
         raise exn
 
-  let get_as ?timeoutf f loc =
+  let[@inline] get_as ?timeoutf f loc =
     get_as (Timeout.alloc_opt timeoutf) f loc (Atomic.get (as_atomic loc))
-  [@@inline]
 
-  let get_mode loc =
+  let[@inline] get_mode loc =
     if loc.id < 0 then Mode.lock_free else Mode.obstruction_free
-  [@@inline]
 
   let compare_and_set loc before after =
     let state = new_state after in
@@ -587,17 +570,15 @@ module Loc = struct
     let timeout = Timeout.alloc_opt timeoutf in
     update_with_state timeout backoff loc f (fenceless_get (as_atomic loc))
 
-  let fenceless_modify ?timeoutf ?backoff loc f =
+  let[@inline] fenceless_modify ?timeoutf ?backoff loc f =
     fenceless_update ?timeoutf ?backoff loc f |> ignore
-  [@@inline]
 
   let update ?timeoutf ?(backoff = Backoff.default) loc f =
     let timeout = Timeout.alloc_opt timeoutf in
     update_with_state timeout backoff loc f (Atomic.get (as_atomic loc))
 
-  let modify ?timeoutf ?backoff loc f =
+  let[@inline] modify ?timeoutf ?backoff loc f =
     update ?timeoutf ?backoff loc f |> ignore
-  [@@inline]
 
   let exchange ?(backoff = Backoff.default) loc value =
     exchange_no_alloc backoff loc (new_state value)
@@ -625,7 +606,7 @@ module Loc = struct
   let fenceless_get loc = eval (fenceless_get (as_atomic loc))
 end
 
-let insert cass loc state =
+let[@inline] insert cass loc state =
   let x = loc.id in
   match cass with
   | CASN { loc = a; lt = NIL; _ } when x < a.id ->
@@ -637,19 +618,17 @@ let insert cass loc state =
       | _, Hit _, _ -> overlap ()
       | lt, Miss, gt -> CASN { loc; state; lt; gt; awaiters = [] }
     end
-[@@inline]
 
 module Op = struct
   type t = CAS : 'a Loc.t * 'a * 'a -> t
 
-  let make_cas loc before after = CAS (loc, before, after) [@@inline]
-  let make_cmp loc expected = CAS (loc, expected, expected) [@@inline]
+  let[@inline] make_cas loc before after = CAS (loc, before, after)
+  let[@inline] make_cmp loc expected = CAS (loc, expected, expected)
 
-  let is_on_loc op loc =
+  let[@inline] is_on_loc op loc =
     match op with CAS (loc', _, _) -> Obj.magic loc' == loc
-  [@@inline]
 
-  let get_id = function CAS (loc, _, _) -> loc.id [@@inline]
+  let[@inline] get_id = function CAS (loc, _, _) -> loc.id
 
   let atomic = function
     | CAS (loc, before, after) ->
@@ -697,7 +676,7 @@ module Xt = struct
     mutable post_commit : Action.t;
   }
 
-  let timeout_unset () = Timeout.Unset [@@inline]
+  let[@inline] timeout_unset () = Timeout.Unset
 
   external timeout_as_atomic : 'x t -> Timeout.t Atomic.t = "%identity"
   (**)
@@ -711,15 +690,14 @@ module Xt = struct
     mutable post_commit : Action.t;
   }
 
-  let timeout_unset () = Atomic.make Timeout.Unset [@@inline]
-  let timeout_as_atomic r = r._timeout [@@inline]
+  let[@inline] timeout_unset () = Atomic.make Timeout.Unset
+  let[@inline] timeout_as_atomic r = r._timeout
   *)
 
-  let validate_one casn loc state =
+  let[@inline] validate_one casn loc state =
     let before = if is_cmp casn state then eval state else state.before in
     (* Fenceless is safe inside transactions as each log update has a fence. *)
     if before != eval (fenceless_get (as_atomic loc)) then Retry.invalid ()
-  [@@inline]
 
   let rec validate_all casn = function
     | NIL -> ()
@@ -729,7 +707,7 @@ module Xt = struct
         validate_one casn r.loc r.state;
         validate_all casn r.gt
 
-  let maybe_validate_log xt =
+  let[@inline] maybe_validate_log xt =
     let c0 = xt.validate_counter in
     let c1 = c0 + 1 in
     xt.validate_counter <- c1;
@@ -738,9 +716,8 @@ module Xt = struct
       Timeout.check (timeout_as_atomic xt);
       validate_all xt.casn xt.cass
     end
-  [@@inline]
 
-  let update0 loc f xt lt gt =
+  let[@inline] update0 loc f xt lt gt =
     (* Fenceless is safe inside transactions as each log update has a fence. *)
     let state = fenceless_get (as_atomic loc) in
     let before = eval state in
@@ -755,9 +732,8 @@ module Xt = struct
     | exception exn ->
         xt.cass <- CASN { loc; state; lt; gt; awaiters = [] };
         raise exn
-  [@@inline]
 
-  let update loc f xt state' lt gt =
+  let[@inline] update loc f xt state' lt gt =
     let state = Obj.magic state' in
     if is_cmp xt.casn state then begin
       let before = eval state in
@@ -774,9 +750,8 @@ module Xt = struct
       let state = { state with after = f current } in
       xt.cass <- CASN { loc; state; lt; gt; awaiters = [] };
       current
-  [@@inline]
 
-  let unsafe_update ~xt loc f =
+  let[@inline] unsafe_update ~xt loc f =
     maybe_validate_log xt;
     let x = loc.id in
     match xt.cass with
@@ -792,14 +767,12 @@ module Xt = struct
         | l, Miss, r -> update0 loc f xt l r
         | l, Hit (_loc', state'), r -> update loc f xt state' l r
       end
-  [@@inline]
 
-  let protect xt f x =
+  let[@inline] protect xt f x =
     let cass = xt.cass in
     let y = f x in
     assert (xt.cass == cass);
     y
-  [@@inline]
 
   let get ~xt loc = unsafe_update ~xt loc Fun.id
   let set ~xt loc after = unsafe_update ~xt loc (fun _ -> after) |> ignore
@@ -818,13 +791,11 @@ module Xt = struct
   let unsafe_modify ~xt loc f = unsafe_update ~xt loc f |> ignore
   let unsafe_update ~xt loc f = unsafe_update ~xt loc f
 
-  let to_blocking ~xt tx =
+  let[@inline] to_blocking ~xt tx =
     match tx ~xt with None -> Retry.later () | Some value -> value
-  [@@inline]
 
-  let to_nonblocking ~xt tx =
+  let[@inline] to_nonblocking ~xt tx =
     match tx ~xt with value -> Some value | exception Retry.Later -> None
-  [@@inline]
 
   let post_commit ~xt action =
     xt.post_commit <- Action.append action xt.post_commit
@@ -909,7 +880,7 @@ module Xt = struct
 
   type 'a tx = { tx : 'x. xt:'x t -> 'a } [@@unboxed]
 
-  let call ~xt { tx } = tx ~xt [@@inline]
+  let[@inline] call ~xt { tx } = tx ~xt
 
   let rec add_awaiters awaiter casn = function
     | NIL as cont -> cont
@@ -942,12 +913,11 @@ module Xt = struct
 
   let initial_validate_period = 16
 
-  let reset_quick xt =
+  let[@inline] reset_quick xt =
     xt.cass <- NIL;
     xt.validate_counter <- initial_validate_period;
     xt.post_commit <- Action.noop;
     xt
-  [@@inline]
 
   let reset mode xt =
     xt.casn <- Atomic.make (mode :> status);
@@ -1015,7 +985,7 @@ module Xt = struct
         Timeout.cancel (timeout_as_atomic xt);
         raise exn
 
-  let commit ?timeoutf ?(backoff = Backoff.default)
+  let[@inline] commit ?timeoutf ?(backoff = Backoff.default)
       ?(mode = Mode.obstruction_free) tx =
     let casn = Atomic.make (mode :> status)
     and cass = NIL
@@ -1026,5 +996,4 @@ module Xt = struct
     in
     Timeout.set_opt (timeout_as_atomic xt) timeoutf;
     commit backoff mode xt tx.tx
-  [@@inline]
 end
