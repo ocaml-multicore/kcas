@@ -2,6 +2,10 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.6.1
+
+- Ported to OCaml 4.14 (@polytypic)
+
 ## 0.6.0
 
 - Add timeout support to potentially blocking operations (@polytypic)
