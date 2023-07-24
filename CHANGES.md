@@ -2,6 +2,10 @@
 
 All notable changes to this project will be documented in this file.
 
+Next version:
+
+- Ported to OCaml 4.13 (@polytypic)
+
 ## 0.6.1
 
 - Ported to OCaml 4.14 (@polytypic)

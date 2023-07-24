@@ -8,7 +8,7 @@ let replace_and_remove () =
     Hashtbl.replace t i i
   done;
   assert (Hashtbl.length t = n);
-  assert (Seq.length (Hashtbl.to_seq t) = n);
+  assert (Seq.fold_left (fun n _ -> n + 1) 0 (Hashtbl.to_seq t) = n);
   for i = 1 to n do
     assert (Hashtbl.find t i = i)
   done;
@@ -26,7 +26,7 @@ let large_tx () =
     done
   in
   Xt.commit { tx };
-  assert (Seq.length (Hashtbl.to_seq t) = n);
+  assert (Seq.fold_left (fun n _ -> n + 1) 0 (Hashtbl.to_seq t) = n);
   let tx ~xt =
     for i = 1 to n do
       assert (Hashtbl.Xt.find_opt ~xt t i = Some i)
