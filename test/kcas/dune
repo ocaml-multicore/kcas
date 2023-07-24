@@ -9,5 +9,5 @@
   example
   threads
   loc_modes)
- (libraries alcotest kcas threads kcas_compat)
+ (libraries alcotest kcas threads domain_shims)
  (package kcas))

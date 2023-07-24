@@ -13,6 +13,7 @@
   (ocaml (>= 4.13.0))
   (domain-local-await (>= 0.2.0))
   (domain-local-timeout (>= 0.1.0))
+  (domain_shims (and (>= 0.1.0) :with-test))
   (alcotest (and (>= 1.7.0) :with-test))
   (mdx (and (>= 1.10.0) :with-test))
   (odoc (and (>= 2.2.0) :with-doc))))
@@ -21,6 +22,7 @@
  (description "A library of compositional lock-free data structures and primitives for communication and synchronization implemented using kcas.")
  (depends
   (kcas (= :version))
+  (domain_shims (and (>= 0.1.0) :with-test))
   (alcotest (and (>= 1.7.0) :with-test))
   (mdx (and (>= 1.10.0) :with-test))
   (multicore-magic (and (>= 1.0.0) :with-test))

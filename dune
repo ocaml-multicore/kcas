@@ -3,5 +3,5 @@
  (deps
   (package kcas)
   (package kcas_data))
- (libraries kcas_compat)
+ (libraries domain_shims)
  (files README.md))
