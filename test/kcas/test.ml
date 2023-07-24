@@ -24,6 +24,8 @@
     OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
   ---------------------------------------------------------------------------*)
 
+let is_single = Domain.recommended_domain_count () = 1
+
 open Kcas
 
 let nb_iter = 100 * Util.iter_factor
@@ -63,16 +65,20 @@ let test_non_linearizable () =
     while not !test_finished do
       if atomically cass1a then
         while not (atomically cass1b) do
+          if is_single then Domain.cpu_relax ();
           assert (Loc.get a == 1 && Loc.get b == 0)
         done
+      else if is_single then Domain.cpu_relax ()
     done
   and thread2 () =
     Barrier.await barrier;
     for _ = 1 to n_iter do
       if atomically cass2a then
         while not (atomically cass2b) do
+          if is_single then Domain.cpu_relax ();
           assert (Loc.get a == 0 && Loc.get b == 1)
         done
+      else if is_single then Domain.cpu_relax ()
     done;
     test_finished := true
   in
@@ -126,7 +132,8 @@ let test_casn () =
       let out1 = Op.atomically c1 in
       let out2 = Op.atomically c2 in
       assert (not out1);
-      assert (not out2)
+      assert (not out2);
+      if is_single then Domain.cpu_relax ()
     done
   and thread3 () =
     let c1 = [ Op.make_cas a1 0 1; Op.make_cas a2 1 0 ] in
@@ -138,7 +145,8 @@ let test_casn () =
       let out1 = Op.atomically c1 in
       let out2 = Op.atomically c2 in
       assert (not out1);
-      assert (not out2)
+      assert (not out2);
+      if is_single then Domain.cpu_relax ()
     done
   in
 
@@ -165,28 +173,32 @@ let test_read_casn () =
     while not (Atomic.get test_finished) do
       let a = Loc.get a1 in
       let b = Loc.get a2 in
-      assert (a <= b)
+      assert (a <= b);
+      if is_single then Domain.cpu_relax ()
     done
   and getaser () =
     Barrier.await barrier;
     while not (Atomic.get test_finished) do
       let a = Loc.get_as Fun.id a1 in
       let b = Loc.get_as Fun.id a2 in
-      assert (a <= b)
+      assert (a <= b);
+      if is_single then Domain.cpu_relax ()
     done
   and committer () =
     Barrier.await barrier;
     while not (Atomic.get test_finished) do
       let a = Xt.commit { tx = Xt.get a1 } in
       let b = Xt.commit { tx = Xt.get a2 } in
-      assert (a <= b)
+      assert (a <= b);
+      if is_single then Domain.cpu_relax ()
     done
   and updater () =
     Barrier.await barrier;
     while not (Atomic.get test_finished) do
       let a = Loc.update a1 Fun.id in
       let b = Loc.update a2 Fun.id in
-      assert (a <= b)
+      assert (a <= b);
+      if is_single then Domain.cpu_relax ()
     done
   in
 
@@ -252,7 +264,7 @@ let test_presort () =
     Barrier.await barrier;
     for _ = 1 to n_incs do
       while not (Op.atomically (mk_inc locs)) do
-        ()
+        Domain.cpu_relax ()
       done
     done
   in
