@@ -373,7 +373,6 @@ let[@inline] determine_for_owner which root =
       fenceless_get (root_as_atomic which) == R After
 
 let[@inline never] impossible () = failwith "impossible"
-let[@inline never] overlap () = failwith "kcas: location overlap"
 let[@inline never] invalid_retry () = failwith "kcas: invalid use of retry"
 
 let[@inline] make_node loc state lt gt =
@@ -638,68 +637,6 @@ module Loc = struct
     state.awaiters != []
 
   let fenceless_get loc = eval (fenceless_get (as_atomic loc))
-end
-
-let[@inline] insert cas loc state =
-  let x = loc.id in
-  match cas with
-  | Node { loc = a; lt = T Leaf; _ } when x < a.id ->
-      Node { loc; state; lt = T Leaf; gt = T cas; awaiters = [] }
-  | Node { loc = a; gt = T Leaf; _ } when a.id < x ->
-      Node { loc; state; lt = T cas; gt = T Leaf; awaiters = [] }
-  | _ -> begin
-      match splay ~hit_parent:false x (T cas) with
-      | _, T (Node _), _ -> overlap ()
-      | lt, T Leaf, gt -> Node { loc; state; lt; gt; awaiters = [] }
-    end
-
-module Op = struct
-  type t = CAS : 'a Loc.t * 'a * 'a -> t
-
-  let[@inline] make_cas loc before after = CAS (loc, before, after)
-  let[@inline] make_cmp loc expected = CAS (loc, expected, expected)
-
-  let[@inline] is_on_loc op loc =
-    match op with CAS (loc', _, _) -> Obj.magic loc' == loc
-
-  let[@inline] get_id = function CAS (loc, _, _) -> loc.id
-
-  let atomic = function
-    | CAS (loc, before, after) ->
-        if before == after then Loc.get loc == before
-        else Loc.compare_and_set loc before after
-
-  let atomically ?(mode = Mode.lock_free) = function
-    | [] -> true
-    | [ op ] -> atomic op
-    | first :: rest ->
-        let which = Undetermined { root = R mode } in
-        let rec run cas = function
-          | [] -> determine_for_owner which cas
-          | CAS (loc, before, after) :: rest ->
-              if before == after && is_obstruction_free which loc then
-                (* Fenceless is safe as there are fences in [determine]. *)
-                let state = fenceless_get (as_atomic loc) in
-                before == eval state && run (insert cas loc state) rest
-              else
-                run
-                  (insert cas loc
-                     { before; after; which = W which; awaiters = [] })
-                  rest
-        in
-        let (CAS (loc, before, after)) = first in
-        if before == after && is_obstruction_free which loc then
-          (* Fenceless is safe as there are fences in [determine]. *)
-          let state = fenceless_get (as_atomic loc) in
-          before == eval state
-          && run
-               (Node { loc; state; lt = T Leaf; gt = T Leaf; awaiters = [] })
-               rest
-        else
-          let state = { before; after; which = W which; awaiters = [] } in
-          run
-            (Node { loc; state; lt = T Leaf; gt = T Leaf; awaiters = [] })
-            rest
 end
 
 module Xt = struct

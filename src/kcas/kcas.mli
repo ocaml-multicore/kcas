@@ -53,21 +53,17 @@
     One can then manipulate the locations individually:
 
     {[
-      # Loc.set a 6
+      # Loc.set a 10
       - : unit = ()
 
       # Loc.get a
-      - : int = 6
-    ]}
+      - : int = 10
 
-    Attempt primitive operations over multiple locations:
-
-    {[
-      # Op.atomically [
-          Op.make_cas a 6 10;
-          Op.make_cas b 0 52
-        ]
+      # Loc.compare_and_set b 0 52
       - : bool = true
+
+      # Loc.get b
+      - : int = 52
     ]}
 
     Block waiting for changes to locations:
@@ -284,12 +280,8 @@ end
 
 (** {1 Manipulating multiple locations atomically}
 
-    Multiple shared memory locations can be manipulated atomically using either
-
-    - the {!Xt} module, to explicitly pass a transaction log to record accesses,
-      or
-
-    - the {!Op} module, to specify a list of primitive operations to perform.
+    Multiple shared memory locations can be manipulated atomically using the
+    {!Xt} module to explicitly pass a transaction log to record accesses.
 
     Atomic operations over multiple shared memory locations are performed in two
     or three phases:
@@ -566,97 +558,4 @@ module Xt : sig
   val unsafe_update : xt:'x t -> 'a Loc.t -> ('a -> 'a) -> 'a
   (** [unsafe_update ~xt r f] is equivalent to [update ~xt r f], but does not
       assert against misuse. *)
-end
-
-(** Multi-word compare-and-set operations on shared memory locations.
-
-    This module provides a multi-word compare-and-set (MCAS) interface for
-    manipulating multiple locations atomically.  This is a low-level interface
-    not intended for most users.
-
-    As an example, consider an implementation of doubly-linked circular
-    lists. Instead of using a mutable field, [ref], or [Atomic.t], one would use
-    a shared memory location, or {!Loc.t}, for the pointers in the node type:
-
-    {[
-      type 'a node = {
-        succ: 'a node Loc.t;
-        pred: 'a node Loc.t;
-        datum: 'a;
-      }
-    ]}
-
-    To remove a node safely one wants to atomically update the [succ] and [pred]
-    pointers of the predecessor and successor nodes and to also update the
-    [succ] and [pred] pointers of a node to point to the node itself, so that
-    removal becomes an {{:https://en.wikipedia.org/wiki/Idempotence} idempotent}
-    operation.  Using a multi-word compare-and-set one could implement the
-    [remove] operation as follows:
-
-    {[
-      let rec remove ?(backoff = Backoff.default) node =
-        (* Read pointer to the predecessor node and... *)
-        let pred = Loc.get node.pred in
-        (* ..check whether the node has already been removed. *)
-        if pred != node then
-          let succ = Loc.get node.succ in
-          let ok = Op.atomically [
-            (* Update pointers in this node: *)
-            Op.make_cas node.succ succ node;
-            Op.make_cas node.pred pred node;
-            (* Update pointers to this node: *)
-            Op.make_cas pred.succ node succ;
-            Op.make_cas succ.pred node pred;
-          ] in
-          if not ok then
-            (* Someone modified the list around us, so backoff and retry. *)
-            remove ~backoff:(Backoff.once backoff) node
-    ]}
-
-    The list given to {!Op.atomically} contains specifications of the individual
-    compare-and-set operations to perform. A single {!Op.make_cas} specifies an
-    operation to compare the current value of a location with the expected value
-    and, in case they are the same, set the value of the location to the desired
-    value.
-
-    Programming with like this is similar to programming with single-word
-    compare-and-set except that the operation is extended to being able to work
-    on multiple words. *)
-module Op : sig
-  type t
-  (** Type of operations on shared memory locations. *)
-
-  val make_cas : 'a Loc.t -> 'a -> 'a -> t
-  (** [make_cas r before after] specifies an operation that attempts to set the
-      shared memory location [r] to the [after] value and succeeds if the
-      current content of [r] is the [before] value. *)
-
-  val make_cmp : 'a Loc.t -> 'a -> t
-  (** [make_cmp r expected] specifies an operation that succeeds if the current
-      value of the shared memory location [r] is the [expected] value. *)
-
-  val get_id : t -> int
-  (** [get_id op] returns the unique id of the shared memory reference targeted
-      by the [op]eration. *)
-
-  val is_on_loc : t -> 'a Loc.t -> bool
-  (** [is_on_loc op r] determines whether the target of [op] is the shared
-      memory location [r]. *)
-
-  val atomic : t -> bool
-  (** [atomic op] attempts to perform the specified operation atomically.
-      Returns [true] on success and [false] on failure. *)
-
-  val atomically : ?mode:Mode.t -> t list -> bool
-  (** [atomically ops] attempts to perform the specified operations atomically.
-      If used in {!Mode.obstruction_free} may raise {!Mode.Interference}.
-      Otherwise returns [true] on success and [false] on failure.  The default
-      for [atomically] is {!Mode.lock_free}.
-
-      The algorithm requires provided operations to follow a global total order.
-      To eliminate a class of bugs, the operations are sorted automatically.  If
-      the operations are given in either ascending or descending order of the
-      targeted shared memory location ids, then sorting is done in linear time
-      [O(n)] and does not increase the time complexity of the algorithm.
-      Otherwise sorting may take linearithmic time [O(n*log(n))]. *)
 end

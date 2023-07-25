@@ -1,5 +1,5 @@
 (tests
- (names test test_overlapping_loc ms_queue_test example threads loc_modes)
+ (names test ms_queue_test threads loc_modes)
  (libraries
   alcotest
   kcas

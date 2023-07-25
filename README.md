@@ -120,21 +120,17 @@ val x : int Loc.t = <abstr>
 One can then manipulate the locations individually:
 
 ```ocaml
-# Loc.set a 6
+# Loc.set a 10
 - : unit = ()
 
 # Loc.get a
-- : int = 6
-```
+- : int = 10
 
-Attempt primitive operations over multiple locations:
-
-```ocaml
-# Op.atomically [
-    Op.make_cas a 6 10;
-    Op.make_cas b 0 52
-  ]
+# Loc.compare_and_set b 0 52
 - : bool = true
+
+# Loc.get b
+- : int = 52
 ```
 
 Block waiting for changes to locations:
@@ -170,16 +166,12 @@ And now we have it:
 The API of **Kcas** is divided into submodules. The main modules are
 
 - [`Loc`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Loc/index.html),
-  providing an abstraction of _shared memory locations_,
+  providing an abstraction of _shared memory locations_, and
 
 - [`Xt`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html),
-  providing _explicit transaction log passing_ over shared memory locations, and
+  providing _explicit transaction log passing_ over shared memory locations.
 
-- [`Op`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Op/index.html),
-  providing an interface for _primitive operations_ over multiple shared memory
-  locations.
-
-The following sections discuss each of the above in turn.
+The following sections discuss both of the above in turn.
 
 ### Creating and manipulating individual shared memory locations
 
@@ -192,9 +184,7 @@ In other words, an application that uses
 [`Atomic`](https://v2.ocaml.org/api/Atomic.html), but then needs to perform
 atomic operations over multiple atomic locations, could theoretically just
 rebind `module Atomic = Loc` and then use the
-[`Op`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Op/index.html),
-and/or
-[`Xt`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html) APIs
+[`Xt`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html) API
 to perform operations over multiple locations. This should not be done
 just-in-case, however, as, even though **Kcas** is efficient, it does naturally
 have higher overhead than the Stdlib
@@ -449,10 +439,8 @@ val a_queue : int queue = {front = <abstr>; back = <abstr>}
 
 #### Composing transactions
 
-The main benefit of the
+The main feature of the
 [`Xt`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html) API
-over the
-[`Op`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Op/index.html) API
 is that transactions are composable. In fact, we already wrote transactions that
 recorded multiple primitive shared memory accesses to the explicitly passed
 transaction log. Nothing prevents us from writing transactions calling other
@@ -1048,72 +1036,6 @@ val a_cache : (int, string) cache =
 
 As an exercise, implement an operation to `remove` associations from a cache and
 an operation to change the capacity of the cache.
-
-### Programming with primitive operations
-
-In addition to the transactional interface, **Kcas** also provides the
-[`Op`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Op/index.html)
-interface for performing a list of primitive operations. To program with
-primitive operations one simply makes a list of CAS operations using
-[`make_cas`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Op/index.html#val-make_cas)
-and then attempts them using
-[`atomically`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Op/index.html#val-atomically).
-Typically that needs to be done inside a loop of some kind as such an attempt
-can naturally fail.
-
-Let's first
-[`make`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Loc/index.html#val-make)
-two locations representing stacks:
-
-```ocaml
-# let stack_a = Loc.make [19]
-  and stack_b = Loc.make [76]
-val stack_a : int list Loc.t = <abstr>
-val stack_b : int list Loc.t = <abstr>
-```
-
-Here is a function that can atomically move an element from given `source` stack
-to the given `target` stack:
-
-```ocaml
-# let rec move ?(backoff = Backoff.default)
-               source
-               target =
-    match Loc.get source with
-    | [] -> raise Exit
-    | (elem::rest) as old_source ->
-      let old_target = Loc.get target in
-      let ops = [
-        Op.make_cas source old_source rest;
-        Op.make_cas target old_target (elem::old_target)
-      ] in
-      if not (Op.atomically ops) then
-        let backoff = Backoff.once backoff in
-        move ~backoff source target
-val move : ?backoff:Backoff.t -> 'a list Loc.t -> 'a list Loc.t -> unit =
-  <fun>
-```
-
-Note that we also used the
-[`Backoff`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Backoff/index.html)
-module provided by **Kcas** above.
-
-Now we can simply call `move`:
-
-```ocaml
-# move stack_a stack_b
-- : unit = ()
-
-# Loc.get stack_a
-- : int list = []
-
-# Loc.get stack_b
-- : int list = [19; 76]
-```
-
-As one can see, the API provided by
-[`Op`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Op/index.html) is
-quite low-level and is not intended for application level programming.
 
 ## Designing lock-free algorithms with k-CAS
 

@@ -1,7 +1,6 @@
 let benchmarks =
   [
     ("Kcas Loc", Bench_loc.run_suite);
-    ("Kcas Op", Bench_op.run_suite);
     ("Kcas Xt", Bench_xt.run_suite);
     ("Kcas parallel CMP", Bench_parallel_cmp.run_suite);
     ("Kcas_data Hashtbl", Bench_hashtbl.run_suite);
