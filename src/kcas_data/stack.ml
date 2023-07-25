@@ -33,12 +33,12 @@ let push x s =
 let pop_opt s = Loc.update s Elems.tl_safe |> Elems.hd_opt
 let pop_all s = Loc.exchange s Elems.empty |> Elems.to_seq
 
-let pop_blocking s =
+let pop_blocking ?timeoutf s =
   (* Fenceless is safe as we always update. *)
-  Loc.fenceless_update s Elems.tl_or_retry |> Elems.hd_unsafe
+  Loc.fenceless_update ?timeoutf s Elems.tl_or_retry |> Elems.hd_unsafe
 
 let top_opt s = Loc.get s |> Elems.hd_opt
-let top_blocking s = Loc.get_as Elems.hd_or_retry s
+let top_blocking ?timeoutf s = Loc.get_as ?timeoutf Elems.hd_or_retry s
 let clear s = Loc.set s Elems.empty
 let swap s1 s2 = Kcas.Xt.commit { tx = Kcas.Xt.swap s1 s2 }
 let to_seq s = Elems.to_seq @@ Loc.get s
