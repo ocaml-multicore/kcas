@@ -26,8 +26,13 @@ module Xt :
   Mvar_intf.Ops
     with type 'a t := 'a t
     with type ('x, 'fn) fn := xt:'x Xt.t -> 'fn
+    with type ('x, 'fn) blocking_fn := xt:'x Xt.t -> 'fn
 (** Explicit transaction passing on synchronizing variables. *)
 
 (** {1 Non-compositional interface} *)
 
-include Mvar_intf.Ops with type 'a t := 'a t with type ('x, 'fn) fn := 'fn
+include
+  Mvar_intf.Ops
+    with type 'a t := 'a t
+    with type ('x, 'fn) fn := 'fn
+    with type ('x, 'fn) blocking_fn := ?timeoutf:float -> 'fn

@@ -42,6 +42,7 @@ module Xt :
     with type 'a or_exn := 'a or_exn
     with type 'a u := 'a u
     with type ('x, 'fn) fn := xt:'x Xt.t -> 'fn
+    with type ('x, 'fn) blocking_fn := xt:'x Xt.t -> 'fn
 (** Explicit transaction log passing on promises. *)
 
 (** {1 Non-compositional interface} *)
@@ -52,3 +53,4 @@ include
     with type 'a or_exn := 'a or_exn
     with type 'a u := 'a u
     with type ('x, 'fn) fn := 'fn
+    with type ('x, 'fn) blocking_fn := ?timeoutf:float -> 'fn

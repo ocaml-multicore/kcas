@@ -173,8 +173,13 @@ let move_l node list = Kcas.Xt.commit { tx = Xt.move_l node list }
 let move_r node list = Kcas.Xt.commit { tx = Xt.move_r node list }
 let take_opt_l list = Kcas.Xt.commit { tx = Xt.take_opt_l list }
 let take_opt_r list = Kcas.Xt.commit { tx = Xt.take_opt_r list }
-let take_blocking_l list = Kcas.Xt.commit { tx = Xt.take_blocking_l list }
-let take_blocking_r list = Kcas.Xt.commit { tx = Xt.take_blocking_r list }
+
+let take_blocking_l ?timeoutf list =
+  Kcas.Xt.commit ?timeoutf { tx = Xt.take_blocking_l list }
+
+let take_blocking_r ?timeoutf list =
+  Kcas.Xt.commit ?timeoutf { tx = Xt.take_blocking_r list }
+
 let swap t1 t2 = Kcas.Xt.commit { tx = Xt.swap t1 t2 }
 let transfer_l t1 t2 = Kcas.Xt.commit { tx = Xt.transfer_l t1 t2 }
 let transfer_r t1 t2 = Kcas.Xt.commit { tx = Xt.transfer_r t1 t2 }

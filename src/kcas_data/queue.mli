@@ -31,11 +31,16 @@ module Xt :
   Queue_intf.Ops
     with type 'a t := 'a t
     with type ('x, 'fn) fn := xt:'x Xt.t -> 'fn
+    with type ('x, 'fn) blocking_fn := xt:'x Xt.t -> 'fn
 (** Explicit transaction log passing on queues. *)
 
 (** {1 Non-compositional interface} *)
 
-include Queue_intf.Ops with type 'a t := 'a t with type ('x, 'fn) fn := 'fn
+include
+  Queue_intf.Ops
+    with type 'a t := 'a t
+    with type ('x, 'fn) fn := 'fn
+    with type ('x, 'fn) blocking_fn := ?timeoutf:float -> 'fn
 
 val peek : 'a t -> 'a
 (** [peek q] returns the first element in queue [s], or raises {!Empty} if the

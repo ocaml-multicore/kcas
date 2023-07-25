@@ -52,6 +52,7 @@ module Xt :
     with type 'a t := 'a t
     with type 'a node := 'a node
     with type ('x, 'fn) fn := xt:'x Xt.t -> 'fn
+    with type ('x, 'fn) blocking_fn := xt:'x Xt.t -> 'fn
 (** Explicit transaction log passing on doubly-linked lists. *)
 
 (** {1 Non-compositional interface} *)
@@ -61,6 +62,7 @@ include
     with type 'a t := 'a t
     with type 'a node := 'a node
     with type ('x, 'fn) fn := 'fn
+    with type ('x, 'fn) blocking_fn := ?timeoutf:float -> 'fn
 
 val take_all : 'a t -> 'a t
 (** [take_all l] removes all nodes of the doubly-linked list [l] and returns a
