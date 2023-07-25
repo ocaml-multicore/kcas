@@ -41,52 +41,6 @@ let run_domains = function
       main ();
       List.iter Domain.join others
 
-let test_non_linearizable () =
-  [ Mode.obstruction_free; Mode.lock_free ]
-  |> List.iter @@ fun mode ->
-     let barrier = Barrier.make 2
-     and n_iter = 100 * Util.iter_factor
-     and test_finished = ref false in
-
-     let a = Loc.make ~mode 0 and b = Loc.make ~mode 0 in
-
-     let cass1a = [ Op.make_cmp b 0; Op.make_cas a 0 1 ]
-     and cass1b = [ Op.make_cmp b 0; Op.make_cas a 1 0 ]
-     and cass2a = [ Op.make_cas b 0 1; Op.make_cmp a 0 ]
-     and cass2b = [ Op.make_cas b 1 0; Op.make_cmp a 0 ] in
-
-     let atomically cs =
-       if Random.bool () then
-         try Op.atomically ~mode:Mode.obstruction_free cs
-         with Mode.Interference -> false
-       else Op.atomically cs
-     in
-
-     let thread1 () =
-       Barrier.await barrier;
-       while not !test_finished do
-         if atomically cass1a then
-           while not (atomically cass1b) do
-             if is_single then Domain.cpu_relax ();
-             assert (Loc.get a == 1 && Loc.get b == 0)
-           done
-         else if is_single then Domain.cpu_relax ()
-       done
-     and thread2 () =
-       Barrier.await barrier;
-       for _ = 1 to n_iter do
-         if atomically cass2a then
-           while not (atomically cass2b) do
-             if is_single then Domain.cpu_relax ();
-             assert (Loc.get a == 0 && Loc.get b == 1)
-           done
-         else if is_single then Domain.cpu_relax ()
-       done;
-       test_finished := true
-     in
-
-     run_domains [ thread2; thread1 ]
-
 (* *)
 
 let test_non_linearizable_xt () =
@@ -145,67 +99,6 @@ let test_set () =
   assert_kcas a 0;
   Loc.set a 1;
   assert_kcas a 1
-
-(* *)
-
-let test_no_skew () =
-  [ Mode.obstruction_free; Mode.lock_free ]
-  |> List.iter @@ fun mode ->
-     let barrier = Barrier.make 3 in
-     let test_finished = Atomic.make false in
-
-     let a1 = Loc.make ~mode 0 in
-     let a2 = Loc.make ~mode 0 in
-
-     let thread1 () =
-       let c1 = [ Op.make_cas a1 0 1; Op.make_cas a2 0 1 ] in
-       let c2 = [ Op.make_cas a1 1 0; Op.make_cas a2 1 0 ] in
-
-       Barrier.await barrier;
-
-       for _ = 1 to nb_iter do
-         assert_kcas a1 0;
-         assert_kcas a2 0;
-
-         let out1 = Op.atomically c1 in
-         assert out1;
-
-         assert_kcas a1 1;
-         assert_kcas a2 1;
-
-         let out2 = Op.atomically c2 in
-         assert out2
-       done;
-       Atomic.set test_finished true
-     and thread2 () =
-       let c1 = [ Op.make_cas a1 1 0; Op.make_cas a2 0 1 ] in
-       let c2 = [ Op.make_cas a1 0 1; Op.make_cas a2 1 0 ] in
-
-       Barrier.await barrier;
-
-       while not (Atomic.get test_finished) do
-         let out1 = Op.atomically c1 in
-         let out2 = Op.atomically c2 in
-         assert (not out1);
-         assert (not out2);
-         if is_single then Domain.cpu_relax ()
-       done
-     and thread3 () =
-       let c1 = [ Op.make_cas a1 0 1; Op.make_cas a2 1 0 ] in
-       let c2 = [ Op.make_cas a1 1 0; Op.make_cas a2 0 1 ] in
-
-       Barrier.await barrier;
-
-       while not (Atomic.get test_finished) do
-         let out1 = Op.atomically c1 in
-         let out2 = Op.atomically c2 in
-         assert (not out1);
-         assert (not out2);
-         if is_single then Domain.cpu_relax ()
-       done
-     in
-
-     run_domains [ thread1; thread2; thread3 ]
 
 (* *)
 
@@ -274,60 +167,6 @@ let test_no_skew_xt () =
 
 (* *)
 
-let test_get_seq () =
-  [ Mode.obstruction_free; Mode.lock_free ]
-  |> List.iter @@ fun mode ->
-     let barrier = Barrier.make 4 in
-     let test_finished = Atomic.make false in
-
-     let a1 = Loc.make ~mode 0 in
-     let a2 = Loc.make ~mode 0 in
-
-     let mutator () =
-       Barrier.await barrier;
-       for i = 0 to nb_iter do
-         let c = [ Op.make_cas a1 i (i + 1); Op.make_cas a2 i (i + 1) ] in
-         assert (Op.atomically c)
-       done;
-       Atomic.set test_finished true
-     and getter () =
-       Barrier.await barrier;
-       while not (Atomic.get test_finished) do
-         let a = Loc.get a1 in
-         let b = Loc.get a2 in
-         assert (a <= b);
-         if is_single then Domain.cpu_relax ()
-       done
-     and getaser () =
-       Barrier.await barrier;
-       while not (Atomic.get test_finished) do
-         let a = Loc.get_as Fun.id a1 in
-         let b = Loc.get_as Fun.id a2 in
-         assert (a <= b);
-         if is_single then Domain.cpu_relax ()
-       done
-     and committer () =
-       Barrier.await barrier;
-       while not (Atomic.get test_finished) do
-         let a = Xt.commit { tx = Xt.get a1 } in
-         let b = Xt.commit { tx = Xt.get a2 } in
-         assert (a <= b);
-         if is_single then Domain.cpu_relax ()
-       done
-     and updater () =
-       Barrier.await barrier;
-       while not (Atomic.get test_finished) do
-         let a = Loc.update a1 Fun.id in
-         let b = Loc.update a2 Fun.id in
-         assert (a <= b);
-         if is_single then Domain.cpu_relax ()
-       done
-     in
-
-     run_domains [ mutator; getter; getaser; committer; updater ]
-
-(* *)
-
 let test_get_seq_xt () =
   [ Mode.obstruction_free; Mode.lock_free ]
   |> List.iter @@ fun mode ->
@@ -385,39 +224,6 @@ let test_get_seq_xt () =
 
 (* *)
 
-let test_stress n nb_loop =
-  [ Mode.obstruction_free; Mode.lock_free ]
-  |> List.iter @@ fun mode ->
-     let make_loc n =
-       let rec loop n out =
-         if n > 0 then loop (n - 1) (Loc.make ~mode 0 :: out) else out
-       in
-       loop n []
-     and make_kcas0 r_l =
-       let rec loop r_l out =
-         match r_l with
-         | h :: t -> loop t (Op.make_cas h 0 1 :: out)
-         | [] -> out
-       in
-       loop r_l []
-     and make_kcas1 r_l =
-       let rec loop r_l out =
-         match r_l with
-         | h :: t -> loop t (Op.make_cas h 1 0 :: out)
-         | [] -> out
-       in
-       loop r_l []
-     in
-     let r_l = make_loc n in
-     let kcas0 = make_kcas0 r_l in
-     let kcas1 = make_kcas1 r_l in
-     for _ = 1 to nb_loop do
-       assert (Op.atomically kcas0);
-       assert (Op.atomically kcas1)
-     done
-
-(* *)
-
 let test_stress_xt n nb_loop =
   [ Mode.obstruction_free; Mode.lock_free ]
   |> List.iter @@ fun mode ->
@@ -461,35 +267,6 @@ let in_place_shuffle array =
     array.(i) <- array.(j);
     array.(j) <- t
   done
-
-let test_presort () =
-  let n_incs = 10 * Util.iter_factor and n_domains = 3 and n_locs = 5 in
-
-  let barrier = Barrier.make n_domains in
-
-  let locs = Array.init n_locs (fun _ -> Loc.make 0) in
-
-  let mk_inc locs =
-    in_place_shuffle locs;
-    let x = Loc.get locs.(0) in
-    let y = x + 1 in
-    Array.fold_left (fun cs r -> Op.make_cas r x y :: cs) [] locs
-  in
-
-  let thread () =
-    let locs = Array.copy locs in
-    Random.self_init ();
-    Barrier.await barrier;
-    for _ = 1 to n_incs do
-      while not (Op.atomically (mk_inc locs)) do
-        Domain.cpu_relax ()
-      done
-    done
-  in
-
-  run_domains (List.init n_domains (Fun.const thread));
-
-  locs |> Array.iter (fun r -> assert (Loc.get r = n_incs * n_domains))
 
 (* *)
 
@@ -865,26 +642,16 @@ let test_xt () =
 let () =
   Alcotest.run "Kcas"
     [
-      ( "non linearizable",
-        [ Alcotest.test_case "" `Quick test_non_linearizable ] );
       ( "non linearizable xt",
         [ Alcotest.test_case "" `Quick test_non_linearizable_xt ] );
       ("set", [ Alcotest.test_case "" `Quick test_set ]);
-      ("no skew", [ Alcotest.test_case "" `Quick test_no_skew ]);
       ("no skew xt", [ Alcotest.test_case "" `Quick test_no_skew_xt ]);
-      ("get seq", [ Alcotest.test_case "" `Quick test_get_seq ]);
       ("get seq xt", [ Alcotest.test_case "" `Quick test_get_seq_xt ]);
-      ( "stress",
-        [
-          Alcotest.test_case "" `Quick (fun () ->
-              test_stress (10 * Util.iter_factor) 1_0);
-        ] );
       ( "stress xt",
         [
           Alcotest.test_case "" `Quick (fun () ->
               test_stress_xt (10 * Util.iter_factor) 1_0);
         ] );
-      ("presort", [ Alcotest.test_case "" `Quick test_presort ]);
       ( "is_in_log",
         [ Alcotest.test_case "" `Quick test_presort_and_is_in_log_xt ] );
       ("updates", [ Alcotest.test_case "" `Quick test_updates ]);
