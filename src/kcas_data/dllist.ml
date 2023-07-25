@@ -6,7 +6,7 @@ type 'a node = { node_prev : 'a t Loc.t; node_next : 'a t Loc.t; value : 'a }
 external as_list : 'a node -> 'a t = "%identity"
 external as_node : 'a t -> 'a node = "%identity"
 
-let get { value; _ } = value [@@inline]
+let[@inline] get { value; _ } = value
 
 let create () =
   let prev = Loc.make (Obj.magic ()) and next = Loc.make (Obj.magic ()) in

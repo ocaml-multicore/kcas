@@ -16,8 +16,8 @@ let create () =
 
 let create_resolved v = to_promise (Loc.make (Magic_option.some v))
 
-let already_resolved () = invalid_arg "Can't resolve already-resolved promise"
-[@@inline never]
+let[@inline never] already_resolved () =
+  invalid_arg "Can't resolve already-resolved promise"
 
 module Xt = struct
   let resolve ~xt u v =

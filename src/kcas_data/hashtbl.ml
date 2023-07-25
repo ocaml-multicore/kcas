@@ -308,10 +308,9 @@ module Xt = struct
             r
       end
 
-  let make_rehash old_capacity new_capacity =
+  let[@inline] make_rehash old_capacity new_capacity =
     let state = Loc.make old_capacity and new_buckets = Loc.make [||] in
     Rehash { state; new_capacity; new_buckets }
-  [@@inline]
 
   let reset ~xt t =
     let r = perform_pending ~xt t in

@@ -163,7 +163,7 @@ let fold f a q = Seq.fold_left f a @@ to_seq q
 
 exception Empty
 
-let of_option = function None -> raise Empty | Some value -> value [@@inline]
+let[@inline] of_option = function None -> raise Empty | Some value -> value
 let peek s = peek_opt s |> of_option
 let top = peek
 let take s = take_opt s |> of_option

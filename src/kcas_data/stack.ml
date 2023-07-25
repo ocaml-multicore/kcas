@@ -47,6 +47,6 @@ let fold f a s = Elems.fold f a @@ Loc.get s
 
 exception Empty
 
-let of_option = function None -> raise Empty | Some value -> value [@@inline]
+let[@inline] of_option = function None -> raise Empty | Some value -> value
 let top s = top_opt s |> of_option
 let pop s = pop_opt s |> of_option
