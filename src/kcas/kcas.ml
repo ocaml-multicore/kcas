@@ -152,22 +152,31 @@ and status =
 
 (* NOTE: You can adjust comment blocks below to select whether or not to use an
    unsafe cast to avoid a level of indirection due to [Atomic.t] and reduce the
-   size of a location by two words.  This has been seen to provide significant
-   performance improvements. *)
+   size of a location by two words (or more when padded).  This has been seen
+   to provide significant performance improvements. *)
 
 (**)
 and 'a loc = { mutable _state : 'a state; id : int }
 
 external as_atomic : 'a loc -> 'a state Atomic.t = "%identity"
 
-let[@inline] make_loc state id = { _state = state; id }
+let[@inline] make_loc padded state id =
+  let record = { _state = state; id } in
+  if padded then Multicore_magic.copy_as_padded record else record
 (**)
 
 (*
 and 'a loc = { state : 'a state Atomic.t; id : int }
 
 let[@inline] as_atomic loc = loc.state
-let[@inline] make_loc state id = { state = Atomic.make state; id }
+
+let[@inline] make_loc padded state id =
+  let atomic = Atomic.make state in
+  let state =
+    if padded then Multicore_magic.copy_as_padded atomic else atomic
+  in
+  let record = { state; id } in
+  if padded then Multicore_magic.copy_as_padded record else record
 *)
 
 let[@inline] is_cmp casn state = state.casn != casn
@@ -522,21 +531,23 @@ let dec x = x - 1
 module Loc = struct
   type 'a t = 'a loc
 
-  let make ?(mode = Mode.obstruction_free) after =
+  let make ?(padded = false) ?(mode = Mode.obstruction_free) after =
     let state = new_state after
     and id =
       if mode == Mode.obstruction_free then Id.nat_id () else Id.neg_id ()
     in
-    make_loc state id
+    make_loc padded state id
 
-  let make_array ?(mode = Mode.obstruction_free) n after =
+  let make_contended ?mode after = make ~padded:true ?mode after
+
+  let make_array ?(padded = false) ?(mode = Mode.obstruction_free) n after =
     assert (0 <= n);
     let state = new_state after
     and id =
       (if mode == Mode.obstruction_free then Id.nat_ids n else Id.neg_ids n)
       - (n - 1)
     in
-    Array.init n @@ fun i -> make_loc state (id + i)
+    Array.init n @@ fun i -> make_loc padded state (id + i)
 
   let[@inline] get_id loc = loc.id
   let get loc = eval (Atomic.get (as_atomic loc))

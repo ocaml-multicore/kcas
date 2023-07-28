@@ -2,9 +2,9 @@ open Kcas
 
 type 'a t = 'a Elems.t Loc.t
 
-let create () = Loc.make Elems.empty
-let copy s = Loc.make @@ Loc.get s
-let of_seq xs = Loc.make (Elems.of_seq_rev xs)
+let create () = Loc.make ~padded:true Elems.empty
+let copy s = Loc.make ~padded:true @@ Loc.get s
+let of_seq xs = Loc.make ~padded:true (Elems.of_seq_rev xs)
 
 module Xt = struct
   let length ~xt s = Xt.get ~xt s |> Elems.length

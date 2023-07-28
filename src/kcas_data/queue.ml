@@ -9,10 +9,10 @@ type 'a t = {
 let alloc ~front ~middle ~back =
   (* We allocate locations in specific order to make most efficient use of the
      splay-tree based transaction log. *)
-  let front = Loc.make front
-  and middle = Loc.make middle
-  and back = Loc.make back in
-  { back; middle; front }
+  let front = Loc.make ~padded:true front
+  and middle = Loc.make ~padded:true middle
+  and back = Loc.make ~padded:true back in
+  Multicore_magic.copy_as_padded { back; middle; front }
 
 let create () = alloc ~front:Elems.empty ~middle:Elems.empty ~back:Elems.empty
 

@@ -1,7 +1,7 @@
 (library
  (name kcas)
  (public_name kcas)
- (libraries domain-local-await domain-local-timeout))
+ (libraries domain-local-await domain-local-timeout multicore-magic))
 
 (rule
  (targets domain.ml)

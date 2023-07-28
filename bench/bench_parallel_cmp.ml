@@ -2,10 +2,9 @@ open Kcas
 open Bench
 
 let run_one ?(factor = 1) ?(n_iter = 10 * factor * Util.iter_factor) () =
-  let a = Loc.make 10 |> Multicore_magic.copy_as_padded
-  and b = Loc.make 52 |> Multicore_magic.copy_as_padded in
+  let a = Loc.make ~padded:true 10 and b = Loc.make ~padded:true 52 in
 
-  let init _ = Loc.make 0 |> Multicore_magic.copy_as_padded in
+  let init _ = Loc.make ~padded:true 0 in
   let work i x =
     if i land 1 = 0 then begin
       let tx1 ~xt =

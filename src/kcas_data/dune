@@ -1,7 +1,7 @@
 (library
  (name kcas_data)
  (public_name kcas_data)
- (libraries kcas))
+ (libraries kcas multicore-magic))
 
 (rule
  (targets domain.ml)
