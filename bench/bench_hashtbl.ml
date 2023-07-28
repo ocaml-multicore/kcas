@@ -9,10 +9,7 @@ end
 
 let run_one ~n_domains ?(factor = 1) ?(n_ops = 50 * factor * Util.iter_factor)
     ?(n_keys = 1000) ~percent_read () =
-  let t =
-    Hashtbl.create ~hashed_type:(module Int) ()
-    |> Multicore_magic.copy_as_padded
-  in
+  let t = Hashtbl.create ~hashed_type:(module Int) () in
 
   for i = 0 to n_keys - 1 do
     Hashtbl.replace t i i

@@ -79,9 +79,16 @@ module Loc : sig
   type !'a t
   (** Type of shared memory locations. *)
 
-  val make : ?mode:Mode.t -> 'a -> 'a t
+  val make : ?padded:bool -> ?mode:Mode.t -> 'a -> 'a t
   (** [make initial] creates a new shared memory location with the [initial]
       value.
+
+      The optional [padded] argument defaults to [false].  If explicitly
+      specified as [~padded:true] the location will be allocated in a way to
+      avoid false sharing.  For relatively long lived shared memory locations
+      this can improve performance and make performance more stable at the cost
+      of using more memory.  It is not recommended to use [~padded:true] for
+      short lived shared memory locations.
 
       The optional [mode] argument defaults to {!Mode.obstruction_free}.  If
       explicitly specified as {!Mode.lock_free}, the location will always be
@@ -89,7 +96,10 @@ module Loc : sig
       in rare cases where a location is updated frequently and obstruction-free
       read-only accesses would almost certainly suffer from interference. *)
 
-  val make_array : ?mode:Mode.t -> int -> 'a -> 'a t array
+  val make_contended : ?mode:Mode.t -> 'a -> 'a t
+  (** [make_contended initial] is equivalent to [make ~padded:true initial]. *)
+
+  val make_array : ?padded:bool -> ?mode:Mode.t -> int -> 'a -> 'a t array
   (** [make_array n initial] creates an array of [n] new shared memory locations
       with the [initial] value. *)
 

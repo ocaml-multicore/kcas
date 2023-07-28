@@ -133,7 +133,7 @@ let create ?hashed_type ?min_buckets ?max_buckets ?n_way () =
     | None -> min_buckets_default
     | Some c -> Int.max lo_buckets c |> Int.min hi_buckets |> Bits.ceil_pow_2
   in
-  let t = Loc.make (Obj.magic ()) in
+  let t = Loc.make ~padded:true (Obj.magic ()) in
   let max_buckets =
     match max_buckets with
     | None -> Int.max min_buckets max_buckets_default
@@ -145,7 +145,9 @@ let create ?hashed_type ?min_buckets ?max_buckets ?n_way () =
   and pending = Nothing
   and buckets = Loc.make_array min_buckets Assoc.Nil
   and length = Accumulator.make ?n_way 0 in
-  Loc.set t { pending; length; buckets; hash; equal; min_buckets; max_buckets };
+  Loc.set t
+    (Multicore_magic.copy_as_padded
+       { pending; length; buckets; hash; equal; min_buckets; max_buckets });
   t
 
 let n_way_of t = Accumulator.n_way_of (Loc.get t).length
@@ -201,7 +203,10 @@ module Xt = struct
           get_or_alloc new_buckets Loc.make_array new_capacity
         in
         let old_buckets = r.buckets in
-        let r = { r with pending = Nothing; buckets = new_buckets } in
+        let r =
+          Multicore_magic.copy_as_padded
+            { r with pending = Nothing; buckets = new_buckets }
+        in
         Xt.set ~xt t r;
         let hash = r.hash and mask = new_capacity - 1 in
         let rehash_a_few_buckets ~xt =
@@ -246,7 +251,7 @@ module Xt = struct
     | Snapshot { state; snapshot } -> begin
         assert (not must_be_done_in_this_tx);
         let buckets = r.buckets in
-        let r = { r with pending = Nothing } in
+        let r = Multicore_magic.copy_as_padded { r with pending = Nothing } in
         Xt.set ~xt t r;
         (* Check state to ensure that buckets have not been updated. *)
         if Loc.fenceless_get state < 0 then Retry.invalid ();
@@ -298,12 +303,17 @@ module Xt = struct
         with
         | Done ->
             Accumulator.Xt.add ~xt r.length !total_delta;
-            let r = { r with pending = Nothing; buckets = new_buckets } in
+            let r =
+              Multicore_magic.copy_as_padded
+                { r with pending = Nothing; buckets = new_buckets }
+            in
             Xt.set ~xt t r;
             r
         | exn ->
             Loc.compare_and_set raised Done exn |> ignore;
-            let r = { r with pending = Nothing } in
+            let r =
+              Multicore_magic.copy_as_padded { r with pending = Nothing }
+            in
             Xt.set ~xt t r;
             r
       end
@@ -458,11 +468,13 @@ let rebuild ?hashed_type ?min_buckets ?max_buckets ?n_way t =
     | Some hashed_type -> HashedType.is_same_as r.hash r.equal hashed_type
   and length = !length in
   if is_same_hashed_type && min_buckets <= length && length <= max_buckets then begin
-    let t = Loc.make (Obj.magic ()) in
+    let t = Loc.make ~padded:true (Obj.magic ()) in
     let pending = Nothing
     and buckets = Array.map Loc.make snapshot
     and length = Accumulator.make ~n_way length in
-    Loc.set t { r with pending; length; buckets; min_buckets; max_buckets };
+    Loc.set t
+    @@ Multicore_magic.copy_as_padded
+         { r with pending; length; buckets; min_buckets; max_buckets };
     t
   end
   else

@@ -2,7 +2,7 @@ open Kcas
 
 type 'a t = 'a Magic_option.t Loc.t
 
-let create x_opt = Loc.make (Magic_option.of_option x_opt)
+let create x_opt = Loc.make ~padded:true (Magic_option.of_option x_opt)
 
 module Xt = struct
   let is_empty ~xt mv = Magic_option.is_none (Xt.get ~xt mv)

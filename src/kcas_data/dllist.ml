@@ -9,8 +9,9 @@ external as_node : 'a t -> 'a node = "%identity"
 let[@inline] get { value; _ } = value
 
 let create () =
-  let prev = Loc.make (Obj.magic ()) and next = Loc.make (Obj.magic ()) in
-  let list = { prev; next } in
+  let prev = Loc.make ~padded:true (Obj.magic ())
+  and next = Loc.make ~padded:true (Obj.magic ()) in
+  let list = Multicore_magic.copy_as_padded { prev; next } in
   Loc.set prev list;
   Loc.set next list;
   list
@@ -194,7 +195,10 @@ let take_l list = match take_opt_l list with None -> raise Empty | Some v -> v
 let take_r list = match take_opt_r list with None -> raise Empty | Some v -> v
 
 let take_all list =
-  let copy = { prev = Loc.make list; next = Loc.make list } in
+  let copy =
+    Multicore_magic.copy_as_padded
+      { prev = Loc.make ~padded:true list; next = Loc.make ~padded:true list }
+  in
   let open Kcas in
   let tx ~xt =
     let prev = Xt.exchange ~xt list.prev list in
