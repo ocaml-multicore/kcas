@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 
 Next version:
 
+- Move `Backoff` module to its own `backoff` package (@lyrm, @polytypic)
 - Support padding to avoid false sharing (@polytypic)
 - Pass through `?timeoutf` to blocking operations on data structures
   (@polytypic)
