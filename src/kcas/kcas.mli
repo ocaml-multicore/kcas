@@ -101,8 +101,6 @@
     can skip over these.  The documentation links back to these modules where
     appropriate. *)
 
-module Backoff : module type of Backoff
-
 (** Timeout support. *)
 module Timeout : sig
   exception Timeout

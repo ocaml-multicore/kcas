@@ -348,18 +348,6 @@ let test_post_commit () =
 
 (* *)
 
-let test_backoff () =
-  let b = Backoff.create ~lower_wait_log:5 ~upper_wait_log:6 () in
-  assert (Backoff.get_wait_log b = 5);
-  let b = Backoff.once b in
-  assert (Backoff.get_wait_log b = 6);
-  let b = Backoff.once b in
-  assert (Backoff.get_wait_log b = 6);
-  let b = Backoff.reset b in
-  assert (Backoff.get_wait_log b = 5)
-
-(* *)
-
 let test_blocking () =
   let state = Loc.make `Spawned in
   let await state' =
@@ -674,7 +662,6 @@ let () =
         [ Alcotest.test_case "" `Quick test_presort_and_is_in_log_xt ] );
       ("updates", [ Alcotest.test_case "" `Quick test_updates ]);
       ("post commit", [ Alcotest.test_case "" `Quick test_post_commit ]);
-      ("backoff", [ Alcotest.test_case "" `Quick test_backoff ]);
       ("blocking", [ Alcotest.test_case "" `Quick test_blocking ]);
       ( "no unnecessary wakeups",
         [ Alcotest.test_case "" `Quick test_no_unnecessary_wakeups ] );

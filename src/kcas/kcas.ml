@@ -17,8 +17,6 @@ let fenceless_get = Atomic.get
 let fenceless_set = Atomic.set
 *)
 
-module Backoff = Backoff
-
 module Timeout = struct
   exception Timeout
 
