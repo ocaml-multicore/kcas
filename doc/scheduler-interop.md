@@ -96,7 +96,7 @@ run fibers on the scheduler. Because the scheduler provides the domain local
 await mechanism libraries like **kcas** can use it to block in a scheduler
 independent and friendly manner.
 
-Let's then demonstate the integration. To start we spawn a scheduler:
+Let's then demonstrate the integration. To start we spawn a scheduler:
 
 ```ocaml
 # let scheduler = Scheduler.spawn ()
