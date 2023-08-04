@@ -4,7 +4,10 @@ synopsis:
   "Software transactional memory based on lock-free multi-word compare-and-set"
 description:
   "A software transactional memory (STM) implementation based on an atomic lock-free multi-word compare-and-set (MCAS) algorithm enhanced with read-only compare operations and ability to block awaiting for changes."
-maintainer: ["KC Sivaramakrishnan <sk826@cl.cam.ac.uk>"]
+maintainer: [
+  "Vesa Karvonen <vesa.a.j.k@gmail.com>"
+  "KC Sivaramakrishnan <sk826@cl.cam.ac.uk>"
+]
 authors: ["KC Sivaramakrishnan <sk826@cl.cam.ac.uk>"]
 license: "ISC"
 homepage: "https://github.com/ocaml-multicore/kcas"

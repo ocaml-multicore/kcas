@@ -3,7 +3,7 @@
 (generate_opam_files true)
 (source (github ocaml-multicore/kcas))
 (authors "KC Sivaramakrishnan <sk826@cl.cam.ac.uk>")
-(maintainers "KC Sivaramakrishnan <sk826@cl.cam.ac.uk>")
+(maintainers "Vesa Karvonen <vesa.a.j.k@gmail.com>" "KC Sivaramakrishnan <sk826@cl.cam.ac.uk>")
 (homepage "https://github.com/ocaml-multicore/kcas")
 (license ISC)
 (package (name kcas)
