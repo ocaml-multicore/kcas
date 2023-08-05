@@ -16,8 +16,8 @@ module type Ops = sig
   (** [swap s1 s2] exchanges the contents of the stacks [s1] and [s2]. *)
 
   val to_seq : ('x, 'a t -> 'a Seq.t) fn
-  (** [to_seq s] returns a domain safe sequence for iterating through the
-      elements of the stack top to bottom.
+  (** [to_seq s] returns a concurrency and parallelism safe sequence for
+      iterating through the elements of the stack top to bottom.
 
       The sequence is based on a constant time, [O(1)], snapshot of the stack
       and modifications of the stack have no effect on the sequence. *)
@@ -30,8 +30,9 @@ module type Ops = sig
       [None] if the stack is empty. *)
 
   val pop_all : ('x, 'a t -> 'a Seq.t) fn
-  (** [pop_all s] removes and returns a domain safe sequence for iterating
-      through all the elements that were in the stack top to bottom. *)
+  (** [pop_all s] removes and returns a concurrency and parallelism safe
+      sequence for iterating through all the elements that were in the stack top
+      to bottom. *)
 
   val pop_blocking : ('x, 'a t -> 'a) blocking_fn
   (** [pop_blocking s] removes and returns the topmost element of the stack [s],

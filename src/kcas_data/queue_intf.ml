@@ -16,8 +16,8 @@ module type Ops = sig
   (** [swap q1 q2] exchanges the contents of the queues [q1] and [q2]. *)
 
   val to_seq : ('x, 'a t -> 'a Seq.t) fn
-  (** [to_seq s] returns a domain safe sequence for iterating through the
-      elements of the queue front to back.
+  (** [to_seq s] returns a concurrency and parallelism safe sequence for
+      iterating through the elements of the queue front to back.
 
       The sequence is based on a constant time, [O(1)], snapshot of the queue
       and modifications of the queue have no effect on the sequence. *)
@@ -45,6 +45,7 @@ module type Ops = sig
       returns [None] if the queue is empty. *)
 
   val take_all : ('x, 'a t -> 'a Seq.t) fn
-  (** [take_all q] removes and returns a domain safe sequence for iterating
-      through all the elements that were in the queue front to back. *)
+  (** [take_all q] removes and returns a concurrency and parallelism safe
+      sequence for iterating through all the elements that were in the queue
+      front to back. *)
 end
