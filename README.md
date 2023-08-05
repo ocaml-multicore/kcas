@@ -72,7 +72,6 @@ is distributed under the [ISC license](LICENSE.md).
     - [A three-stack lock-free queue](#a-three-stack-lock-free-queue)
     - [A rehashable lock-free hash table](#a-rehashable-lock-free-hash-table)
   - [Beware of torn reads](#beware-of-torn-reads)
-- [Development](#development)
 
 ## A quick tour
 
@@ -2084,19 +2083,3 @@ outside of the transaction:
 Notice that above we only validated the access of `a`, because we know that `a`
 and `b` are always updated atomically and we read `b` after reading `a`. In this
 case that is enough to ensure that read skew is not possible.
-
-## Development
-
-### Formatting
-
-This project uses [ocamlformat](https://github.com/ocaml-ppx/ocamlformat) (for
-OCaml) and [prettier](https://prettier.io/) (for Markdown).
-
-### To make a new release
-
-1. Update [CHANGES.md](CHANGES.md).
-2. Run `dune-release tag VERSION` to create a tag for the new `VERSION`.
-3. Run `dune-release publish distrib` to create release on GitHub.
-4. Run `opam publish --tag=VERSION` to create PR to
-   [opam-repository](https://github.com/ocaml/opam-repository).
-5. Run `./update-gh-pages-for-tag VERSION` to update the online documentation.
