@@ -31,7 +31,7 @@ let rev_prepend_to_seq t tl =
       let t =
         match !t with
         | Left t' ->
-            (* This is domain safe as the result is always equivalent. *)
+            (* This is parallelism safe as the result is always equivalent. *)
             let t' = rev t' in
             t := Right t';
             t'

@@ -21,10 +21,11 @@ communication and synchronization implemented using **kcas**.
 Features and properties:
 
 - **_Efficient_**: In the common uncontended case only **k + 1** single-word
-  CASes are required per k-CAS.
+  CASes are required per k-CAS and, as a special case, 1-CAS requires only a
+  single single-word CAS.
 
-- **_Lock-free_**: The underlying algorithm guarantees that at least one domain
-  will be able to make progress.
+- **_Lock-free_**: The underlying algorithm guarantees that at least one
+  operation will be able to make progress.
 
 - **_Disjoint-access parallel_**: Unrelated operations progress independently,
   without interference, even if they occur at the same time.
@@ -34,11 +35,16 @@ Features and properties:
   read-only compare (CMP) operations that can be performed on overlapping
   locations in parallel without interference.
 
-- **_Blocking await_**: The algorithm supports awaiting for changes to any
-  number of shared memory locations.
+- **_Blocking await_**: The algorithm supports timeouts and awaiting for changes
+  to any number of shared memory locations.
 
 - **_Composable_**: Independently developed transactions can be composed with
-  ease.
+  ease sequentially, conjunctively, conditionally, and disjunctively.
+
+In other words, performance should be acceptable and scalable for many use
+cases, the non-blocking properties should allow use in many contexts including
+those where locks are not acceptable, and the features provided should support
+most practical needs.
 
 **kcas** is [published on **opam**](https://opam.ocaml.org/packages/kcas/) and
 is distributed under the [ISC license](LICENSE.md).

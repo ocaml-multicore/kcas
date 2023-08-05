@@ -1,4 +1,105 @@
-(** {1 Auxiliary modules} *)
+(** This library provides a software transactional memory (STM) implementation
+    based on an atomic lock-free multi-word compare-and-set (MCAS) algorithm
+    enhanced with read-only compare operations and ability to block awaiting for
+    changes.
+
+    Features and properties:
+
+    - {b Efficient}: In the common uncontended case only [k + 1] single-word
+      CASes are required per [k]-CAS and, as a special case, [1]-CAS requires
+      only a single single-word CAS.
+
+    - {b Lock-free}: The underlying algorithm guarantees that at least one
+      operation will be able to make progress.
+
+    - {b Disjoint-access parallel}: Unrelated operations progress independently,
+      without interference, even if they occur at the same time.
+
+    - {b Read-only compares}: The algorithm supports
+      {{:https://en.wikipedia.org/wiki/Non-blocking_algorithm#Obstruction-freedom}
+      obstruction-free} read-only compare (CMP) operations that can be performed
+      on overlapping locations in parallel without interference.
+
+    - {b Blocking await}: The algorithm supports timeouts and awaiting for
+      changes to any number of shared memory locations.
+
+    - {b Composable}: Independently developed transactions can be composed with
+      ease sequentially, conjunctively, conditionally, and disjunctively.
+
+    In other words, performance should be acceptable and scalable for many use
+    cases, the non-blocking properties should allow use in many contexts
+    including those where locks are not acceptable, and the features provided
+    should support most practical needs.
+
+    {1 A quick tour}
+
+    To use the library one first creates shared memory locations:
+
+    {[
+      # let a = Loc.make 0
+        and b = Loc.make 0
+        and x = Loc.make 0
+      val a : int Loc.t = <abstr>
+      val b : int Loc.t = <abstr>
+      val x : int Loc.t = <abstr>
+    ]}
+
+    One can then manipulate the locations individually:
+
+    {[
+      # Loc.set a 6
+      - : unit = ()
+
+      # Loc.get a
+      - : int = 6
+    ]}
+
+    Attempt primitive operations over multiple locations:
+
+    {[
+      # Op.atomically [
+          Op.make_cas a 6 10;
+          Op.make_cas b 0 52
+        ]
+      - : bool = true
+    ]}
+
+    Block waiting for changes to locations:
+
+    {[
+      # let a_domain = Domain.spawn @@ fun () ->
+          let x = Loc.get_as (fun x -> Retry.unless (x <> 0); x) x in
+          Printf.sprintf "The answer is %d!" x
+      val a_domain : string Domain.t = <abstr>
+    ]}
+
+    Perform transactions over locations:
+
+    {[
+      # let tx ~xt =
+          let a = Xt.get ~xt a
+          and b = Xt.get ~xt b in
+          Xt.set ~xt x (b - a)
+        in
+        Xt.commit { tx }
+      - : unit = ()
+    ]}
+
+    And now we have it:
+
+    {[
+      # Domain.join a_domain
+      - : string = "The answer is 42!"
+    ]}
+
+    The main repository includes a longer introduction with many examples and
+    discussion of more advanced topics for designing lock-free algorithms. *)
+
+(** {1 Auxiliary modules}
+
+    The modules in this section serve auxiliary purposes.  On a first read you
+    can skip over these.  The documentation links back to these modules where
+    appropriate. *)
 
 module Backoff : module type of Backoff
 
@@ -62,9 +163,10 @@ end
 
 (** {1 Individual locations}
 
-    Individual shared memory locations can be manipulated through the {!Loc}
-    module that is essentially compatible with the [Stdlib.Atomic] module except
-    that some of the operations take additional optional arguments:
+    Individual shared memory locations can be created and manipulated through
+    the {!Loc} module that is essentially compatible with the [Stdlib.Atomic]
+    module except that some of the operations take additional optional
+    arguments:
 
     - [backoff] specifies the configuration for the {!Backoff} mechanism.  In
       special cases, having more detailed knowledge of the application, one
@@ -180,53 +282,114 @@ end
 
     Multiple shared memory locations can be manipulated atomically using either
 
-    - {!Xt}, to explicitly pass a transaction log to record accesses, or
-    - {!Op}, to specify a list of primitive operations to perform.
+    - the {!Xt} module, to explicitly pass a transaction log to record accesses,
+      or
+
+    - the {!Op} module, to specify a list of primitive operations to perform.
 
     Atomic operations over multiple shared memory locations are performed in two
     or three phases:
 
     1. The first phase essentially records a list or log of operations to access
-    shared memory locations.
+    shared memory locations.  The first phase involves code you write as a user
+    of the library.  Aside from some advanced techniques, shared memory
+    locations are not mutated during this phase.
 
-    2. The second phase attempts to perform the operations atomically.
+    2. The second phase attempts to perform the operations atomically.  This is
+    done internally by the library implementation.  Only logically invisible
+    writes to shared memory locations are performed during this phase.
 
     3. In {!Mode.obstruction_free} a third phase verifies all read-only
-    operations.
+    operations.  This is also done internally by the library implementation.
 
     Each phase may fail.  In particular, in the first phase, as no changes to
     shared memory have yet been attempted, it is safe, for example, to raise
     exceptions to signal failure.  Failure on the third phase raises
-    {!Mode.Interference}, which is typically automatically handled by
-    {!Xt.commit}. *)
+    {!Mode.Interference}, which is automatically handled by {!Xt.commit}.
 
-(** {2 Composable transactions on multiple locations}
+    Only after all phases have completed succesfully, the writes to shared
+    memory locations are atomically marked as having taken effect and subsequent
+    reads of the locations will be able to see the newly written values. *)
 
-    The {!Xt} module provides a way to implement composable transactions over
-    shared memory locations.  A transaction can be thought of as a specification
-    of a sequence of {!Xt.get} and {!Xt.set} accesses to shared memory
-    locations.  To actually perform the accesses one then {!Xt.commit}s the
-    transaction.
+(** Explicit transaction log passing on shared memory locations.
 
-    {b WARNING}: Operations provided by the {!Loc} module for accessing
-    individual shared memory locations are not transactional.  There are cases
-    where it can be advantageous to perform operations along with a transaction
-    that do not get recorded into the transaction log, but doing so requires one
-    to reason about the potential parallel interleavings of operations.
+    This module provides a way to implement composable transactions over shared
+    memory locations.  A transaction is a function written by the library user
+    and can be thought of as a specification of a sequence of {!Xt.get} and
+    {!Xt.set} accesses to shared memory locations.  To actually perform the
+    accesses one then {!Xt.commit}s the transaction.
 
-    Transactions should also generally not perform arbitrary side-effects,
-    because when a transaction is committed it may be attempted multiple times
-    meaning that the side-effects are also performed multiple times. *)
+    Transactions should generally not perform arbitrary side-effects, because
+    when a transaction is committed it may be attempted multiple times meaning
+    that the side-effects are also performed multiple times.  {!Xt.post_commit}
+    can be used to perform an action only once after the transaction has been
+    committed succesfully.
 
-(** Explicit transaction log passing on shared memory locations. *)
+    {b WARNING}: To make it clear, the operations provided by the {!Loc} module
+    for accessing individual shared memory locations do not implicitly go
+    through the transaction mechanism and should generally not be used within
+    transactions.  There are advanced algorithms where one might, within a
+    transaction, perform operations that do not get recorded into the
+    transaction log.  Using such techniques correctly requires expert knowledge
+    and is not recommended for casual users.
+
+    As an example, consider an implementation of doubly-linked circular
+    lists. Instead of using a mutable field, [ref], or [Atomic.t], one would use
+    a shared memory location, or {!Loc.t}, for the pointers in the node type:
+
+    {[
+      type 'a node = {
+        succ: 'a node Loc.t;
+        pred: 'a node Loc.t;
+        datum: 'a;
+      }
+    ]}
+
+    To remove a node safely one wants to atomically update the [succ] and [pred]
+    pointers of the predecessor and successor nodes and to also update the
+    [succ] and [pred] pointers of a node to point to the node itself, so that
+    removal becomes an {{:https://en.wikipedia.org/wiki/Idempotence} idempotent}
+    operation.  Using explicit transaction log passing one could implement the
+    [remove] operation as follows:
+
+    {[
+      let remove ~xt node =
+        (* Read pointers to the predecessor and successor nodes: *)
+        let pred = Xt.get ~xt node.pred in
+        let succ = Xt.get ~xt node.succ in
+        (* Update pointers in this node: *)
+        Xt.set ~xt node.succ node;
+        Xt.set ~xt node.pred node;
+        (* Update pointers to this node: *)
+        Xt.set ~xt pred.succ succ;
+        Xt.set ~xt succ.pred pred
+    ]}
+
+    The labeled argument, [~xt], refers to the transaction log. Transactional
+    operations like {!Xt.get} and {!Xt.set} are then recorded in that log. To
+    actually remove a node, we need to commit the transaction
+
+    {[
+      Xt.commit { tx = remove node }
+    ]}
+
+    which repeatedly calls the transaction function, [tx], to record a
+    transaction log and attempts to atomically perform it until it succeeds.
+
+    Notice that [remove] is not recursive. It doesn't have to account for
+    failure or perform a backoff. It is also not necessary to know or keep track
+    of what the previous values of locations were. All of that is taken care of
+    for us by the transaction log and the {!Xt.commit} function.  Furthermore,
+    [remove] can easily be called as a part of a more complex transaction. *)
 module Xt : sig
   type 'x t
   (** Type of an explicit transaction log on shared memory locations.
 
-      Note that a transaction log itself is not domain-safe and should generally
-      only be used by a single domain.  If a new domain is spawned inside a
-      function recording shared memory accesses to a log and the new domain also
-      records accesses to the log it may become inconsistent. *)
+      Note that a transaction log itself is not safe against concurrent or
+      parallel use and should generally only be used by a single thread of
+      execution.  If a new thread of execution is spawned inside a function
+      recording shared memory accesses to a log and the new thread of execution
+      also records accesses to the log it may become inconsistent. *)
 
   (** {1 Recording accesses}
 
@@ -240,8 +403,8 @@ module Xt : sig
       from two (or more) different committed updates.  This means that
       invariants that hold between two (or more) different shared memory
       locations may be seen as broken inside the transaction function.  However,
-      it is not possible to commit a transaction after it has seen such an
-      inconsistent view of the shared memory locations.
+      it is not possible for the transaction attempt to succeed after it has
+      seen such an inconsistent view of the shared memory locations.
 
       To mitigate potential issues due to this read skew anomaly and due to very
       long running transactions, all of the access recording operations in this
@@ -343,7 +506,7 @@ module Xt : sig
 
   val post_commit : xt:'x t -> (unit -> unit) -> unit
   (** [post_commit ~xt action] adds the [action] to be performed after the
-      transaction has been performed successfully. *)
+      transaction has been committed successfully. *)
 
   (** {1 Validation} *)
 
@@ -397,25 +560,72 @@ module Xt : sig
       assert against misuse. *)
 end
 
-(** {2 Multi-word compare-and-set operations}
+(** Multi-word compare-and-set operations on shared memory locations.
 
-    The {!Op} module provides a multi-word compare-and-set (MCAS) interface for
+    This module provides a multi-word compare-and-set (MCAS) interface for
     manipulating multiple locations atomically.  This is a low-level interface
-    not intended for most users. *)
+    not intended for most users.
 
-(** Multi-word compare-and-set operations on shared memory locations. *)
+    As an example, consider an implementation of doubly-linked circular
+    lists. Instead of using a mutable field, [ref], or [Atomic.t], one would use
+    a shared memory location, or {!Loc.t}, for the pointers in the node type:
+
+    {[
+      type 'a node = {
+        succ: 'a node Loc.t;
+        pred: 'a node Loc.t;
+        datum: 'a;
+      }
+    ]}
+
+    To remove a node safely one wants to atomically update the [succ] and [pred]
+    pointers of the predecessor and successor nodes and to also update the
+    [succ] and [pred] pointers of a node to point to the node itself, so that
+    removal becomes an {{:https://en.wikipedia.org/wiki/Idempotence} idempotent}
+    operation.  Using a multi-word compare-and-set one could implement the
+    [remove] operation as follows:
+
+    {[
+      let rec remove ?(backoff = Backoff.default) node =
+        (* Read pointer to the predecessor node and... *)
+        let pred = Loc.get node.pred in
+        (* ..check whether the node has already been removed. *)
+        if pred != node then
+          let succ = Loc.get node.succ in
+          let ok = Op.atomically [
+            (* Update pointers in this node: *)
+            Op.make_cas node.succ succ node;
+            Op.make_cas node.pred pred node;
+            (* Update pointers to this node: *)
+            Op.make_cas pred.succ node succ;
+            Op.make_cas succ.pred node pred;
+          ] in
+          if not ok then
+            (* Someone modified the list around us, so backoff and retry. *)
+            remove ~backoff:(Backoff.once backoff) node
+    ]}
+
+    The list given to {!Op.atomically} contains specifications of the individual
+    compare-and-set operations to perform. A single {!Op.make_cas} specifies an
+    operation to compare the current value of a location with the expected value
+    and, in case they are the same, set the value of the location to the desired
+    value.
+
+    Programming with like this is similar to programming with single-word
+    compare-and-set except that the operation is extended to being able to work
+    on multiple words. *)
 module Op : sig
   type t
   (** Type of operations on shared memory locations. *)
 
   val make_cas : 'a Loc.t -> 'a -> 'a -> t
-  (** [make_cas r before after] is an operation that attempts to set the shared
-      memory location [r] to the [after] value and succeeds if the current
-      content of [r] is the [before] value. *)
+  (** [make_cas r before after] specifies an operation that attempts to set the
+      shared memory location [r] to the [after] value and succeeds if the
+      current content of [r] is the [before] value. *)
 
   val make_cmp : 'a Loc.t -> 'a -> t
-  (** [make_cmp r expected] is an operation that succeeds if the current value
-      of the shared memory location [r] is the [expected] value. *)
+  (** [make_cmp r expected] specifies an operation that succeeds if the current
+      value of the shared memory location [r] is the [expected] value. *)
 
   val get_id : t -> int
   (** [get_id op] returns the unique id of the shared memory reference targeted
@@ -426,12 +636,12 @@ module Op : sig
       memory location [r]. *)
 
   val atomic : t -> bool
-  (** [atomic op] attempts to perform the given operation atomically.  Returns
-      [true] on success and [false] on failure. *)
+  (** [atomic op] attempts to perform the specified operation atomically.
+      Returns [true] on success and [false] on failure. *)
 
   val atomically : ?mode:Mode.t -> t list -> bool
-  (** [atomically ops] attempts to perform the given operations atomically.  If
-      used in {!Mode.obstruction_free} may raise {!Mode.Interference}.
+  (** [atomically ops] attempts to perform the specified operations atomically.
+      If used in {!Mode.obstruction_free} may raise {!Mode.Interference}.
       Otherwise returns [true] on success and [false] on failure.  The default
       for [atomically] is {!Mode.lock_free}.
 
