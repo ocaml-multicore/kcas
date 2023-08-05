@@ -23,11 +23,14 @@ jobs:
             default: https://github.com/fdopen/opam-repository-mingw.git#opam2
             standard: https://github.com/ocaml/opam-repository.git
 
-      - name: Install dependencies
-        run: opam install . --deps-only --with-test
+      - name: Install build dependencies
+        run: opam install . --deps-only
 
       - name: Build
         run: opam exec -- dune build
+
+      - name: Install test dependencies
+        run: opam install . --deps-only --with-test
 
       - name: Test
         run: opam exec -- dune runtest
