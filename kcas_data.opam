@@ -6,9 +6,9 @@ description:
   "A library of compositional lock-free data structures and primitives for communication and synchronization implemented using kcas."
 maintainer: [
   "Vesa Karvonen <vesa.a.j.k@gmail.com>"
-  "KC Sivaramakrishnan <sk826@cl.cam.ac.uk>"
+  "KC Sivaramakrishnan <kc@tarides.com>"
 ]
-authors: ["KC Sivaramakrishnan <sk826@cl.cam.ac.uk>"]
+authors: ["KC Sivaramakrishnan <kc@tarides.com>"]
 license: "ISC"
 homepage: "https://github.com/ocaml-multicore/kcas"
 bug-reports: "https://github.com/ocaml-multicore/kcas/issues"
