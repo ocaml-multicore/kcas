@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 Next version:
 
+- Support padding to avoid false sharing (@polytypic)
+- Pass through `?timeoutf` to blocking operations on data structures
+  (@polytypic)
 - Ported to OCaml 4.13 (@polytypic)
 
 ## 0.6.1
