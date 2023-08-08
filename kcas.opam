@@ -20,7 +20,7 @@ depends: [
   "multicore-magic" {>= "1.0.0"}
   "domain_shims" {>= "0.1.0" & with-test}
   "alcotest" {>= "1.7.0" & with-test}
-  "mdx" {>= "1.10.0" & with-test}
+  "mdx" {>= "2.3.0" & with-test}
   "odoc" {>= "2.2.0" & with-doc}
 ]
 build: [

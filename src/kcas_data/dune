@@ -11,3 +11,12 @@
  (action
   (progn
    (copy domain.ocaml4.ml domain.ml))))
+
+(mdx
+ (package kcas_data)
+ (deps
+  (package kcas)
+  (package kcas_data))
+ (preludes kcas_data.prelude.ml)
+ (libraries kcas kcas_data)
+ (files kcas_data.mli))
