@@ -4,7 +4,13 @@
 The API was redesigned in version 0.2.0 &mdash; see
 [API reference for version 0.1.8](https://ocaml-multicore.github.io/kcas/0.1.8/kcas/Kcas/index.html).)</sup></sub>
 
+<div align="center">
+
+<img width="30%" src="doc/kcas.svg">
+
 # **kcas** &mdash; STM based on lock-free MCAS
+
+</div>
 
 [**kcas**](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/index.html)
 provides a software transactional memory (STM) implementation based on an atomic
@@ -48,6 +54,10 @@ most practical needs.
 
 **kcas** is [published on **opam**](https://opam.ocaml.org/packages/kcas/) and
 is distributed under the [ISC license](LICENSE.md).
+
+[![OCaml-CI Build Status](https://img.shields.io/endpoint?url=https%3A%2F%2Fci.ocamllabs.io%2Fbadge%2Focaml-multicore%2Fkcas%2Fmain&logo=ocaml&style=flat-square)](https://ci.ocamllabs.io/github/ocaml-multicore/kcas)
+[![GitHub release (latest by date)](https://img.shields.io/github/v/release/ocaml-multicore/kcas?style=flat-square&color=09aa89)](https://github.com/ocaml-multicore/kcas/releases/latest)
+[![docs](https://img.shields.io/badge/doc-online-blue.svg?style=flat-square)](https://ocaml-multicore.github.io/kcas/doc/)
 
 ## Contents
 
