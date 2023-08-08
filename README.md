@@ -4,6 +4,10 @@
 The API was redesigned in version 0.2.0 &mdash; see
 [API reference for version 0.1.8](https://ocaml-multicore.github.io/kcas/0.1.8/kcas/Kcas/index.html).)</sup></sub>
 
+<p align="center">
+  <img width="15%" src="doc/kcas.svg">
+</p>
+
 # **kcas** &mdash; STM based on lock-free MCAS
 
 [**kcas**](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/index.html)
