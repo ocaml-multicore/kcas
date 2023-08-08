@@ -369,7 +369,7 @@ end
     operations like {!Xt.get} and {!Xt.set} are then recorded in that log. To
     actually remove a node, we need to commit the transaction
 
-    {[
+    {@ocaml skip[
       Xt.commit { tx = remove node }
     ]}
 
@@ -440,7 +440,7 @@ module Xt : sig
   val compare_and_swap : xt:'x t -> 'a Loc.t -> 'a -> 'a -> 'a
   (** [compare_and_swap ~xt r before after] is equivalent to
 
-      {[
+      {@ocaml skip[
         update ~xt r @@ fun actual ->
         if actual == before then after else actual
       ]} *)
