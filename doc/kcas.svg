@@ -10,16 +10,16 @@
         rx="60"
         ry="25"
         fill="none"
-        stroke="#2E8B57"
+        stroke="#ef7208"
         pathLength="360"
         stroke-width="7"
         stroke-dasharray="160 20"/>
       <path
         d="M54 0 L66 0 L60 -8"
-        fill="#2E8B57"/>
+        fill="#ef7208"/>
       <path
         d="M-54 0 L-66 0 L-60 8"
-        fill="#2E8B57"/>
+        fill="#ef7208"/>
     </g>
     <g filter="url(#effect)" transform="translate(60 60) rotate(90 0 0)">
       <ellipse
@@ -28,16 +28,16 @@
         rx="60"
         ry="25"
         fill="none"
-        stroke="#2E9357"
+        stroke="#ef7a08"
         pathLength="360"
         stroke-width="7"
         stroke-dasharray="160 20"/>
       <path
         d="M54 0 L66 0 L60 -8"
-        fill="#2E9357"/>
+        fill="#ef7a08"/>
       <path
         d="M-54 0 L-66 0 L-60 8"
-        fill="#2E9357"/>
+        fill="#ef7a08"/>
     </g>
     <g filter="url(#effect)" transform="translate(60 60) rotate(150 0 0)">
       <ellipse
@@ -46,16 +46,16 @@
         rx="60"
         ry="25"
         fill="none"
-        stroke="#2E9B57"
+        stroke="#ef8208"
         pathLength="360"
         stroke-width="7"
         stroke-dasharray="160 20"/>
       <path
         d="M54 0 L66 0 L60 -8"
-        fill="#2E9B57"/>
+        fill="#ef8208"/>
       <path
         d="M-54 0 L-66 0 L-60 8"
-        fill="#2E9B57"/>
+        fill="#ef8208"/>
     </g>
     <path d="M45 60 L55 70 L75 50"
           fill="none"
