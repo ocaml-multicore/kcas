@@ -1,0 +1,105 @@
+body {
+  max-width: 900px;
+  margin: auto;
+  font-family: Sans-Serif;
+  background: #202020;
+  color: #bebebe;
+}
+
+a {
+  font-weight: bold;
+  text-decoration: none;
+  color: #bebebe;
+}
+
+a:hover {
+  color: #ffffff;
+}
+
+.header {
+  padding: 8px 2em;
+  position: sticky;
+  top: 0;
+  height: 60px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #303030;
+}
+
+.header > * {
+  height: 100%;
+}
+
+.header .links {
+  display: flex;
+  align-items: center;
+  gap: 2em;
+}
+
+.content {
+  margin: 60px 10px 60px 10px;
+}
+
+.primary {
+  margin-top: 30px;
+  font-size: xxx-large;
+}
+
+.secondary {
+  margin-top: 10px;
+  font-size: x-large;
+}
+
+.tertiary {
+  margin-top: 10px;
+  font-size: large;
+}
+
+#versions {
+  display: flex;
+  position: absolute;
+  top: 38px;
+  flex-direction: column;
+  background: #303030;
+  padding: 5px 15px;
+  border: 1px solid #404040;
+  max-height: 10em;
+  overflow: auto;
+
+  visibility: hidden;
+  opacity: 0;
+  transition: 0.2s opacity;
+}
+
+a:hover + #versions,
+#versions:hover {
+  visibility: visible;
+  opacity: 1;
+  transition-delay: 0.2s;
+}
+
+@media (prefers-color-scheme: light) {
+  body {
+    background: #fafafa;
+    color: #333;
+  }
+
+  a {
+    color: #555;
+  }
+
+  a:hover {
+    color: #000;
+  }
+
+  .header {
+    background: #eaeaea;
+  }
+
+  a:hover + #versions,
+  #versions:hover {
+    background: #eaeaea;
+    border: 1px solid #dadada;
+  }
+}
