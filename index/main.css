@@ -34,7 +34,10 @@ a:hover {
 .header .links {
   display: flex;
   align-items: center;
-  gap: 2em;
+}
+
+.header .links > * {
+  margin-left: 2em;
 }
 
 .content {
