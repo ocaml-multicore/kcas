@@ -2,7 +2,12 @@
 
 <div align="center">
 
-<img width="30%" src="doc/kcas.svg">
+<a href="https://ocaml-multicore.github.io/kcas/">
+  <img
+    width="30%"
+    alt="Kcas logo"
+    src="https://raw.githubusercontent.com/ocaml-multicore/kcas/main/doc/kcas.svg">
+</a>
 
 # **kcas** &mdash; STM based on lock-free MCAS
 
