@@ -1,0 +1,24 @@
+#!/bin/bash
+
+set -eo pipefail
+
+PROJECT=kcas-landing-page
+
+tmux start-server
+tmux new-session -d -s "$PROJECT"
+
+tmux splitw -v
+
+tmux select-pane -t 0
+tmux send-keys "npx livereload --wait 250" C-m
+
+tmux select-pane -t 1
+tmux send-keys "python3 -m http.server" C-m
+
+if command -v xdg-open > /dev/null; then
+  xdg-open http://localhost:8000
+elif command -v open > /dev/null; then
+  open http://localhost:8000
+fi
+
+tmux attach-session -t "$PROJECT"

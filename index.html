@@ -38,21 +38,191 @@
         <a href="https://github.com/ocaml-multicore/kcas">GitHub</a>
       </nav>
     </header>
-    <section class="content">
-      <div align="center">
+    <section class="intro">
+      <a href="https://github.com/ocaml-multicore/kcas#readme">
         <img
+          style="margin: auto"
           alt="Kcas"
           decoding="sync"
           width="30%"
           src="https://raw.githubusercontent.com/ocaml-multicore/kcas/main/doc/kcas.svg"
-        />
-        <h1 class="primary">Kcas</h1>
-        <p class="secondary">Software Transactional Memory for OCaml</p>
-        <p class="tertiary">
-          Create and use modular and composable concurrent abstractions with
-          ease
+      /></a>
+      <h1 class="primary">Kcas</h1>
+      <p class="secondary">Software Transactional Memory for OCaml</p>
+      <p class="tertiary">
+        Create and use modular and composable concurrent abstractions with ease
+      </p>
+    </section>
+    <section class="benefits">
+      <section class="block">
+        <h2>Use familiar programming techniques</h2>
+        <p>
+          Kcas transactions are written as ordinary functions allowing you to
+          <a
+            href="https://tarides.com/blog/2023-08-07-kcas-building-a-lock-free-stm-for-ocaml-1-2/#giving-monads-a-pass"
+            >use all the standard control flow constructs of OCaml</a
+          >. Furthermore, as a starting point,
+          <a
+            href="https://tarides.com/blog/2023-08-07-kcas-building-a-lock-free-stm-for-ocaml-1-2/#division-of-labour"
+            >traditional sequential algorithms can easily be translated to
+            parallelism-safe transactional algorithms</a
+          >. Transactions can be
+          <a
+            href="https://tarides.com/blog/2023-08-10-kcas-building-a-lock-free-stm-for-ocaml-2-2/#hollow-man"
+            >composed <em>sequentially</em>, <em>conjunctively</em>,
+            <em>conditionally</em>, and <em>disjunctively</em></a
+          >.
         </p>
-      </div>
+      </section>
+      <section class="block">
+        <h2>Leverage the work of others</h2>
+        <p>
+          Kcas comes with
+          <a
+            href="https://tarides.com/blog/2023-08-07-kcas-building-a-lock-free-stm-for-ocaml-1-2/#division-of-labour"
+            >a companion package of parallelism-safe data structures</a
+          >
+          that you can directly use for application programming. Furthermore,
+          due to the composability of transactions and the interoperability of
+          Kcas, independently developed data structures can be reused in new
+          contexts.
+        </p>
+      </section>
+      <section class="block">
+        <h2>Coordinate by awaiting on arbitrary conditions</h2>
+        <p>
+          Kcas
+          <a
+            href="https://tarides.com/blog/2023-08-10-kcas-building-a-lock-free-stm-for-ocaml-2-2/#get-busy-waiting"
+            >transactions and blocking operations can await</a
+          >, with
+          <a
+            href="https://tarides.com/blog/2023-08-10-kcas-building-a-lock-free-stm-for-ocaml-2-2/#will-they-come"
+            >optional timeouts</a
+          >, on arbitrary conditions over the state of shared memory locations.
+          Data structure implementations do not generally need to be a priori
+          designed to support blocking.
+        </p>
+      </section>
+      <section class="block">
+        <h2>Enjoy scalable performance</h2>
+        <p>
+          Kcas is
+          <a
+            href="https://tarides.com/blog/2023-08-07-kcas-building-a-lock-free-stm-for-ocaml-1-2/#fine-grained-competition"
+            >based on efficient and scalable lock-free algorithms</a
+          >.
+        </p>
+        <ul>
+          <li>
+            Only <strong>k + 1</strong> successful single world CASes are
+            required to commit a transaction that modifies
+            <strong>k</strong> locations and, as a special case, modifying a
+            single location requires only a single single-word CAS.
+          </li>
+          <li>
+            Disjoint accesses progress independently in parallel without
+            interference.
+          </li>
+          <li>
+            <a
+              href="https://tarides.com/blog/2023-08-07-kcas-building-a-lock-free-stm-for-ocaml-1-2/#free-from-obstructions"
+              >Read-only, obstruction-free, accesses do not write to shared
+              memory</a
+            >
+            and can progress independently even when not disjoint.
+          </li>
+          <li>
+            Transactions can be constructed
+            <a
+              href="https://tarides.com/blog/2023-08-07-kcas-building-a-lock-free-stm-for-ocaml-1-2/#keeping-a-journal"
+              >often in linear time and always in worst case linearithmic
+              time</a
+            >.
+          </li>
+          <li>
+            Locations can be allocated to
+            <a
+              href="https://github.com/ocaml-multicore/kcas#avoid-false-sharing"
+              >avoid false-sharing</a
+            >
+            and data structure implementations can and do take advantage of that
+            where appropriate.
+          </li>
+          <li>
+            Provided data structures use
+            <a href="https://github.com/ocaml-multicore/kcas/#race-to-cooperate"
+              >starvation avoiding approaches</a
+            >
+            to perform long-running operations where appropriate.
+          </li>
+        </ul>
+      </section>
+      <section class="block">
+        <h2>Learn once, write anywhere</h2>
+        <p>
+          Kcas is scheduler agnostic and can work with both existing and future
+          schedulers.
+        </p>
+        <ul>
+          <li>
+            <a
+              href="https://github.com/ocaml-multicore/domain-local-await/#readme"
+              >Blocking</a
+            >
+            and
+            <a
+              href="https://github.com/ocaml-multicore/domain-local-timeout/#readme"
+              >timeouts</a
+            >
+            are not tied to a specific scheduler and even
+            <a
+              href="https://discuss.ocaml.org/t/interaction-between-eio-and-domainslib-unhandled-exceptions/11971/10"
+              >work across multiple schedulers</a
+            >
+            in a single application.
+          </li>
+          <li>
+            The
+            <a href="https://en.wikipedia.org/wiki/Non-blocking_algorithm"
+              >non-blocking algorithms</a
+            >
+            employed
+            <a href="https://dspace.mit.edu/handle/1721.1/73900"
+              >do not depend on the fairness of the scheduler</a
+            >
+            and can be used in contexts, such as signal handlers, where lock
+            based techniques are not appropriate.
+          </li>
+          <li>
+            Kcas also supports OCaml 4, allowing Kcas to be used to implement
+            systhread and parallelism safe code and help projects requiring
+            OCaml 4 support on their way to OCaml 5.
+          </li>
+        </ul>
+      </section>
+    </section>
+    <section class="outro">
+      <h2>Additional resources</h2>
+      <p>
+        <a
+          href="https://tarides.com/blog/2023-08-07-kcas-building-a-lock-free-stm-for-ocaml-1-2/"
+          >Kcas: Building a Lock-Free STM for OCaml (1/2)
+        </a>
+        <a
+          href="https://tarides.com/blog/2023-08-10-kcas-building-a-lock-free-stm-for-ocaml-2-2/"
+        >
+          and (2/2)
+        </a>
+      </p>
+
+      <hr />
+
+      <small class="tertiary">
+        Kcas is part of the
+        <a href="https://github.com/ocaml-multicore/">Multicore OCaml</a>
+        project and is supported by <a href="https://tarides.com/">Tarides</a>.
+      </small>
     </section>
     <script type="module" src="index/main.js"></script>
   </body>
