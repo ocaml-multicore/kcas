@@ -1,9 +1,6 @@
 <svg width="400" height="400" viewBox="0 0 140 140" xmlns="http://www.w3.org/2000/svg">
-  <filter id='effect'>
-    <feGaussianBlur stdDeviation="2 0.5" />
-  </filter>
   <g transform="translate(10 10)">
-    <g filter="url(#effect)" transform="translate(60 60) rotate(30 0 0)">
+    <g transform="translate(60 60) rotate(30 0 0)">
       <ellipse
         cx="0"
         cy="0"
@@ -15,13 +12,13 @@
         stroke-width="7"
         stroke-dasharray="160 20"/>
       <path
-        d="M54 0 L66 0 L60 -8"
+        d="M54 1 L66 1 L60 -8"
         fill="#ef7208"/>
       <path
-        d="M-54 0 L-66 0 L-60 8"
+        d="M-54 -1 L-66 -1 L-60 8"
         fill="#ef7208"/>
     </g>
-    <g filter="url(#effect)" transform="translate(60 60) rotate(90 0 0)">
+    <g transform="translate(60 60) rotate(90 0 0)">
       <ellipse
         cx="0"
         cy="0"
@@ -33,13 +30,13 @@
         stroke-width="7"
         stroke-dasharray="160 20"/>
       <path
-        d="M54 0 L66 0 L60 -8"
+        d="M54 1 L66 1 L60 -8"
         fill="#ef7a08"/>
       <path
-        d="M-54 0 L-66 0 L-60 8"
+        d="M-54 -1 L-66 -1 L-60 8"
         fill="#ef7a08"/>
     </g>
-    <g filter="url(#effect)" transform="translate(60 60) rotate(150 0 0)">
+    <g transform="translate(60 60) rotate(150 0 0)">
       <ellipse
         cx="0"
         cy="0"
@@ -51,10 +48,10 @@
         stroke-width="7"
         stroke-dasharray="160 20"/>
       <path
-        d="M54 0 L66 0 L60 -8"
+        d="M54 1 L66 1 L60 -8"
         fill="#ef8208"/>
       <path
-        d="M-54 0 L-66 0 L-60 8"
+        d="M-54 -1 L-66 -1 L-60 8"
         fill="#ef8208"/>
     </g>
     <path d="M45 60 L55 70 L75 50"
