@@ -3,8 +3,9 @@
  (package kcas_data)
  (libraries
   kcas_data
+  domain-local-await
+  multicore-magic
   yojson
   domain_shims
   mtime
-  mtime.clock.os
-  multicore-magic))
+  mtime.clock.os))

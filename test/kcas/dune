@@ -1,4 +1,10 @@
 (tests
  (names test test_overlapping_loc ms_queue_test example threads loc_modes)
- (libraries alcotest kcas threads domain_shims)
+ (libraries
+  alcotest
+  kcas
+  domain-local-timeout
+  threads.posix
+  unix
+  domain_shims)
  (package kcas))

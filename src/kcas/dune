@@ -7,6 +7,5 @@
  (package kcas)
  (deps
   (package kcas))
- (preludes kcas.prelude.ml)
  (libraries kcas backoff domain_shims)
  (files kcas.mli))
