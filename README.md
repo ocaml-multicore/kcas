@@ -88,6 +88,7 @@ is distributed under the [ISC license](LICENSE.md).
     - [Understanding transactions](#understanding-transactions)
     - [A three-stack lock-free queue](#a-three-stack-lock-free-queue)
     - [A rehashable lock-free hash table](#a-rehashable-lock-free-hash-table)
+  - [Avoid false sharing](#avoid-false-sharing)
   - [Beware of torn reads](#beware-of-torn-reads)
 
 ## A quick tour
@@ -1983,6 +1984,131 @@ val assoc : (string * int) list =
 What we have here is a lock-free hash table with rehashing that should not be
 highly prone to starvation. In other respects this is a fairly naive hash table
 implementation. You might want to think about various ways to improve upon it.
+
+### Avoid false sharing
+
+[False sharing](https://en.wikipedia.org/wiki/False_sharing) is a form of
+contention that arises when some location, that is being written to by at least
+a single core, happens to be in memory next to &mdash; within the same cache
+line aligned region of memory &mdash; another location that is accessed, read or
+written, by other cores.
+
+Perhaps contrary to how it is often described, false sharing doesn't require the
+use of atomic variables or atomic instructions. Consider the following example:
+
+```ocaml
+# type state = { mutable counter : int; mutable finished: bool }
+type state = { mutable counter : int; mutable finished : bool; }
+
+# let state = { counter = 1_000; finished = false }
+val state : state = {counter = 1000; finished = false}
+
+# let reader = Domain.spawn @@ fun () ->
+    while not state.finished do
+      Domain.cpu_relax ()
+    done
+val reader : unit Domain.t = <abstr>
+
+# while 0 < state.counter do
+    state.counter <- state.counter - 1
+  done;
+- : unit = ()
+
+# state.finished <- true;
+- : unit = ()
+
+# Domain.join reader
+- : unit = ()
+```
+
+The `state` is a record with two fields, `counter` and `finished`, next to each
+other, which makes it rather likely for them to happen to reside in the same
+cache line aligned region of memory. The main domain repeatedly mutates the
+`counter` field and the other domain repeatedly reads the `finished` field. What
+this means in practice is that the reads of the `finished` field by the other
+domain will be very expensive, because the cache is repeatedly invalidated by
+the `counter` updates done by the main domain.
+
+The above example is contrived, of course, but this sort of false sharing can
+happen very easily. Cache lines are typically relatively large &mdash; 8, 16, or
+even 32 words wide. Typically many, if not most, heap allocated objects in OCaml
+are smaller than a cache line, which means that false sharing may easily happen
+even between seemingly unrelated objects.
+
+To completely avoid false sharing one would basically need to make sure that
+mutable locations (atomic or otherwise) are not allocated next to locations that
+might be accessed from other domains. Unfortunately, that is difficult to
+achieve without being expensive in itself as it tends to increase memory usage
+and the amount of initializing stores.
+
+The
+[`Loc.make`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Loc/index.html#val-make)
+function takes an optional `padded` argument, which can be explicitly specified
+as `~padded:true` to request the location to be allocated in a way to avoid
+false sharing. Using `~padded:true` on long lived shared memory locations that
+are being repeatedly modified can improve performance significantly. Using
+`~padded:true` on short lived shared memory locations is not recommended.
+
+Using `~padded:true` does not eliminate all false sharing, however. Consider the
+following sketch of a queue data structure:
+
+```ocaml
+type 'a queue = {
+  head: 'a list Loc.t;
+  tail: 'a list Loc.t
+}
+```
+
+Even if you allocate the locations with padding
+
+```ocaml
+# let queue () = {
+    head = Loc.make ~padded:true [];
+    tail = Loc.make ~padded:true []
+  }
+val queue : unit -> 'a queue = <fun>
+```
+
+the queue record will still be vulnerable to the same kind of false sharing as
+in the earlier example:
+
+```ocaml
+# let a_queue : int queue = queue ()
+val a_queue : int queue = {head = <abstr>; tail = <abstr>}
+
+# let counter = ref 1_000
+val counter : int ref = {contents = 1000}
+```
+
+Above the reference cell for the `counter` might exhibit false sharing with the
+queue record (which is read-only) and significantly degrade the performance of
+the queue for passing messages between domains.
+
+To avoid the above kind of problems, a strategic approach is to also allocate
+the queue record in a way to avoid false sharing. Unfortunately OCaml does not
+currently provide a standard way to do so. The
+[multicore-magic](https://github.com/ocaml-multicore/multicore-magic) library
+provides a function
+[`copy_as_padded`](https://ocaml-multicore.github.io/multicore-magic/doc/multicore-magic/Multicore_magic/index.html#val-copy_as_padded)
+for the purpose. Using
+[`copy_as_padded`](https://ocaml-multicore.github.io/multicore-magic/doc/multicore-magic/Multicore_magic/index.html#val-copy_as_padded)
+one would write
+
+```ocaml
+# let queue () =
+    Multicore_magic.copy_as_padded {
+      head = Loc.make ~padded:true [];
+      tail = Loc.make ~padded:true []
+    }
+val queue : unit -> 'a queue = <fun>
+```
+
+to allocate the queue record in a way to avoid false sharing.
+
+Note that allocating long lived data structures, like queues, used for inter
+domain communication in the way as described above to avoid false sharing does
+not eliminate all false sharing, but it is likely to reduce false sharing
+significantly with relatively low effort.
 
 ### Beware of torn reads
 
