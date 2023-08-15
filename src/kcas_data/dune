@@ -1,7 +1,9 @@
 (library
  (name kcas_data)
  (public_name kcas_data)
- (libraries kcas multicore-magic))
+ (libraries
+  (re_export kcas)
+  multicore-magic))
 
 (rule
  (targets domain.ml)
@@ -17,6 +19,5 @@
  (deps
   (package kcas)
   (package kcas_data))
- (preludes kcas_data.prelude.ml)
  (libraries kcas kcas_data)
  (files kcas_data.mli))

@@ -29,9 +29,16 @@
     But why should you care about composability?
 
     As an example, consider the implementation of a least-recently-used (LRU)
-    cache or a bounded associative map. A simple sequential approach to
-    implement a LRU cache is to use a hash table and a doubly-linked list and
-    keep track of the amount of space in the cache:
+    cache or a bounded associative map, but first, let's open the libraries
+    for convenience:
+
+    {[
+      open Kcas
+      open Kcas_data
+    ]}
+
+    A simple sequential approach to implement a LRU cache is to use a hash table
+    and a doubly-linked list and keep track of the amount of space in the cache:
 
     {[
       type ('k, 'v) cache =

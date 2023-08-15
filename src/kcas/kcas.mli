@@ -33,7 +33,13 @@
 
     {1 A quick tour}
 
-    To use the library one first creates shared memory locations:
+    Let's first open the library for convenience:
+
+    {[
+      open Kcas
+    ]}
+
+    To use the library one creates shared memory locations:
 
     {[
       # let a = Loc.make 0
@@ -166,7 +172,7 @@ end
     module except that some of the operations take additional optional
     arguments:
 
-    - [backoff] specifies the configuration for the {!Backoff} mechanism.  In
+    - [backoff] specifies the configuration for the [Backoff] mechanism.  In
       special cases, having more detailed knowledge of the application, one
       might adjust the configuration to improve performance.
 
