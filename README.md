@@ -9,11 +9,11 @@
     src="https://raw.githubusercontent.com/ocaml-multicore/kcas/main/doc/kcas.svg">
 </a>
 
-# **kcas** &mdash; STM based on lock-free MCAS
+# **Kcas** &mdash; STM based on lock-free MCAS
 
 </div>
 
-[**kcas**](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/index.html)
+[**Kcas**](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/index.html)
 provides a software transactional memory (STM) implementation based on an atomic
 [lock-free](https://en.wikipedia.org/wiki/Non-blocking_algorithm#Lock-freedom)
 multi-word [compare-and-set](https://en.wikipedia.org/wiki/Compare-and-swap)
@@ -21,9 +21,9 @@ multi-word [compare-and-set](https://en.wikipedia.org/wiki/Compare-and-swap)
 [enhanced with read-only compare operations](doc/gkmz-with-read-only-cmp-ops.md)
 and ability to block awaiting for changes.
 
-[**kcas_data**](https://ocaml-multicore.github.io/kcas/doc/kcas_data/Kcas_data/index.html)
+[**Kcas_data**](https://ocaml-multicore.github.io/kcas/doc/kcas_data/Kcas_data/index.html)
 provides compositional lock-free data structures and primitives for
-communication and synchronization implemented using **kcas**.
+communication and synchronization implemented using **Kcas**.
 
 Features and properties:
 
@@ -53,7 +53,7 @@ cases, the non-blocking properties should allow use in many contexts including
 those where locks are not acceptable, and the features provided should support
 most practical needs.
 
-**kcas** is [published on **opam**](https://opam.ocaml.org/packages/kcas/) and
+**Kcas** is [published on **opam**](https://opam.ocaml.org/packages/kcas/) and
 is distributed under the [ISC license](LICENSE.md).
 
 [![OCaml-CI Build Status](https://img.shields.io/endpoint?url=https%3A%2F%2Fci.ocamllabs.io%2Fbadge%2Focaml-multicore%2Fkcas%2Fmain&logo=ocaml&style=flat-square)](https://ci.ocamllabs.io/github/ocaml-multicore/kcas)
@@ -167,7 +167,7 @@ And now we have it:
 
 ## Introduction
 
-The API of **kcas** is divided into submodules. The main modules are
+The API of **Kcas** is divided into submodules. The main modules are
 
 - [`Loc`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Loc/index.html),
   providing an abstraction of _shared memory locations_,
@@ -196,7 +196,7 @@ rebind `module Atomic = Loc` and then use the
 and/or
 [`Xt`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html) APIs
 to perform operations over multiple locations. This should not be done
-just-in-case, however, as, even though **kcas** is efficient, it does naturally
+just-in-case, however, as, even though **Kcas** is efficient, it does naturally
 have higher overhead than the Stdlib
 [`Atomic`](https://v2.ocaml.org/api/Atomic.html).
 
@@ -506,7 +506,7 @@ but this sort of [busy-wait](https://en.wikipedia.org/wiki/Busy_waiting) is
 usually a _bad idea_ and should be avoided. It is usually better to block in
 such a way that the underlying domain can potentially perform other work.
 
-To support blocking **kcas** provides a
+To support blocking **Kcas** provides a
 [`later`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Retry/index.html#val-later)
 operation that amounts to raising a
 [`Later`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Retry/index.html#exception-Later)
@@ -608,7 +608,7 @@ val pop_or_raise_if :
 ```
 
 This works, but creating, checking, and canceling timeouts properly can be a lot
-of work. Therefore **kcas** also directly supports an optional `timeoutf`
+of work. Therefore **Kcas** also directly supports an optional `timeoutf`
 argument for potentially blocking operations. For example, to perform a blocking
 pop with a timeout, one can simply explicitly pass the desired timeout in
 seconds:
@@ -621,7 +621,7 @@ Exception: Failure "Domain_local_timeout.set_timeoutf not implemented".
 
 Oops! What happened above is that the
 [_domain local timeout_](https://github.com/ocaml-multicore/domain-local-timeout)
-mechanism used by **kcas** was not implemented on the current domain. The idea
+mechanism used by **Kcas** was not implemented on the current domain. The idea
 is that, in the future, concurrent schedulers provide the mechanism out of the
 box, but there is also a default implementation using the Stdlib `Thread` and
 `Unix` modules that works on most platforms. However, to avoid direct
@@ -826,7 +826,7 @@ from scratch? For most professionals the answer might be along the lines of
 _"when I took my data structures course at the university"_ or _"when I
 interviewed for the software engineering position at Big Co"_.
 
-**kcas** aims to be usable both
+**Kcas** aims to be usable both
 
 - for experts implementing correct and performant lock-free data structures, and
 - for everyone gluing together programs using such data structures.
@@ -837,10 +837,10 @@ everyone should be doing every time they are writing concurrent programs.
 Instead programmers should be able to reuse carefully constructed data
 structures.
 
-One source of ready-made data structures is the
-[**kcas_data**](https://ocaml-multicore.github.io/kcas/doc/kcas_data/Kcas_data/index.html)
-package. Let's explore how we can leverage those data structures. Of course,
-first we need to `#require` the package and we'll also open it for convenience:
+One source of ready-made data structures is
+[**Kcas_data**](https://ocaml-multicore.github.io/kcas/doc/kcas_data/Kcas_data/index.html).
+Let's explore how we can leverage those data structures. Of course, first we
+need to `#require` the package and we'll also open it for convenience:
 
 ```ocaml
 # #require "kcas_data"
@@ -852,7 +852,7 @@ first we need to `#require` the package and we'll also open it for convenience:
 The
 [dining philosophers problem](https://en.wikipedia.org/wiki/Dining_philosophers_problem)
 is a well known classic synchronization problem. It is easy to solve with
-**kcas**. If you are unfamiliar with the problem, please take a moment to read
+**Kcas**. If you are unfamiliar with the problem, please take a moment to read
 the description of the problem.
 
 A handy concurrent data structure for solving the dining philosophers problem is
@@ -949,7 +949,7 @@ corresponding linked list node is added or moved to one end of the list. When
 the cache overflows, the association whose node is at the other end of the list
 is removed.
 
-The **kcas_data** package conveniently provides a
+**Kcas_data** conveniently provides a
 [`Hashtbl`](https://ocaml-multicore.github.io/kcas/doc/kcas_data/Kcas_data/Hashtbl/index.html)
 module providing a hash table implementation that mimics the Stdlib
 [`Hashtbl`](https://v2.ocaml.org/api/Hashtbl.html) module and a
@@ -1050,7 +1050,7 @@ an operation to change the capacity of the cache.
 
 ### Programming with primitive operations
 
-In addition to the transactional interface, **kcas** also provides the
+In addition to the transactional interface, **Kcas** also provides the
 [`Op`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Op/index.html)
 interface for performing a list of primitive operations. To program with
 primitive operations one simply makes a list of CAS operations using
@@ -1095,7 +1095,7 @@ val move : ?backoff:Backoff.t -> 'a list Loc.t -> 'a list Loc.t -> unit =
 
 Note that we also used the
 [`Backoff`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Backoff/index.html)
-module provided by **kcas** above.
+module provided by **Kcas** above.
 
 Now we can simply call `move`:
 
@@ -1147,7 +1147,7 @@ in a transaction is more expensive than updating individual locations
 atomically. Contention can cause transactions to retry and perform poorly.
 
 With that said, it is possible to create composable and reasonably well
-performing data structures using **kcas**. If a **kcas** based data structure is
+performing data structures using **Kcas**. If a **Kcas** based data structure is
 performing much worse than a similar lock-free or lock-based data structure,
 then there is likely room to improve. Doing so will require good understanding
 of and careful attention to algorithmic details, such as which accessed need to
@@ -1277,7 +1277,7 @@ can see
 the updates are only done in case of success.
 
 A problem with the `transfer` function above is that it is not a composable
-transaction. The transaction mechanism provided by **kcas** does not implicitly
+transaction. The transaction mechanism provided by **Kcas** does not implicitly
 perform rollbacks of changes made to locations, but it does offer low level
 support for nested conditional transactions.
 
@@ -1519,7 +1519,7 @@ val a_queue : int queue = {head = <abstr>; tail = <abstr>}
 - : int option = None
 ```
 
-The queue implementation in this section is an example of using **kcas** to
+The queue implementation in this section is an example of using **Kcas** to
 implement a fine-grained lock-free algorithm. Instead of recording all shared
 memory accesses and performing them atomically all at once, the implementation
 updates the tail outside of the transaction. This can potentially improve
@@ -1565,10 +1565,10 @@ understanding of how transactions work.
 We have previously casually talked about "transactions". Let's sharpen our
 understanding of transactions.
 
-In **kcas**, a _transaction_ is essentially a function that can be called to
+In **Kcas**, a _transaction_ is essentially a function that can be called to
 prepare a specification of an operation or operations, in the form of a
 _transaction log_, that can then be _attempted to be performed atomically_ by
-the underlying k-CAS-n-CMP algorithm provided by **kcas**.
+the underlying k-CAS-n-CMP algorithm provided by **Kcas**.
 
 In other words, and simplifying a bit, when an explicit attempt is made to
 perform a transaction, it basically proceeds in phases:
@@ -2112,13 +2112,13 @@ significantly with relatively low effort.
 
 ### Beware of torn reads
 
-The algorithm underlying **kcas** ensures that it is not possible to read
+The algorithm underlying **Kcas** ensures that it is not possible to read
 uncommitted changes to shared memory locations and that an operation can only
 complete successfully if all of the accesses taken together were atomic. These
 are very strong guarantees and make it much easier to implement correct
 concurrent algorithms.
 
-Unfortunately, the transaction mechanism that **kcas** provides does not prevent
+Unfortunately, the transaction mechanism that **Kcas** provides does not prevent
 one specific concurrency anomaly. When reading multiple locations, it is
 possible for a transaction to observe different locations at different times
 even though it is not possible for the transaction to commit successfully unless
@@ -2196,7 +2196,7 @@ having values from different committed transactions. This is something that
 needs to be kept in mind when writing transactions.
 
 To mitigate issues due to read skew and to also avoid problems with long running
-transactions, the **kcas** transaction mechanism automatically validates the
+transactions, the **Kcas** transaction mechanism automatically validates the
 transaction log periodically when an access is made to the transaction log.
 Therefore an important guideline for writing transactions is that loops inside a
 transaction should always include an access of some shared memory location
