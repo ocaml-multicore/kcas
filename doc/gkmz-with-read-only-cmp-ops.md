@@ -8,8 +8,8 @@
 > [`Xt`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html)
 > API.
 
-The [`kcas` library](https://github.com/ocaml-multicore/kcas/) currently uses
-the GKMZ algorithm for
+[`Kcas`](https://ocaml-multicore.github.io/kcas/) currently uses the GKMZ
+algorithm for
 [Efficient Multi-word Compare and Swap](https://arxiv.org/abs/2008.02527) or
 MCAS aka k-CAS. This is a nearly optimal algorithm for MCAS as it requires only
 `k + 1` CAS operations.

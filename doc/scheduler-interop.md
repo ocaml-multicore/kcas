@@ -1,11 +1,11 @@
 # Scheduler interop
 
-The blocking mechanism in **kcas** is based on a
+The blocking mechanism in **Kcas** is based on a
 [_domain local await_](https://github.com/ocaml-multicore/domain-local-await)
 mechanism that schedulers can choose to implement to allow libraries like
-**kcas** to work with them.
+**Kcas** to work with them.
 
-Implementing schedulers is not really what casual users of **kcas** are supposed
+Implementing schedulers is not really what casual users of **Kcas** are supposed
 to do. Below is an example of a _toy_ scheduler whose purpose is only to give a
 sketch of how a scheduler can provide the domain local await mechanism.
 
@@ -14,9 +14,8 @@ Let's also demonstrate the use of the
 [`Stack`](https://ocaml-multicore.github.io/kcas/doc/kcas_data/Kcas_data/Stack/index.html),
 and
 [`Promise`](https://ocaml-multicore.github.io/kcas/doc/kcas_data/Kcas_data/Promise/index.html)
-implementations that are conveniently provided by the
-[**kcas_data**](https://ocaml-multicore.github.io/kcas/doc/kcas_data/Kcas_data/index.html)
-package.
+implementations that are conveniently provided by
+[**Kcas_data**](https://ocaml-multicore.github.io/kcas/doc/kcas_data/Kcas_data/index.html).
 
 <!--
 ```ocaml
@@ -93,7 +92,7 @@ end
 
 The idea is that one can spawn a scheduler to run on a new domain. Then one can
 run fibers on the scheduler. Because the scheduler provides the domain local
-await mechanism libraries like **kcas** can use it to block in a scheduler
+await mechanism libraries like **Kcas** can use it to block in a scheduler
 independent and friendly manner.
 
 Let's then demonstrate the integration. To start we spawn a scheduler:
