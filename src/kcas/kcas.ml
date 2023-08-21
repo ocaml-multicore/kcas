@@ -715,7 +715,8 @@ module Xt = struct
     end
     else
       let current = state.after in
-      let state = { state with after = f current } in
+      let after = f current in
+      let state = if current == after then state else { state with after } in
       tree_as_ref xt := T (Node { loc; state; lt; gt; awaiters = [] });
       current
 
