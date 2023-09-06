@@ -969,10 +969,11 @@ type ('k, 'v) cache = {
 To create a cache we just create the data structures:
 
 ```ocaml
-# let cache ?hashed_type capacity =
-    { space = Loc.make capacity;
-      table = Hashtbl.create ?hashed_type ();
-      order = Dllist.create () }
+# let cache ?hashed_type capacity = {
+    space = Loc.make capacity;
+    table = Hashtbl.create ?hashed_type ();
+    order = Dllist.create ()
+  }
 val cache : ?hashed_type:'a Hashtbl.hashed_type -> int -> ('a, 'b) cache =
   <fun>
 ```
@@ -997,30 +998,30 @@ val get_opt : xt:'a Xt.t -> ('b, 'c) cache -> 'b -> 'c option = <fun>
 that, as explained previously, moves the node corresponding to the accessed
 association to the left end of the list.
 
-To introduce associations we provide the `set` operation
+To introduce associations we provide the `set_blocking` operation
 
 ```ocaml
-# let set ~xt {table; order; space; _} key value =
+# let set_blocking ~xt {table; order; space; _} key value =
     let node =
       match Hashtbl.Xt.find_opt ~xt table key with
       | None ->
         if 0 = Xt.update ~xt space (fun n -> Int.max 0 (n-1)) then
-          Dllist.Xt.take_opt_r ~xt order
-          |> Option.iter (Hashtbl.Xt.remove ~xt table);
+          Dllist.Xt.take_blocking_r ~xt order
+          |> Hashtbl.Xt.remove ~xt table;
         Dllist.Xt.add_l ~xt key order
       | Some (node, _) ->
         Dllist.Xt.move_l ~xt node order;
         node
     in
     Hashtbl.Xt.replace ~xt table key (node, value)
-val set : xt:'a Xt.t -> ('b, 'c) cache -> 'b -> 'c -> unit = <fun>
+val set_blocking : xt:'a Xt.t -> ('b, 'c) cache -> 'b -> 'c -> unit = <fun>
 ```
 
 that, like `get_opt`, either moves or adds the node of the accessed association
 to the left end of the list. In case a new association is added, the space is
-decremented. If there was no space, an association is first removed. As
-described previously, the association to remove is determined by removing the
-rightmost element from the list.
+decremented. If there was no space, an association is first removed, which will
+block in case capacity is 0. As described previously, the association to remove
+is determined by removing the rightmost element from the list.
 
 We can then test that the cache works as expected:
 
@@ -1029,16 +1030,16 @@ We can then test that the cache works as expected:
 val a_cache : (int, string) cache =
   {space = <abstr>; table = <abstr>; order = <abstr>}
 
-# Xt.commit { tx = set a_cache 101 "basics" }
+# Xt.commit { tx = set_blocking a_cache 101 "basics" }
 - : unit = ()
 
-# Xt.commit { tx = set a_cache 42 "answer" }
+# Xt.commit { tx = set_blocking a_cache 42 "answer" }
 - : unit = ()
 
 # Xt.commit { tx = get_opt a_cache 101 }
 - : string option = Some "basics"
 
-# Xt.commit { tx = set a_cache 2023 "year" }
+# Xt.commit { tx = set_blocking a_cache 2023 "year" }
 - : unit = ()
 
 # Xt.commit { tx = get_opt a_cache 42 }
