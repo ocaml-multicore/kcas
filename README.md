@@ -343,7 +343,7 @@ traditional two-stack queue data structure:
 ```ocaml
 type 'a queue = {
   front: 'a list Loc.t;
-  back: 'a list Loc.t
+  back: 'a list Loc.t;
 }
 ```
 
@@ -354,7 +354,7 @@ the two locations:
 ```ocaml
 # let queue () = {
     front = Loc.make [];
-    back = Loc.make []
+    back = Loc.make [];
   }
 val queue : unit -> 'a queue = <fun>
 ```
@@ -972,7 +972,7 @@ To create a cache we just create the data structures:
 # let cache ?hashed_type capacity = {
     space = Loc.make capacity;
     table = Hashtbl.create ?hashed_type ();
-    order = Dllist.create ()
+    order = Dllist.create ();
   }
 val cache : ?hashed_type:'a Hashtbl.hashed_type -> int -> ('a, 'b) cache =
   <fun>
@@ -1435,7 +1435,7 @@ A queue is then a pair of pointers to the head and tail of a queue:
 ```ocaml
 type 'a queue = {
   head : 'a node Loc.t Loc.t;
-  tail : 'a node Loc.t Atomic.t
+  tail : 'a node Loc.t Atomic.t;
 }
 ```
 
@@ -1622,7 +1622,7 @@ First we redefine the `queue` type to include a `middle` location:
 type 'a queue = {
   back : 'a list Loc.t;
   middle : 'a list Loc.t;
-  front : 'a list Loc.t
+  front : 'a list Loc.t;
 }
 ```
 
@@ -1744,7 +1744,7 @@ separate chaining. Here is a type for such a basic hash table:
 ```ocaml
 type ('k, 'v) basic_hashtbl = {
   size: int Loc.t;
-  data: ('k * 'v Loc.t) list Loc.t array Loc.t
+  data: ('k * 'v Loc.t) list Loc.t array Loc.t;
 }
 ```
 
@@ -1753,7 +1753,7 @@ The basic hash table constructor just allocates all the locations:
 ```ocaml
 # let basic_hashtbl () = {
     size = Loc.make 0;
-    data = Loc.make (Loc.make_array 4 [])
+    data = Loc.make (Loc.make_array 4 []);
   }
 val basic_hashtbl : unit -> ('a, 'b) basic_hashtbl = <fun>
 ```
@@ -1847,7 +1847,7 @@ To avoid taking on such adversarial races, we can use a level of indirection:
 ```ocaml
 type ('k, 'v) hashtbl = {
   pending: [`Nothing | `Rehash of int] Loc.t;
-  basic: ('k, 'v) basic_hashtbl
+  basic: ('k, 'v) basic_hashtbl;
 }
 ```
 
@@ -1950,7 +1950,7 @@ After creating a constructor function
 ```ocaml
 # let hashtbl () = {
     pending = Loc.make `Nothing;
-    basic = basic_hashtbl ()
+    basic = basic_hashtbl ();
   }
 val hashtbl : unit -> ('a, 'b) hashtbl = <fun>
 ```
@@ -1998,7 +1998,7 @@ Perhaps contrary to how it is often described, false sharing doesn't require the
 use of atomic variables or atomic instructions. Consider the following example:
 
 ```ocaml
-# type state = { mutable counter : int; mutable finished: bool }
+# type state = { mutable counter : int; mutable finished: bool; }
 type state = { mutable counter : int; mutable finished : bool; }
 
 # let state = { counter = 1_000; finished = false }
@@ -2056,7 +2056,7 @@ following sketch of a queue data structure:
 ```ocaml
 type 'a queue = {
   head: 'a list Loc.t;
-  tail: 'a list Loc.t
+  tail: 'a list Loc.t;
 }
 ```
 
@@ -2065,7 +2065,7 @@ Even if you allocate the locations with padding
 ```ocaml
 # let queue () = {
     head = Loc.make ~padded:true [];
-    tail = Loc.make ~padded:true []
+    tail = Loc.make ~padded:true [];
   }
 val queue : unit -> 'a queue = <fun>
 ```
@@ -2099,7 +2099,7 @@ one would write
 # let queue () =
     Multicore_magic.copy_as_padded {
       head = Loc.make ~padded:true [];
-      tail = Loc.make ~padded:true []
+      tail = Loc.make ~padded:true [];
     }
 val queue : unit -> 'a queue = <fun>
 ```
