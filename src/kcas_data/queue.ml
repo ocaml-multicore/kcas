@@ -1,49 +1,32 @@
 open Kcas
 
-let unique = ref ()
-let null () = Obj.magic unique
-
 module Elems = struct
   type 'a t = { value : 'a; tl : 'a t; length : int }
 
-  let rec empty = { value = null (); tl = empty; length = 0 }
+  let rec empty = { value = Obj.magic (); tl = empty; length = 0 }
   let[@inline] length t = t.length lxor (t.length asr (Sys.int_size - 1))
 
   let rec rev_append length t tl =
     if length = 0 then tl
     else rev_append (length - 1) t.tl { value = t.value; tl; length }
 
-  let tl_safe t = if -2 <= t.length then t.tl else t
+  let rec head i t = if i = -2 then t.value else head (i + 1) t.tl
+  let[@inline] head t = if t.length < 0 then head t.length t else t.value
 
-  let[@inline] tl res t =
-    let length = t.length in
-    if -2 <= length then begin
-      if length <> 0 then res := t.value;
-      t.tl
-    end
+  let[@inline] tl t =
+    if -2 <= t.length then t.tl
     else
-      let length = lnot length in
-      let t =
-        rev_append (length - 1) t.tl { value = t.value; tl = empty; length }
-      in
-      res := t.value;
-      t.tl
+      let length = lnot t.length - 1 in
+      rev_append (length - 1) t.tl { value = t.value; tl = empty; length }
 
-  let peek res t =
-    let length = t.length in
-    if -2 <= length then begin
-      if length <> 0 then res := t.value;
-      t
-    end
+  let[@inline] peek t =
+    if -2 <= t.length then t
     else
-      let length = lnot length in
-      let t =
-        rev_append (length - 1) t.tl { value = t.value; tl = empty; length }
-      in
-      res := t.value;
-      t
+      let length = lnot t.length in
+      rev_append (length - 1) t.tl { value = t.value; tl = empty; length }
 
   let rec prepend_to_seq t tl =
+    (* TODO: handle reverse! *)
     if t == empty then tl
     else fun () -> Seq.Cons (t.value, prepend_to_seq t.tl tl)
 end
@@ -51,7 +34,7 @@ end
 module Back = struct
   type 'a t = { length : int; front : 'a; elems : 'a Elems.t }
 
-  let empty = { length = -1; front = null (); elems = Elems.empty }
+  let empty = { length = -1; front = Obj.magic (); elems = Elems.empty }
   let[@inline] length t = lnot t.length
 
   let[@inline] snoc x t =
@@ -81,14 +64,14 @@ module Back = struct
           in
           Elems.prepend_to_seq t tl ()
     in
-    if t.length <= -2 then Seq.cons t.front tl else tl
+    if t.length <= -2 then fun () -> Seq.Cons (t.front, tl) else tl
 end
 
 type 'a t = { front : 'a Elems.t Loc.t; back : 'a Back.t Loc.t }
 
 let alloc ~front ~back =
-  let front = Loc.make ~padded:true front
-  and back = Loc.make ~padded:true back in
+  let front = Loc.make ~padded:true front in
+  let back = Loc.make ~padded:true back in
   Multicore_magic.copy_as_padded { front; back }
 
 let create () = alloc ~front:Elems.empty ~back:Back.empty
@@ -109,48 +92,40 @@ module Xt = struct
   let push = add
 
   let peek_opt ~xt t =
-    let res = ref (null ()) in
-    Xt.modify ~xt t.front @@ Elems.peek res;
-    let res = !res in
-    if res == null () then
+    let front = Xt.update ~xt t.front Elems.peek in
+    if front.length = 0 then
       let back = Xt.get ~xt t.back in
       if back.length = -1 then None else Some back.front
-    else Some res
+    else Some (Elems.head front)
 
   let peek_blocking ~xt t =
-    let res = ref (null ()) in
-    Xt.modify ~xt t.front @@ Elems.peek res;
-    let res = !res in
-    if res == null () then
+    let front = Xt.update ~xt t.front Elems.peek in
+    if front.length = 0 then
       let back = Xt.get ~xt t.back in
       if back.length = -1 then Retry.later () else back.front
-    else res
+    else Elems.head front
 
   let take_opt ~xt t =
-    let res = ref (null ()) in
-    Xt.modify ~xt t.front @@ Elems.tl res;
-    let res = !res in
-    if res == null () then
+    let front = Xt.update ~xt t.front Elems.tl in
+    if front.length = 0 then
       let back = Xt.exchange ~xt t.back Back.empty in
       if back.length = -1 then None
       else begin
-        Xt.set ~xt t.front back.elems;
+        if back.length <> -2 then Xt.set ~xt t.front back.elems;
         Some back.front
       end
-    else Some res
+    else Some (Elems.head front)
 
   let take_blocking ~xt t =
-    let res = ref (null ()) in
-    Xt.modify ~xt t.front @@ Elems.tl res;
-    let res = !res in
-    if res == null () then
+    let front = Xt.update ~xt t.front Elems.tl in
+    if front.length = 0 then
       let back = Xt.exchange ~xt t.back Back.empty in
       if back.length = -1 then Retry.later ()
       else begin
-        Xt.set ~xt t.front back.elems;
+        if back.length <> -2 then Xt.set ~xt t.front back.elems;
         back.front
       end
-    else res
+    else Elems.head front
 
   let clear ~xt t =
     Xt.set ~xt t.front Elems.empty;
@@ -176,8 +151,8 @@ module Xt = struct
     seq_of ~front ~back
 end
 
-let is_empty q = Kcas.Xt.commit { tx = Xt.is_empty q }
-let length q = Kcas.Xt.commit { tx = Xt.length q }
+let is_empty t = Kcas.Xt.commit { tx = Xt.is_empty t }
+let length t = Kcas.Xt.commit { tx = Xt.length t }
 
 let add x t =
   (* Fenceless is safe as we always update. *)
@@ -187,40 +162,38 @@ let push = add
 
 let take_opt t =
   (* Fenceless is safe as we revert to a transaction in case we didn't update. *)
-  let front = Loc.fenceless_update t.front Elems.tl_safe in
-  let length = front.length in
-  if 0 < length || length = -2 then Some front.value
-  else Kcas.Xt.commit { tx = Xt.take_opt t }
+  let front = Loc.fenceless_update t.front Elems.tl in
+  if front.length = 0 then Kcas.Xt.commit { tx = Xt.take_opt t }
+  else Some (Elems.head front)
 
 let take_blocking ?timeoutf t =
   (* Fenceless is safe as we revert to a transaction in case we didn't update. *)
-  let front = Loc.fenceless_update t.front Elems.tl_safe in
-  let length = front.length in
-  if 0 < length || length = -2 then front.value
-  else Kcas.Xt.commit ?timeoutf { tx = Xt.take_blocking t }
+  let front = Loc.fenceless_update t.front Elems.tl in
+  if front.length = 0 then Kcas.Xt.commit ?timeoutf { tx = Xt.take_blocking t }
+  else Elems.head front
 
 let peek_opt t =
-  let front = Loc.get t.front in
-  let length = front.length in
-  if 0 < length || length = -2 then Some front.value
-  else Kcas.Xt.commit { tx = Xt.peek_opt t }
+  (* Fenceless is safe as we revert to a transaction in case we didn't update. *)
+  let front = Loc.fenceless_update t.front Elems.peek in
+  if front.length = 0 then Kcas.Xt.commit { tx = Xt.peek_opt t }
+  else Some (Elems.head front)
 
 let peek_blocking ?timeoutf t =
-  let front = Loc.get t.front in
-  let length = front.length in
-  if 0 < length || length = -2 then front.value
-  else Kcas.Xt.commit ?timeoutf { tx = Xt.peek_blocking t }
+  (* Fenceless is safe as we revert to a transaction in case we didn't update. *)
+  let front = Loc.fenceless_update t.front Elems.peek in
+  if front.length = 0 then Kcas.Xt.commit ?timeoutf { tx = Xt.peek_blocking t }
+  else Elems.head front
 
-let take_all q = Kcas.Xt.commit { tx = Xt.take_all q }
+let take_all t = Kcas.Xt.commit { tx = Xt.take_all t }
 let clear t = Kcas.Xt.commit { tx = Xt.clear t }
 let swap t1 t2 = Kcas.Xt.commit { tx = Xt.swap t1 t2 }
-let to_seq q = Kcas.Xt.commit { tx = Xt.to_seq q }
-let iter f q = Seq.iter f @@ to_seq q
-let fold f a q = Seq.fold_left f a @@ to_seq q
+let to_seq t = Kcas.Xt.commit { tx = Xt.to_seq t }
+let iter f t = Seq.iter f @@ to_seq t
+let fold f a t = Seq.fold_left f a @@ to_seq t
 
 exception Empty
 
 let[@inline] of_option = function None -> raise Empty | Some value -> value
-let peek s = peek_opt s |> of_option
+let peek t = peek_opt t |> of_option
 let top = peek
-let take s = take_opt s |> of_option
+let take t = take_opt t |> of_option
