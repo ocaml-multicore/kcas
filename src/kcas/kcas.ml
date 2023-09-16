@@ -514,11 +514,9 @@ let[@inline] rec cas_with_state loc before state state_old =
        true
      end
      else
-       (* We must retry, because compare is by value rather than by state.
-
-          Because we don't usually change location state on no-op updates (to
-          avoid unnecessary wakeups), we should mostly fail spuriously due to
-          some other thread having installed or removed a waiter.
+       (* We must retry, because compare is by value rather than by state.  In
+          other words, we should not fail spuriously due to some other thread
+          having installed or removed a waiter.
 
           Fenceless is safe as there was a fence before. *)
        cas_with_state loc before state (fenceless_get (as_atomic loc)))
