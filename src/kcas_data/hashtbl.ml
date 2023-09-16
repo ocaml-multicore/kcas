@@ -226,7 +226,7 @@ module Xt = struct
           done
         in
         try
-          if must_be_done_in_this_tx then
+          if must_be_done_in_this_tx then begin
             (* If the old buckets have already been accessed, we cannot perform
                rehashing outside of the transaction.  In this case rehashing
                becomes linearithmic, O(n*log(n)), because that is the best that
@@ -238,14 +238,17 @@ module Xt = struct
               (* If state is modified outside our expensive tx would fail. *)
               if Loc.fenceless_get state != initial_state then Retry.invalid ();
               rehash_a_few_buckets ~xt
-            done
-          else
+            done;
+            r
+          end
+          else begin
             (* When possible, rehashing is performed cooperatively a few buckets
                at a time.  This gives expected linear time, O(n). *)
             while true do
               Xt.commit { tx = rehash_a_few_buckets }
             done;
-          r
+            r
+          end
         with Done -> r
       end
     | Snapshot { state; snapshot } -> begin
