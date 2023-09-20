@@ -603,33 +603,6 @@ seconds:
 ```ocaml
 # let an_empty_stack = stack () in
   Xt.commit ~timeoutf:0.1 { tx = pop an_empty_stack }
-Exception: Failure "Domain_local_timeout.set_timeoutf not implemented".
-```
-
-Oops! What happened above is that the
-[_domain local timeout_](https://github.com/ocaml-multicore/domain-local-timeout)
-mechanism used by **Kcas** was not implemented on the current domain. The idea
-is that, in the future, concurrent schedulers provide the mechanism out of the
-box, but there is also a default implementation using the Stdlib `Thread` and
-`Unix` modules that works on most platforms. However, to avoid direct
-dependencies to `Thread` and `Unix`, we need to explicitly tell the library that
-it can use those modules:
-
-```ocaml
-# Domain_local_timeout.set_system (module Thread) (module Unix)
-- : unit = ()
-```
-
-This initialization, if needed, should be done by application code rather than
-by libraries.
-
-If we now retry the previous example we will get a
-[`Timeout`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Timeout/index.html#exception-Timeout)
-exception as expected:
-
-```ocaml
-# let an_empty_stack = stack () in
-  Xt.commit ~timeoutf:0.1 { tx = pop an_empty_stack }
 Exception: Kcas.Timeout.Timeout.
 ```
 

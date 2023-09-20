@@ -572,13 +572,15 @@ let test_call () =
 
 (** This is a non-deterministic test that might fail occasionally. *)
 let test_timeout () =
-  Domain_local_timeout.set_system (module Thread) (module Unix);
-
   let check (op : ?timeoutf:float -> bool Loc.t -> unit) () =
     let rec loop n =
       let x = Loc.make false in
-      let (_ : unit -> unit) =
-        Domain_local_timeout.set_timeoutf 0.6 @@ fun () -> Loc.set x true
+      let (_ : Thread.t) =
+        Thread.create
+          (fun () ->
+            Unix.sleepf 0.6;
+            Loc.set x true)
+          ()
       in
       match op ~timeoutf:0.02 x with
       | () -> if 0 < n then loop (n - 1) else assert false

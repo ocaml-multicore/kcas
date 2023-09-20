@@ -21,6 +21,8 @@ implementations that are conveniently provided by
 ```ocaml
 # #thread
 # #require "kcas_data"
+# #require "picos"
+# open Picos
 # open Kcas_data
 # open Kcas
 ```
@@ -36,45 +38,29 @@ module Scheduler : sig
   val fiber : t -> (unit -> 'a) -> 'a Promise.t
 end = struct
   open Effect.Deep
-  type _ Effect.t +=
-    | Suspend : (('a, unit) continuation -> unit) -> 'a Effect.t
   type t = {
     queue: (unit -> unit) Queue.t;
     domain: unit Domain.t
   }
   let spawn () =
-    let queue = Queue.create () in
+    let queue: (unit -> unit) Queue.t = Queue.create () in
     let rec scheduler work =
       let effc (type a) : a Effect.t -> _ = function
-        | Suspend ef -> Some ef
-        | _ -> None in
+        | Trigger.Await release ->
+          Some (fun (k: (a, _) continuation) ->
+          if not (Trigger.on_signal release () () @@ fun _ () () ->
+                  Queue.add (fun () -> continue k None) queue) then
+            continue k None)
+        | _ ->
+          None in
       try_with work () { effc };
       match Queue.take_opt queue with
       | Some work -> scheduler work
       | None -> () in
-    let prepare_for_await _ =
-      let state = Atomic.make `Init in
-      let release () =
-        if Atomic.get state != `Released then
-          match Atomic.exchange state `Released with
-          | `Awaiting k ->
-            Queue.add (continue k) queue
-          | _ -> () in
-      let await () =
-        if Atomic.get state != `Released then
-          Effect.perform @@ Suspend (fun k ->
-            if not (Atomic.compare_and_set state `Init
-                      (`Awaiting k)) then
-              continue k ())
-      in
-      Domain_local_await.{ release; await } in
     let domain = Domain.spawn @@ fun () ->
       try
         while true do
-          let work = Queue.take_blocking queue in
-          Domain_local_await.using
-            ~prepare_for_await
-            ~while_running:(fun () -> scheduler work)
+          scheduler (Queue.take_blocking queue)
         done
       with Exit -> () in
     { queue; domain }

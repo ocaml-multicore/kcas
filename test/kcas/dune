@@ -1,10 +1,4 @@
 (tests
  (names test ms_queue_test threads loc_modes)
- (libraries
-  alcotest
-  kcas
-  domain-local-timeout
-  threads.posix
-  unix
-  domain_shims)
+ (libraries alcotest kcas threads.posix unix domain_shims)
  (package kcas))
