@@ -16,7 +16,7 @@ depends: [
   "dune" {>= "3.8"}
   "ocaml" {>= "4.13.0"}
   "backoff" {>= "0.1.0"}
-  "domain-local-await" {>= "1.0.0"}
+  "single-use-event"
   "domain-local-timeout" {>= "1.0.0"}
   "multicore-magic" {>= "2.0.0"}
   "domain_shims" {>= "0.1.0" & with-test}
@@ -40,3 +40,6 @@ build: [
 ]
 dev-repo: "git+https://github.com/ocaml-multicore/kcas.git"
 doc: "https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/"
+pin-depends: [
+  [ "single-use-event.dev" "git+https://github.com/ocaml-multicore/single-use-event#ad1ffb4a063fd5ad34a765f2429469c9b1b79652"]
+]

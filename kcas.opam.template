@@ -1,1 +1,4 @@
 doc: "https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/"
+pin-depends: [
+  [ "single-use-event.dev" "git+https://github.com/ocaml-multicore/single-use-event#ad1ffb4a063fd5ad34a765f2429469c9b1b79652"]
+]

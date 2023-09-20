@@ -13,7 +13,7 @@
  (depends
   (ocaml (>= 4.13.0))
   (backoff (>= 0.1.0))
-  (domain-local-await (>= 1.0.0))
+  single-use-event
   (domain-local-timeout (>= 1.0.0))
   (multicore-magic (>= 2.0.0))
   (domain_shims (and (>= 0.1.0) :with-test))
@@ -26,7 +26,7 @@
  (depends
   (kcas (= :version))
   (multicore-magic (>= 2.0.0))
-  (domain-local-await (and (>= 1.0.0) :with-test))
+  (single-use-event :with-test)
   (domain_shims (and (>= 0.1.0) :with-test))
   (mtime (and (>= 2.0.0) :with-test))
   (alcotest (and (>= 1.7.0) :with-test))

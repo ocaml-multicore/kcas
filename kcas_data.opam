@@ -16,7 +16,7 @@ depends: [
   "dune" {>= "3.8"}
   "kcas" {= version}
   "multicore-magic" {>= "2.0.0"}
-  "domain-local-await" {>= "1.0.0" & with-test}
+  "single-use-event" {with-test}
   "domain_shims" {>= "0.1.0" & with-test}
   "mtime" {>= "2.0.0" & with-test}
   "alcotest" {>= "1.7.0" & with-test}

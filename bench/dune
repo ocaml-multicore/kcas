@@ -3,7 +3,7 @@
  (package kcas_data)
  (libraries
   kcas_data
-  domain-local-await
+  single-use-event
   multicore-magic
   yojson
   domain_shims

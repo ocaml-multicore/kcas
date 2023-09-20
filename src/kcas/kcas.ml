@@ -58,16 +58,19 @@ module Timeout = struct
   let[@inline] set_opt state seconds =
     if seconds != None then set_opt state seconds
 
-  let[@inline never] await state release =
+  let[@inline never] await state sue =
     match fenceless_get state with
     | Call _ as alive ->
-        if Atomic.compare_and_set state alive (Call release) then alive
+        if
+          Atomic.compare_and_set state alive
+            (Call (fun () -> Single_use_event.signal sue))
+        then alive
         else timeout ()
     | Unset | Elapsed -> timeout ()
 
-  let[@inline] await state release =
+  let[@inline] await state sue =
     let alive = fenceless_get state in
-    if alive == Unset then Unset else await state release
+    if alive == Unset then Unset else await state sue
 
   let[@inline never] unawait state alive =
     match fenceless_get state with
@@ -114,9 +117,9 @@ end = struct
     x
 end
 
-type awaiter = unit -> unit
+type awaiter = Single_use_event.t
 
-let[@inline] resume_awaiter awaiter = awaiter ()
+let[@inline] resume_awaiter awaiter = Single_use_event.signal awaiter
 
 let[@inline] resume_awaiters = function
   | [] -> ()
@@ -408,7 +411,8 @@ let add_awaiter loc before awaiter =
     let awaiters = awaiter :: state_old.awaiters in
     { before; after = before; casn = casn_after; awaiters }
   in
-  before == eval state_old
+  Single_use_event.is_initial awaiter
+  && before == eval state_old
   && Atomic.compare_and_set (as_atomic loc) state_old state_new
 
 let[@tail_mod_cons] rec remove_first x' removed = function
@@ -429,12 +433,12 @@ let rec remove_awaiter loc before awaiter =
         remove_awaiter loc before awaiter
 
 let block timeout loc before =
-  let t = Domain_local_await.prepare_for_await () in
-  let alive = Timeout.await timeout t.release in
-  if add_awaiter loc before t.release then begin
-    try t.await ()
+  let t = Single_use_event.create () in
+  let alive = Timeout.await timeout t in
+  if add_awaiter loc before t then begin
+    try Single_use_event.await t
     with cancellation_exn ->
-      remove_awaiter loc before t.release;
+      remove_awaiter loc before t;
       Timeout.cancel_alive alive;
       raise cancellation_exn
   end;
@@ -969,22 +973,22 @@ module Xt = struct
         commit (Backoff.once backoff) mode (reset_quick xt) tx
     | exception Retry.Later -> begin
         if xt.cass == NIL then invalid_retry ();
-        let t = Domain_local_await.prepare_for_await () in
-        let alive = Timeout.await (timeout_as_atomic xt) t.release in
-        match add_awaiters t.release xt.casn xt.cass with
+        let t = Single_use_event.create () in
+        let alive = Timeout.await (timeout_as_atomic xt) t in
+        match add_awaiters t xt.casn xt.cass with
         | NIL -> begin
-            match t.await () with
+            match Single_use_event.await t with
             | () ->
-                remove_awaiters t.release xt.casn NIL xt.cass;
+                remove_awaiters t xt.casn NIL xt.cass;
                 Timeout.unawait (timeout_as_atomic xt) alive;
                 commit (Backoff.reset backoff) mode (reset_quick xt) tx
             | exception cancellation_exn ->
-                remove_awaiters t.release xt.casn NIL xt.cass;
+                remove_awaiters t xt.casn NIL xt.cass;
                 Timeout.cancel_alive alive;
                 raise cancellation_exn
           end
         | CASN _ as stop ->
-            remove_awaiters t.release xt.casn stop xt.cass;
+            remove_awaiters t xt.casn stop xt.cass;
             Timeout.unawait (timeout_as_atomic xt) alive;
             commit (Backoff.once backoff) mode (reset_quick xt) tx
       end
