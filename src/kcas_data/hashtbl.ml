@@ -2,7 +2,6 @@ open Kcas
 
 (** Optimized operations on internal association lists with custom equality. *)
 module Assoc = struct
-  type change = Nop | Removed | Replaced | Added
   type ('k, 'v) t = Nil | Cons of { k : 'k; v : 'v; kvs : ('k, 'v) t }
 
   let[@inline] cons k v kvs = Cons { k; v; kvs }
@@ -44,14 +43,15 @@ module Assoc = struct
     | Nil -> false
     | Cons r -> equal r.k k' || mem equal k' r.kvs
 
-  let[@tail_mod_cons] rec remove equal change k' = function
-    | Nil -> Nil
+  exception Not_found
+
+  let[@tail_mod_cons] rec remove equal k' = function
+    | Nil -> raise_notrace Not_found
     | Cons r ->
-        if equal r.k k' then begin
-          change := Removed;
-          r.kvs
-        end
-        else Cons { k = r.k; v = r.v; kvs = remove equal change k' r.kvs }
+        if equal r.k k' then r.kvs
+        else Cons { k = r.k; v = r.v; kvs = remove equal k' r.kvs }
+
+  type change = Nop | Replaced | Added
 
   let[@tail_mod_cons] rec replace equal change k' v' = function
     | Nil ->
@@ -338,19 +338,16 @@ module Xt = struct
     let buckets = r.buckets in
     let mask = Array.length buckets - 1 in
     let bucket = Array.unsafe_get buckets (r.hash k land mask) in
-    let change = ref Assoc.Nop in
-    Xt.unsafe_modify ~xt bucket (fun kvs ->
-        let kvs' = Assoc.remove r.equal change k kvs in
-        if !change != Assoc.Nop then kvs' else kvs);
-    if !change == Assoc.Removed then begin
-      Accumulator.Xt.decr ~xt r.length;
-      if r.min_buckets <= mask && Random.bits () land mask = 0 then
-        let capacity = mask + 1 in
-        let length = Accumulator.Xt.get ~xt r.length in
-        if length * 4 < capacity then
-          Xt.set ~xt t
-            { r with pending = make_rehash capacity (capacity asr 1) }
-    end
+    match Xt.unsafe_modify ~xt bucket (Assoc.remove r.equal k) with
+    | () ->
+        Accumulator.Xt.decr ~xt r.length;
+        if r.min_buckets <= mask && Random.bits () land mask = 0 then
+          let capacity = mask + 1 in
+          let length = Accumulator.Xt.get ~xt r.length in
+          if length * 4 < capacity then
+            Xt.set ~xt t
+              { r with pending = make_rehash capacity (capacity asr 1) }
+    | exception Assoc.Not_found -> ()
 
   let add ~xt t k v =
     let r = perform_pending ~xt t in
