@@ -1,1 +1,4 @@
 doc: "https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/"
+pin-depends: [
+  [ "multicore-magic.dev" "git+https://github.com/ocaml-multicore/multicore-magic#e7abfa84e0657d7d56f977a5695f5c20b1f465a1" ]
+]

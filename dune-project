@@ -15,7 +15,7 @@
   (backoff (>= 0.1.0))
   (domain-local-await (>= 1.0.0))
   (domain-local-timeout (>= 1.0.0))
-  (multicore-magic (>= 2.0.0))
+  (multicore-magic (>= 2.1.0))
   (domain_shims (and (>= 0.1.0) :with-test))
   (alcotest (and (>= 1.7.0) :with-test))
   (mdx (and (>= 2.3.0) :with-test))
@@ -25,7 +25,7 @@
  (description "A library of compositional lock-free data structures and primitives for communication and synchronization implemented using kcas.")
  (depends
   (kcas (= :version))
-  (multicore-magic (>= 2.0.0))
+  (multicore-magic (>= 2.1.0))
   (domain-local-await (and (>= 1.0.0) :with-test))
   (domain_shims (and (>= 0.1.0) :with-test))
   (mtime (and (>= 2.0.0) :with-test))

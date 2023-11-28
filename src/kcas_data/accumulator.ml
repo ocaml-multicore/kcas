@@ -18,8 +18,7 @@ let make ?n_way n =
 let n_way_of = Array.length
 
 let get_self a =
-  let h = (Domain.self () :> int) in
-  (* TODO: Consider mixing the bits of [h] to get better distribution *)
+  let h = Multicore_magic.domain_hash () in
   Array.unsafe_get a (h land (Array.length a - 1))
 
 module Xt = struct

@@ -18,7 +18,7 @@ depends: [
   "backoff" {>= "0.1.0"}
   "domain-local-await" {>= "1.0.0"}
   "domain-local-timeout" {>= "1.0.0"}
-  "multicore-magic" {>= "2.0.0"}
+  "multicore-magic" {>= "2.1.0"}
   "domain_shims" {>= "0.1.0" & with-test}
   "alcotest" {>= "1.7.0" & with-test}
   "mdx" {>= "2.3.0" & with-test}
@@ -40,3 +40,6 @@ build: [
 ]
 dev-repo: "git+https://github.com/ocaml-multicore/kcas.git"
 doc: "https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/"
+pin-depends: [
+  [ "multicore-magic.dev" "git+https://github.com/ocaml-multicore/multicore-magic#e7abfa84e0657d7d56f977a5695f5c20b1f465a1" ]
+]
