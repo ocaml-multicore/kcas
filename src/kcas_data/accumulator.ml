@@ -1,45 +1,54 @@
 open Kcas
 
-let n_way_max = Domain.recommended_domain_count () |> Bits.ceil_pow_2
-let n_way_default = n_way_max |> Int.min 8
+type t = { mutable cache : int Loc.t array; truth : int Loc.t array Loc.t }
 
-type t = int Loc.t array
+let make n =
+  let cs = Loc.make_array ~padded:true ~mode:`Lock_free 1 0 in
+  Loc.set (Array.unsafe_get cs 0) n;
+  let truth = Loc.make ~padded:true cs in
+  Multicore_magic.copy_as_padded { cache = cs; truth }
 
-let make ?n_way n =
-  let n_way =
-    match n_way with
-    | None -> n_way_default
-    | Some n_way -> n_way |> Int.min n_way_max |> Bits.ceil_pow_2
+let[@inline never] rec get_self a i cs n =
+  let add_cs = Loc.make_array ~padded:true ~mode:`Lock_free (n + 1) 0 in
+  let new_cs =
+    (* The length of [new_cs] will be a power of two minus 1, which means the
+       whole heap block will have a power of two number of words, which may help
+       to keep it cache line aligned. *)
+    Array.init ((n * 2) + 1) @@ fun i ->
+    if i <= n then Array.unsafe_get add_cs i else Array.unsafe_get cs (i - n - 1)
   in
-  let a = Loc.make_array ~padded:true ~mode:`Lock_free n_way 0 in
-  Loc.set (Array.unsafe_get a 0) n;
-  a
+  if Loc.compare_and_set a.truth cs new_cs then a.cache <- new_cs;
+  let cs = a.cache in
+  let n = Array.length cs in
+  if i < n then Array.unsafe_get cs i else get_self a i cs n
 
-let n_way_of = Array.length
-
-let get_self a =
-  let h = (Domain.self () :> int) in
-  (* TODO: Consider mixing the bits of [h] to get better distribution *)
-  Array.unsafe_get a (h land (Array.length a - 1))
+let[@inline] get_self a =
+  let i = Multicore_magic.instantaneous_domain_index () in
+  let cs = a.cache in
+  let n = Array.length cs in
+  if i < n then Array.unsafe_get cs i else get_self a i cs n
 
 module Xt = struct
   let add ~xt a n = if n <> 0 then Xt.fetch_and_add ~xt (get_self a) n |> ignore
   let incr ~xt a = Xt.incr ~xt (get_self a)
   let decr ~xt a = Xt.decr ~xt (get_self a)
 
-  let rec get ~xt a s i =
-    let s = s + Xt.get ~xt (Array.unsafe_get a i) in
-    if i = 0 then s else get ~xt a s (i - 1)
+  let rec get_rec ~xt cs s i =
+    let s = s + Xt.get ~xt (Array.unsafe_get cs i) in
+    if i = 0 then s else get_rec ~xt cs s (i - 1)
 
   let get ~xt a =
-    let i = Array.length a - 1 in
-    let s = Xt.get ~xt (Array.unsafe_get a i) in
-    if i = 0 then s else get ~xt a s (i - 1)
+    let cs = Xt.get ~xt a.truth in
+    let cs_old = a.cache in
+    if cs != cs_old then a.cache <- cs;
+    let i = Array.length cs - 1 in
+    let s = Xt.get ~xt (Array.unsafe_get cs i) in
+    if i = 0 then s else get_rec ~xt cs s (i - 1)
 
   let set ~xt a n =
     let delta = n - get ~xt a in
     if delta <> 0 then
-      Xt.fetch_and_add ~xt (Array.unsafe_get a 0) delta |> ignore
+      Xt.fetch_and_add ~xt (Array.unsafe_get a.cache 0) delta |> ignore
 end
 
 let add a n = if n <> 0 then Loc.fetch_and_add (get_self a) n |> ignore
