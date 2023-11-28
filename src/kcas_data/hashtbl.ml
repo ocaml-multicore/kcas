@@ -127,7 +127,7 @@ module HashedType = struct
     hash == HashedType.hash && equal == HashedType.equal
 end
 
-let create ?hashed_type ?min_buckets ?max_buckets ?n_way () =
+let create ?hashed_type ?min_buckets ?max_buckets () =
   let min_buckets =
     match min_buckets with
     | None -> min_buckets_default
@@ -144,13 +144,12 @@ let create ?hashed_type ?min_buckets ?max_buckets ?n_way () =
     | Some hashed_type -> HashedType.unpack hashed_type
   and pending = Nothing
   and buckets = Loc.make_array min_buckets Assoc.Nil
-  and length = Accumulator.make ?n_way 0 in
+  and length = Accumulator.make 0 in
   Loc.set t
     (Multicore_magic.copy_as_padded
        { pending; length; buckets; hash; equal; min_buckets; max_buckets });
   t
 
-let n_way_of t = Accumulator.n_way_of (Loc.get t).length
 let min_buckets_of t = (Loc.get t).min_buckets
 let max_buckets_of t = (Loc.get t).max_buckets
 
@@ -441,12 +440,12 @@ let to_seq t =
 let to_seq_keys t = to_seq t |> Seq.map fst
 let to_seq_values t = to_seq t |> Seq.map snd
 
-let of_seq ?hashed_type ?min_buckets ?max_buckets ?n_way xs =
-  let t = create ?hashed_type ?min_buckets ?max_buckets ?n_way () in
+let of_seq ?hashed_type ?min_buckets ?max_buckets xs =
+  let t = create ?hashed_type ?min_buckets ?max_buckets () in
   Seq.iter (fun (k, v) -> replace t k v) xs;
   t
 
-let rebuild ?hashed_type ?min_buckets ?max_buckets ?n_way t =
+let rebuild ?hashed_type ?min_buckets ?max_buckets t =
   let record = ref (Obj.magic ()) and length = ref 0 in
   let snapshot = snapshot ~length ~record t in
   let r = !record in
@@ -459,8 +458,6 @@ let rebuild ?hashed_type ?min_buckets ?max_buckets ?n_way t =
     match max_buckets with
     | None -> Int.max min_buckets r.max_buckets
     | Some c -> Int.max min_buckets c |> Int.min hi_buckets |> Bits.ceil_pow_2
-  and n_way =
-    match n_way with None -> Accumulator.n_way_of r.length | Some n -> n
   in
   let is_same_hashed_type =
     match hashed_type with
@@ -471,14 +468,14 @@ let rebuild ?hashed_type ?min_buckets ?max_buckets ?n_way t =
     let t = Loc.make ~padded:true (Obj.magic ()) in
     let pending = Nothing
     and buckets = Array.map Loc.make snapshot
-    and length = Accumulator.make ~n_way length in
+    and length = Accumulator.make length in
     Loc.set t
     @@ Multicore_magic.copy_as_padded
          { r with pending; length; buckets; min_buckets; max_buckets };
     t
   end
   else
-    let t = create ?hashed_type ~min_buckets ~max_buckets ~n_way () in
+    let t = create ?hashed_type ~min_buckets ~max_buckets () in
     snapshot |> Array.iter (Assoc.iter_rev (add t));
     t
 

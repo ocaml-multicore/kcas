@@ -10,19 +10,8 @@ open Kcas
 type t
 (** The type of a scalable accumulator. *)
 
-val make : ?n_way:int -> int -> t
-(** [make n] returns a new accumulator whose initial value is [n].
-
-    The optional [n_way] argument can be used to specify a desired level of
-    parallelism, i.e. maximum number of non-interfering parallel updates.  The
-    default value is chosen to strike a balance between scalability and memory
-    use and a given value may be adjusted by the implementation. *)
-
-val n_way_of : t -> int
-(** [n_way_of a] returns the maximum number of non-interfering parallel updates
-    supported by the accumulator [a].
-
-    {b NOTE}: The returned value may not be the same as given to {!make}. *)
+val make : int -> t
+(** [make n] returns a new accumulator whose initial value is [n]. *)
 
 (** {1 Compositional interface} *)
 

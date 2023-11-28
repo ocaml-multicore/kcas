@@ -37,7 +37,7 @@
   (domain-local-timeout
    (>= 1.0.0))
   (multicore-magic
-   (>= 2.0.0))
+   (>= 2.1.0))
   (domain_shims
    (and
     (>= 0.1.0)
@@ -65,7 +65,7 @@
   (kcas
    (= :version))
   (multicore-magic
-   (>= 2.0.0))
+   (>= 2.1.0))
   (domain-local-await
    (and
     (>= 1.0.0)

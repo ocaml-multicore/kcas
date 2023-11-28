@@ -43,7 +43,6 @@ val create :
   ?hashed_type:'k hashed_type ->
   ?min_buckets:int ->
   ?max_buckets:int ->
-  ?n_way:int ->
   unit ->
   ('k, 'v) t
 (** [create ()] returns a new empty hash table.
@@ -55,8 +54,6 @@ val create :
     - The default [max_buckets] is the minimum of [1 lsl 30] and suitably
       adjusted [Sys.max_array_length] and a given [max_buckets] may be adjusted
       by the implementation.
-    - The [n_way] argument is passed to the internal {!Accumulator} used to keep
-      track of the number of bindings.
 
     Hash tables are automatically internally resized. *)
 
@@ -76,16 +73,10 @@ val max_buckets_of : ('k, 'v) t -> int
 
     {b NOTE}: The returned value may not be the same as given to {!create}. *)
 
-val n_way_of : ('k, 'v) t -> int
-(** [n_way_of t] returns the maximum number of non-interfering parallel updates
-    allowed by the internal {!Accumulator} used to keep track of the number of
-    bindings in the hash table [t]. *)
-
 val of_seq :
   ?hashed_type:'k hashed_type ->
   ?min_buckets:int ->
   ?max_buckets:int ->
-  ?n_way:int ->
   ('k * 'v) Seq.t ->
   ('k, 'v) t
 (** [of_seq assoc] creates a new hash table from the given association sequence
@@ -138,7 +129,6 @@ val rebuild :
   ?hashed_type:'k hashed_type ->
   ?min_buckets:int ->
   ?max_buckets:int ->
-  ?n_way:int ->
   ('k, 'v) t ->
   ('k, 'v) t
 (** [rebuild t] returns a copy of the given hash table [t] optionally rehashing
