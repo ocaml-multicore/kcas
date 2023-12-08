@@ -796,6 +796,9 @@ module Xt = struct
     unsafe_update ~xt loc (fun actual ->
         if actual == before then after else actual)
 
+  let compare_and_set ~xt loc before after =
+    compare_and_swap ~xt loc before after == before
+
   let exchange ~xt loc after = unsafe_update ~xt loc (fun _ -> after)
   let fetch_and_add ~xt loc n = unsafe_update ~xt loc (( + ) n)
   let incr ~xt loc = unsafe_update ~xt loc inc |> ignore
