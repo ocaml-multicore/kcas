@@ -43,7 +43,12 @@ val get : 'a node -> 'a
 (** [get node] returns the value stored in the {!node}. *)
 
 val create : unit -> 'a t
-(** [create ()] return a new doubly-linked list. *)
+(** [create ()] creates a new doubly-linked list. *)
+
+val create_node : 'a -> 'a node
+(** [create_node value] creates a new doubly-linked list node that is not in any
+    list.  The node can then e.g. be added to a list using {!move_l} or
+    {!move_r}. *)
 
 (** {1 Compositional interface} *)
 
