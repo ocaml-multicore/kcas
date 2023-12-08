@@ -1,3 +1,5 @@
+open QCheck
+open STM
 open Kcas_data
 
 module Spec = struct
@@ -13,14 +15,13 @@ module Spec = struct
   type sut = int Stack.t
 
   let arb_cmd _s =
-    QCheck.(
-      [
-        Gen.int |> Gen.map (fun x -> Push x);
-        Gen.return Pop_opt;
-        Gen.return Top_opt;
-        Gen.return Length;
-      ]
-      |> Gen.oneof |> make ~print:show_cmd)
+    [
+      Gen.int |> Gen.map (fun x -> Push x);
+      Gen.return Pop_opt;
+      Gen.return Top_opt;
+      Gen.return Length;
+    ]
+    |> Gen.oneof |> make ~print:show_cmd
 
   let init_state = []
   let init_sut () = Stack.create ()
@@ -36,7 +37,6 @@ module Spec = struct
   let precond _ _ = true
 
   let run c d =
-    let open STM in
     match c with
     | Push x -> Res (unit, Stack.push x d)
     | Pop_opt -> Res (option int, Stack.pop_opt d)
@@ -44,7 +44,6 @@ module Spec = struct
     | Length -> Res (int, Stack.length d)
 
   let postcond c (s : state) res =
-    let open STM in
     match (c, res) with
     | Push _x, Res ((Unit, _), ()) -> true
     | Pop_opt, Res ((Option Int, _), res) -> (
