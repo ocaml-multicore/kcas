@@ -16,7 +16,17 @@ let create () =
   Loc.set next list;
   list
 
-let create_node ~prev ~next value =
+let create_node value =
+  let node =
+    let node_prev = Loc.make (Obj.magic ())
+    and node_next = Loc.make (Obj.magic ()) in
+    { node_prev; node_next; value }
+  in
+  Loc.set node.node_prev (as_list node);
+  Loc.set node.node_next (as_list node);
+  node
+
+let create_node_with ~prev ~next value =
   { node_prev = Loc.make prev; node_next = Loc.make next; value }
 
 module Xt = struct
@@ -41,7 +51,7 @@ module Xt = struct
 
   let add_l ~xt value list =
     let next = Xt.get ~xt list.next in
-    let node = create_node ~prev:list ~next value in
+    let node = create_node_with ~prev:list ~next value in
     Xt.set ~xt list.next (as_list node);
     Xt.set ~xt next.prev (as_list node);
     node
@@ -56,7 +66,7 @@ module Xt = struct
 
   let add_r ~xt value list =
     let prev = Xt.get ~xt list.prev in
-    let node = create_node ~prev ~next:list value in
+    let node = create_node_with ~prev ~next:list value in
     Xt.set ~xt list.prev (as_list node);
     Xt.set ~xt prev.next (as_list node);
     node
@@ -163,11 +173,11 @@ let remove node = Kcas.Xt.commit { tx = Xt.remove node }
 let is_empty list = Loc.get list.prev == list
 
 let add_l value list =
-  let node = create_node ~prev:list ~next:list value in
+  let node = create_node_with ~prev:list ~next:list value in
   Kcas.Xt.commit { tx = Xt.add_node_l node list }
 
 let add_r value list =
-  let node = create_node ~prev:list ~next:list value in
+  let node = create_node_with ~prev:list ~next:list value in
   Kcas.Xt.commit { tx = Xt.add_node_r node list }
 
 let move_l node list = Kcas.Xt.commit { tx = Xt.move_l node list }

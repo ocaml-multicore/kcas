@@ -9,7 +9,7 @@ let basics () =
   assert (Dllist.to_list_r t1 = [] && Dllist.to_list_l t1' = []);
   Dllist.transfer_r t1' t1';
   Dllist.add_r 2 t1' |> ignore;
-  Dllist.add_r 3 t1' |> ignore;
+  Dllist.move_r (Dllist.create_node 3) t1';
   Dllist.swap t1' t1';
   Dllist.add_l 1 t1' |> ignore;
   Dllist.transfer_r t1' t1';
