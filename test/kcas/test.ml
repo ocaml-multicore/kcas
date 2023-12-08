@@ -386,29 +386,68 @@ let test_get_seq_xt () =
 (* *)
 
 let test_stress n nb_loop =
-  let make_loc n =
-    let rec loop n out =
-      if n > 0 then loop (n - 1) (Loc.make 0 :: out) else out
-    in
-    loop n []
-  and make_kcas0 r_l =
-    let rec loop r_l out =
-      match r_l with h :: t -> loop t (Op.make_cas h 0 1 :: out) | [] -> out
-    in
-    loop r_l []
-  and make_kcas1 r_l =
-    let rec loop r_l out =
-      match r_l with h :: t -> loop t (Op.make_cas h 1 0 :: out) | [] -> out
-    in
-    loop r_l []
-  in
-  let r_l = make_loc n in
-  let kcas0 = make_kcas0 r_l in
-  let kcas1 = make_kcas1 r_l in
-  for _ = 1 to nb_loop do
-    assert (Op.atomically kcas0);
-    assert (Op.atomically kcas1)
-  done
+  [ Mode.obstruction_free; Mode.lock_free ]
+  |> List.iter @@ fun mode ->
+     let make_loc n =
+       let rec loop n out =
+         if n > 0 then loop (n - 1) (Loc.make ~mode 0 :: out) else out
+       in
+       loop n []
+     and make_kcas0 r_l =
+       let rec loop r_l out =
+         match r_l with
+         | h :: t -> loop t (Op.make_cas h 0 1 :: out)
+         | [] -> out
+       in
+       loop r_l []
+     and make_kcas1 r_l =
+       let rec loop r_l out =
+         match r_l with
+         | h :: t -> loop t (Op.make_cas h 1 0 :: out)
+         | [] -> out
+       in
+       loop r_l []
+     in
+     let r_l = make_loc n in
+     let kcas0 = make_kcas0 r_l in
+     let kcas1 = make_kcas1 r_l in
+     for _ = 1 to nb_loop do
+       assert (Op.atomically kcas0);
+       assert (Op.atomically kcas1)
+     done
+
+(* *)
+
+let test_stress_xt n nb_loop =
+  [ Mode.obstruction_free; Mode.lock_free ]
+  |> List.iter @@ fun mode ->
+     let make_loc n =
+       let rec loop n out =
+         if n > 0 then loop (n - 1) (Loc.make ~mode 0 :: out) else out
+       in
+       loop n []
+     and make_kcas0 ~xt r_l =
+       let rec loop ~xt r_l =
+         match r_l with
+         | h :: t -> Xt.compare_and_set ~xt h 0 1 && loop ~xt t
+         | [] -> true
+       in
+       loop ~xt r_l
+     and make_kcas1 ~xt r_l =
+       let rec loop ~xt r_l =
+         match r_l with
+         | h :: t -> Xt.compare_and_set ~xt h 1 0 && loop ~xt t
+         | [] -> true
+       in
+       loop ~xt r_l
+     in
+     let r_l = make_loc n in
+     let kcas0 ~xt = make_kcas0 ~xt r_l in
+     let kcas1 ~xt = make_kcas1 ~xt r_l in
+     for _ = 1 to nb_loop do
+       assert (Xt.commit { tx = kcas0 });
+       assert (Xt.commit { tx = kcas1 })
+     done
 
 (* *)
 
@@ -839,6 +878,11 @@ let () =
         [
           Alcotest.test_case "" `Quick (fun () ->
               test_stress (10 * Util.iter_factor) 1_0);
+        ] );
+      ( "stress xt",
+        [
+          Alcotest.test_case "" `Quick (fun () ->
+              test_stress_xt (10 * Util.iter_factor) 1_0);
         ] );
       ("presort", [ Alcotest.test_case "" `Quick test_presort ]);
       ( "is_in_log",
