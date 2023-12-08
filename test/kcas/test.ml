@@ -148,62 +148,129 @@ let test_set () =
 
 (* *)
 
-let test_casn () =
-  let barrier = Barrier.make 3 in
-  let test_finished = Atomic.make false in
+let test_no_skew () =
+  [ Mode.obstruction_free; Mode.lock_free ]
+  |> List.iter @@ fun mode ->
+     let barrier = Barrier.make 3 in
+     let test_finished = Atomic.make false in
 
-  let a1 = Loc.make 0 in
-  let a2 = Loc.make 0 in
+     let a1 = Loc.make ~mode 0 in
+     let a2 = Loc.make ~mode 0 in
 
-  let thread1 () =
-    let c1 = [ Op.make_cas a1 0 1; Op.make_cas a2 0 1 ] in
-    let c2 = [ Op.make_cas a1 1 0; Op.make_cas a2 1 0 ] in
+     let thread1 () =
+       let c1 = [ Op.make_cas a1 0 1; Op.make_cas a2 0 1 ] in
+       let c2 = [ Op.make_cas a1 1 0; Op.make_cas a2 1 0 ] in
 
-    Barrier.await barrier;
+       Barrier.await barrier;
 
-    for _ = 1 to nb_iter do
-      assert_kcas a1 0;
-      assert_kcas a2 0;
+       for _ = 1 to nb_iter do
+         assert_kcas a1 0;
+         assert_kcas a2 0;
 
-      let out1 = Op.atomically c1 in
-      assert out1;
+         let out1 = Op.atomically c1 in
+         assert out1;
 
-      assert_kcas a1 1;
-      assert_kcas a2 1;
+         assert_kcas a1 1;
+         assert_kcas a2 1;
 
-      let out2 = Op.atomically c2 in
-      assert out2
-    done;
-    Atomic.set test_finished true
-  and thread2 () =
-    let c1 = [ Op.make_cas a1 1 0; Op.make_cas a2 0 1 ] in
-    let c2 = [ Op.make_cas a1 0 1; Op.make_cas a2 1 0 ] in
+         let out2 = Op.atomically c2 in
+         assert out2
+       done;
+       Atomic.set test_finished true
+     and thread2 () =
+       let c1 = [ Op.make_cas a1 1 0; Op.make_cas a2 0 1 ] in
+       let c2 = [ Op.make_cas a1 0 1; Op.make_cas a2 1 0 ] in
 
-    Barrier.await barrier;
+       Barrier.await barrier;
 
-    while not (Atomic.get test_finished) do
-      let out1 = Op.atomically c1 in
-      let out2 = Op.atomically c2 in
-      assert (not out1);
-      assert (not out2);
-      if is_single then Domain.cpu_relax ()
-    done
-  and thread3 () =
-    let c1 = [ Op.make_cas a1 0 1; Op.make_cas a2 1 0 ] in
-    let c2 = [ Op.make_cas a1 1 0; Op.make_cas a2 0 1 ] in
+       while not (Atomic.get test_finished) do
+         let out1 = Op.atomically c1 in
+         let out2 = Op.atomically c2 in
+         assert (not out1);
+         assert (not out2);
+         if is_single then Domain.cpu_relax ()
+       done
+     and thread3 () =
+       let c1 = [ Op.make_cas a1 0 1; Op.make_cas a2 1 0 ] in
+       let c2 = [ Op.make_cas a1 1 0; Op.make_cas a2 0 1 ] in
 
-    Barrier.await barrier;
+       Barrier.await barrier;
 
-    while not (Atomic.get test_finished) do
-      let out1 = Op.atomically c1 in
-      let out2 = Op.atomically c2 in
-      assert (not out1);
-      assert (not out2);
-      if is_single then Domain.cpu_relax ()
-    done
-  in
+       while not (Atomic.get test_finished) do
+         let out1 = Op.atomically c1 in
+         let out2 = Op.atomically c2 in
+         assert (not out1);
+         assert (not out2);
+         if is_single then Domain.cpu_relax ()
+       done
+     in
 
-  run_domains [ thread1; thread2; thread3 ]
+     run_domains [ thread1; thread2; thread3 ]
+
+(* *)
+
+let test_no_skew_xt () =
+  [ Mode.obstruction_free; Mode.lock_free ]
+  |> List.iter @@ fun mode ->
+     let barrier = Barrier.make 3 in
+     let test_finished = Atomic.make false in
+
+     let a1 = Loc.make ~mode 0 in
+     let a2 = Loc.make ~mode 0 in
+
+     let thread1 () =
+       let c1 ~xt =
+         Xt.compare_and_set ~xt a1 0 1 && Xt.compare_and_set ~xt a2 0 1
+       in
+       let c2 ~xt =
+         Xt.compare_and_set ~xt a1 1 0 && Xt.compare_and_set ~xt a2 1 0
+       in
+
+       Barrier.await barrier;
+
+       for _ = 1 to nb_iter do
+         assert_kcas a1 0;
+         assert_kcas a2 0;
+
+         let out1 = Xt.commit { tx = c1 } in
+         assert out1;
+
+         assert_kcas a1 1;
+         assert_kcas a2 1;
+
+         let out2 = Xt.commit { tx = c2 } in
+         assert out2
+       done;
+       Atomic.set test_finished true
+     and thread2 () =
+       let c1 ~xt = Xt.get ~xt a1 == 0 && Xt.get ~xt a2 == 1 in
+       let c2 ~xt = Xt.get ~xt a2 == 1 && Xt.get ~xt a2 == 0 in
+
+       Barrier.await barrier;
+
+       while not (Atomic.get test_finished) do
+         let out1 = Xt.commit { tx = c1 } in
+         let out2 = Xt.commit { tx = c2 } in
+         assert (not out1);
+         assert (not out2);
+         if is_single then Domain.cpu_relax ()
+       done
+     and thread3 () =
+       let c1 ~xt = Xt.get ~xt a1 == 1 && Xt.get ~xt a2 == 0 in
+       let c2 ~xt = Xt.get ~xt a2 == 0 && Xt.get ~xt a2 == 1 in
+
+       Barrier.await barrier;
+
+       while not (Atomic.get test_finished) do
+         let out1 = Xt.commit { tx = c1 } in
+         let out2 = Xt.commit { tx = c2 } in
+         assert (not out1);
+         assert (not out2);
+         if is_single then Domain.cpu_relax ()
+       done
+     in
+
+     run_domains [ thread1; thread2; thread3 ]
 
 (* *)
 
@@ -705,7 +772,8 @@ let () =
       ( "non linearizable xt",
         [ Alcotest.test_case "" `Quick test_non_linearizable_xt ] );
       ("set", [ Alcotest.test_case "" `Quick test_set ]);
-      ("casn", [ Alcotest.test_case "" `Quick test_casn ]);
+      ("no skew", [ Alcotest.test_case "" `Quick test_no_skew ]);
+      ("no skew xt", [ Alcotest.test_case "" `Quick test_no_skew_xt ]);
       ("read casn", [ Alcotest.test_case "" `Quick test_read_casn ]);
       ( "stress",
         [
