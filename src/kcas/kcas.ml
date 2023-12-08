@@ -3,6 +3,10 @@
  * Copyright (c) 2023, Vesa Karvonen <vesa.a.j.k@gmail.com>
  *)
 
+(** Work around CSE bug in OCaml 5-5.1. *)
+let[@inline] atomic_get x =
+  Atomic.get ((* Prevents CSE *) Sys.opaque_identity x)
+
 (* NOTE: You can adjust comment blocks below to select whether or not to use
    fenceless operations where it is safe to do so.  Fenceless operations have
    been seen to provide significant performance improvements on ARM (Apple
@@ -11,9 +15,12 @@
 (**)
 external fenceless_get : 'a Atomic.t -> 'a = "%field0"
 external fenceless_set : 'a Atomic.t -> 'a -> unit = "%setfield0"
+
+let[@inline] fenceless_get x =
+  fenceless_get ((* Prevents CSE *) Sys.opaque_identity x)
 (**)
 (*
-let fenceless_get = Atomic.get
+let fenceless_get = atomic_get
 let fenceless_set = Atomic.set
 *)
 
@@ -260,7 +267,7 @@ let rec determine casn status = function
       if status < 0 then status
       else
         let loc = r.loc in
-        let current = Atomic.get (as_atomic loc) in
+        let current = atomic_get (as_atomic loc) in
         let state = r.state in
         if state == current then
           let a_cas_or_a_cmp = 1 + Bool.to_int (is_cas casn state) in
@@ -490,7 +497,7 @@ let update_with_state timeout backoff loc f state_old =
       raise exn
 
 let rec exchange_no_alloc backoff loc state =
-  let state_old = Atomic.get (as_atomic loc) in
+  let state_old = atomic_get (as_atomic loc) in
   let before = eval state_old in
   if before == state.after then before
   else if Atomic.compare_and_set (as_atomic loc) state_old state then begin
@@ -546,7 +553,7 @@ module Loc = struct
     Array.init n @@ fun i -> make_loc padded state (id + i)
 
   let[@inline] get_id loc = loc.id
-  let get loc = eval (Atomic.get (as_atomic loc))
+  let get loc = eval (atomic_get (as_atomic loc))
 
   let rec get_as timeout f loc state =
     let before = eval state in
@@ -563,14 +570,14 @@ module Loc = struct
         raise exn
 
   let[@inline] get_as ?timeoutf f loc =
-    get_as (Timeout.alloc_opt timeoutf) f loc (Atomic.get (as_atomic loc))
+    get_as (Timeout.alloc_opt timeoutf) f loc (atomic_get (as_atomic loc))
 
   let[@inline] get_mode loc =
     if loc.id < 0 then Mode.lock_free else Mode.obstruction_free
 
   let compare_and_set loc before after =
     let state = new_state after in
-    let state_old = Atomic.get (as_atomic loc) in
+    let state_old = atomic_get (as_atomic loc) in
     cas_with_state loc before state state_old
 
   let fenceless_update ?timeoutf ?(backoff = Backoff.default) loc f =
@@ -582,7 +589,7 @@ module Loc = struct
 
   let update ?timeoutf ?(backoff = Backoff.default) loc f =
     let timeout = Timeout.alloc_opt timeoutf in
-    update_with_state timeout backoff loc f (Atomic.get (as_atomic loc))
+    update_with_state timeout backoff loc f (atomic_get (as_atomic loc))
 
   let[@inline] modify ?timeoutf ?backoff loc f =
     update ?timeoutf ?backoff loc f |> ignore
@@ -607,7 +614,7 @@ module Loc = struct
     fenceless_update ?backoff loc dec |> ignore
 
   let has_awaiters loc =
-    let state = Atomic.get (as_atomic loc) in
+    let state = atomic_get (as_atomic loc) in
     state.awaiters != []
 
   let fenceless_get loc = eval (fenceless_get (as_atomic loc))
