@@ -11,6 +11,7 @@
 
 (tests
  (names
+  accumulator_test_stm
   dllist_test
   hashtbl_test
   lru_cache_example
