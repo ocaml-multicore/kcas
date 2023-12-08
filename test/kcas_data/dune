@@ -1,3 +1,14 @@
+(rule
+ (enabled_if %{lib-available:qcheck-stm.domain})
+ (action
+  (copy stm_run.ocaml5.ml stm_run.ml)))
+
+(rule
+ (enabled_if
+  (not %{lib-available:qcheck-stm.domain}))
+ (action
+  (copy stm_run.ocaml4.ml stm_run.ml)))
+
 (tests
  (names
   dllist_test
@@ -6,6 +17,21 @@
   mvar_test
   queue_test
   stack_test
+  stack_test_stm
   xt_test)
- (libraries alcotest kcas kcas_data domain_shims)
+ (libraries
+  alcotest
+  kcas
+  kcas_data
+  domain_shims
+  qcheck-core
+  qcheck-core.runner
+  qcheck-stm.stm
+  qcheck-stm.sequential
+  qcheck-stm.thread
+  (select
+   empty.ml
+   from
+   (qcheck-stm.domain -> empty.ocaml5.ml)
+   (-> empty.ocaml4.ml)))
  (package kcas_data))
