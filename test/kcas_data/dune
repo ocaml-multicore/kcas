@@ -13,10 +13,13 @@
  (names
   accumulator_test_stm
   dllist_test
+  dllist_test_stm
   hashtbl_test
+  hashtbl_test_stm
   lru_cache_example
   mvar_test
   queue_test
+  queue_test_stm
   stack_test
   stack_test_stm
   xt_test)
