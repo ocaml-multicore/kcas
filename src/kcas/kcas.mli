@@ -441,6 +441,10 @@ module Xt : sig
   val swap : xt:'x t -> 'a Loc.t -> 'a Loc.t -> unit
   (** [swap ~xt l1 l2] is equivalent to [set ~xt l1 @@ exchange ~xt l2 @@ get ~xt l1]. *)
 
+  val compare_and_set : xt:'x t -> 'a Loc.t -> 'a -> 'a -> bool
+  (** [compare_and_set ~xt r before after] is equivalent to
+      [compare_and_swap ~xt r before after == before]. *)
+
   val compare_and_swap : xt:'x t -> 'a Loc.t -> 'a -> 'a -> 'a
   (** [compare_and_swap ~xt r before after] is equivalent to
 

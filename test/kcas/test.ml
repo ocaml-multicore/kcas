@@ -42,48 +42,101 @@ let run_domains = function
       List.iter Domain.join others
 
 let test_non_linearizable () =
-  let barrier = Barrier.make 2
-  and n_iter = 100 * Util.iter_factor
-  and test_finished = ref false in
+  [ Mode.obstruction_free; Mode.lock_free ]
+  |> List.iter @@ fun mode ->
+     let barrier = Barrier.make 2
+     and n_iter = 100 * Util.iter_factor
+     and test_finished = ref false in
 
-  let a = Loc.make 0 and b = Loc.make 0 in
+     let a = Loc.make ~mode 0 and b = Loc.make ~mode 0 in
 
-  let cass1a = [ Op.make_cmp b 0; Op.make_cas a 0 1 ]
-  and cass1b = [ Op.make_cmp b 0; Op.make_cas a 1 0 ]
-  and cass2a = [ Op.make_cas b 0 1; Op.make_cmp a 0 ]
-  and cass2b = [ Op.make_cas b 1 0; Op.make_cmp a 0 ] in
+     let cass1a = [ Op.make_cmp b 0; Op.make_cas a 0 1 ]
+     and cass1b = [ Op.make_cmp b 0; Op.make_cas a 1 0 ]
+     and cass2a = [ Op.make_cas b 0 1; Op.make_cmp a 0 ]
+     and cass2b = [ Op.make_cas b 1 0; Op.make_cmp a 0 ] in
 
-  let atomically cs =
-    if Random.bool () then
-      try Op.atomically ~mode:Mode.obstruction_free cs
-      with Mode.Interference -> false
-    else Op.atomically cs
-  in
+     let atomically cs =
+       if Random.bool () then
+         try Op.atomically ~mode:Mode.obstruction_free cs
+         with Mode.Interference -> false
+       else Op.atomically cs
+     in
 
-  let thread1 () =
-    Barrier.await barrier;
-    while not !test_finished do
-      if atomically cass1a then
-        while not (atomically cass1b) do
-          if is_single then Domain.cpu_relax ();
-          assert (Loc.get a == 1 && Loc.get b == 0)
-        done
-      else if is_single then Domain.cpu_relax ()
-    done
-  and thread2 () =
-    Barrier.await barrier;
-    for _ = 1 to n_iter do
-      if atomically cass2a then
-        while not (atomically cass2b) do
-          if is_single then Domain.cpu_relax ();
-          assert (Loc.get a == 0 && Loc.get b == 1)
-        done
-      else if is_single then Domain.cpu_relax ()
-    done;
-    test_finished := true
-  in
+     let thread1 () =
+       Barrier.await barrier;
+       while not !test_finished do
+         if atomically cass1a then
+           while not (atomically cass1b) do
+             if is_single then Domain.cpu_relax ();
+             assert (Loc.get a == 1 && Loc.get b == 0)
+           done
+         else if is_single then Domain.cpu_relax ()
+       done
+     and thread2 () =
+       Barrier.await barrier;
+       for _ = 1 to n_iter do
+         if atomically cass2a then
+           while not (atomically cass2b) do
+             if is_single then Domain.cpu_relax ();
+             assert (Loc.get a == 0 && Loc.get b == 1)
+           done
+         else if is_single then Domain.cpu_relax ()
+       done;
+       test_finished := true
+     in
 
-  run_domains [ thread2; thread1 ]
+     run_domains [ thread2; thread1 ]
+
+(* *)
+
+let test_non_linearizable_xt () =
+  [ Mode.obstruction_free; Mode.lock_free ]
+  |> List.iter @@ fun mode ->
+     let barrier = Barrier.make 2
+     and n_iter = 100 * Util.iter_factor
+     and test_finished = ref false in
+
+     let a = Loc.make ~mode 0 and b = Loc.make ~mode 0 in
+
+     let cass1a ~xt =
+       (Xt.get ~xt b == 0 && Xt.compare_and_set ~xt a 0 1) || Retry.invalid ()
+     and cass1b ~xt =
+       (Xt.get ~xt b == 0 && Xt.compare_and_set ~xt a 1 0) || Retry.invalid ()
+     and cass2a ~xt =
+       (Xt.compare_and_set ~xt b 0 1 && Xt.get ~xt a == 0) || Retry.invalid ()
+     and cass2b ~xt =
+       (Xt.compare_and_set ~xt b 1 0 && Xt.get ~xt a == 0) || Retry.invalid ()
+     in
+
+     let atomically tx =
+       if Random.bool () then Xt.commit ~mode:Mode.obstruction_free tx
+       else Xt.commit tx
+     in
+
+     let thread1 () =
+       Barrier.await barrier;
+       while not !test_finished do
+         if atomically { tx = cass1a } then
+           while not (atomically { tx = cass1b }) do
+             if is_single then Domain.cpu_relax ();
+             assert (Loc.get a == 1 && Loc.get b == 0)
+           done
+         else if is_single then Domain.cpu_relax ()
+       done
+     and thread2 () =
+       Barrier.await barrier;
+       for _ = 1 to n_iter do
+         if atomically { tx = cass2a } then
+           while not (atomically { tx = cass2b }) do
+             if is_single then Domain.cpu_relax ();
+             assert (Loc.get a == 0 && Loc.get b == 1)
+           done
+         else if is_single then Domain.cpu_relax ()
+       done;
+       test_finished := true
+     in
+
+     run_domains [ thread2; thread1 ]
 
 (* *)
 
@@ -649,6 +702,8 @@ let () =
     [
       ( "non linearizable",
         [ Alcotest.test_case "" `Quick test_non_linearizable ] );
+      ( "non linearizable xt",
+        [ Alcotest.test_case "" `Quick test_non_linearizable_xt ] );
       ("set", [ Alcotest.test_case "" `Quick test_set ]);
       ("casn", [ Alcotest.test_case "" `Quick test_casn ]);
       ("read casn", [ Alcotest.test_case "" `Quick test_read_casn ]);
