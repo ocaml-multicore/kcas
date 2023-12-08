@@ -274,55 +274,114 @@ let test_no_skew_xt () =
 
 (* *)
 
-let test_read_casn () =
-  let barrier = Barrier.make 4 in
-  let test_finished = Atomic.make false in
+let test_get_seq () =
+  [ Mode.obstruction_free; Mode.lock_free ]
+  |> List.iter @@ fun mode ->
+     let barrier = Barrier.make 4 in
+     let test_finished = Atomic.make false in
 
-  let a1 = Loc.make 0 in
-  let a2 = Loc.make 0 in
+     let a1 = Loc.make ~mode 0 in
+     let a2 = Loc.make ~mode 0 in
 
-  let mutator () =
-    Barrier.await barrier;
-    for i = 0 to nb_iter do
-      let c = [ Op.make_cas a1 i (i + 1); Op.make_cas a2 i (i + 1) ] in
-      assert (Op.atomically c)
-    done;
-    Atomic.set test_finished true
-  and getter () =
-    Barrier.await barrier;
-    while not (Atomic.get test_finished) do
-      let a = Loc.get a1 in
-      let b = Loc.get a2 in
-      assert (a <= b);
-      if is_single then Domain.cpu_relax ()
-    done
-  and getaser () =
-    Barrier.await barrier;
-    while not (Atomic.get test_finished) do
-      let a = Loc.get_as Fun.id a1 in
-      let b = Loc.get_as Fun.id a2 in
-      assert (a <= b);
-      if is_single then Domain.cpu_relax ()
-    done
-  and committer () =
-    Barrier.await barrier;
-    while not (Atomic.get test_finished) do
-      let a = Xt.commit { tx = Xt.get a1 } in
-      let b = Xt.commit { tx = Xt.get a2 } in
-      assert (a <= b);
-      if is_single then Domain.cpu_relax ()
-    done
-  and updater () =
-    Barrier.await barrier;
-    while not (Atomic.get test_finished) do
-      let a = Loc.update a1 Fun.id in
-      let b = Loc.update a2 Fun.id in
-      assert (a <= b);
-      if is_single then Domain.cpu_relax ()
-    done
-  in
+     let mutator () =
+       Barrier.await barrier;
+       for i = 0 to nb_iter do
+         let c = [ Op.make_cas a1 i (i + 1); Op.make_cas a2 i (i + 1) ] in
+         assert (Op.atomically c)
+       done;
+       Atomic.set test_finished true
+     and getter () =
+       Barrier.await barrier;
+       while not (Atomic.get test_finished) do
+         let a = Loc.get a1 in
+         let b = Loc.get a2 in
+         assert (a <= b);
+         if is_single then Domain.cpu_relax ()
+       done
+     and getaser () =
+       Barrier.await barrier;
+       while not (Atomic.get test_finished) do
+         let a = Loc.get_as Fun.id a1 in
+         let b = Loc.get_as Fun.id a2 in
+         assert (a <= b);
+         if is_single then Domain.cpu_relax ()
+       done
+     and committer () =
+       Barrier.await barrier;
+       while not (Atomic.get test_finished) do
+         let a = Xt.commit { tx = Xt.get a1 } in
+         let b = Xt.commit { tx = Xt.get a2 } in
+         assert (a <= b);
+         if is_single then Domain.cpu_relax ()
+       done
+     and updater () =
+       Barrier.await barrier;
+       while not (Atomic.get test_finished) do
+         let a = Loc.update a1 Fun.id in
+         let b = Loc.update a2 Fun.id in
+         assert (a <= b);
+         if is_single then Domain.cpu_relax ()
+       done
+     in
 
-  run_domains [ mutator; getter; getaser; committer; updater ]
+     run_domains [ mutator; getter; getaser; committer; updater ]
+
+(* *)
+
+let test_get_seq_xt () =
+  [ Mode.obstruction_free; Mode.lock_free ]
+  |> List.iter @@ fun mode ->
+     let barrier = Barrier.make 4 in
+     let test_finished = Atomic.make false in
+
+     let a1 = Loc.make ~mode 0 in
+     let a2 = Loc.make ~mode 0 in
+
+     let mutator () =
+       Barrier.await barrier;
+       for _ = 0 to nb_iter do
+         let tx ~xt =
+           Xt.incr ~xt a1;
+           Xt.incr ~xt a2
+         in
+         Xt.commit { tx }
+       done;
+       Atomic.set test_finished true
+     and getter () =
+       Barrier.await barrier;
+       while not (Atomic.get test_finished) do
+         let a = Loc.get a1 in
+         let b = Loc.get a2 in
+         assert (a <= b);
+         if is_single then Domain.cpu_relax ()
+       done
+     and getaser () =
+       Barrier.await barrier;
+       while not (Atomic.get test_finished) do
+         let a = Loc.get_as Fun.id a1 in
+         let b = Loc.get_as Fun.id a2 in
+         assert (a <= b);
+         if is_single then Domain.cpu_relax ()
+       done
+     and committer () =
+       Barrier.await barrier;
+       while not (Atomic.get test_finished) do
+         let a = Xt.commit { tx = Xt.get a1 } in
+         let b = Xt.commit { tx = Xt.get a2 } in
+         assert (a <= b);
+         if is_single then Domain.cpu_relax ()
+       done
+     and updater () =
+       Barrier.await barrier;
+       while not (Atomic.get test_finished) do
+         let a = Loc.update a1 Fun.id in
+         let b = Loc.update a2 Fun.id in
+         assert (a <= b);
+         if is_single then Domain.cpu_relax ()
+       done
+     in
+
+     run_domains [ mutator; getter; getaser; committer; updater ]
 
 (* *)
 
@@ -774,7 +833,8 @@ let () =
       ("set", [ Alcotest.test_case "" `Quick test_set ]);
       ("no skew", [ Alcotest.test_case "" `Quick test_no_skew ]);
       ("no skew xt", [ Alcotest.test_case "" `Quick test_no_skew_xt ]);
-      ("read casn", [ Alcotest.test_case "" `Quick test_read_casn ]);
+      ("get seq", [ Alcotest.test_case "" `Quick test_get_seq ]);
+      ("get seq xt", [ Alcotest.test_case "" `Quick test_get_seq_xt ]);
       ( "stress",
         [
           Alcotest.test_case "" `Quick (fun () ->
