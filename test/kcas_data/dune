@@ -16,6 +16,7 @@
   dllist_test_stm
   hashtbl_test
   hashtbl_test_stm
+  linearizable_chaining_example
   lru_cache_example
   mvar_test
   queue_test
