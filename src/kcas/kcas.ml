@@ -187,6 +187,9 @@ let[@inline] make_loc padded state id =
 let[@inline] is_cmp casn state = state.casn != casn
 let[@inline] is_cas casn state = state.casn == casn
 
+let[@inline] is_determined casn =
+  match atomic_get casn with Undetermined _ -> false | After | Before -> true
+
 module Mode = struct
   type t = status
 
@@ -269,12 +272,14 @@ let rec determine casn status = function
         let loc = r.loc in
         let current = atomic_get (as_atomic loc) in
         let state = r.state in
-        if state == current then
+        if state == current then begin
           let a_cas_or_a_cmp = 1 + Bool.to_int (is_cas casn state) in
           let a_cmp_followed_by_a_cas = a_cas_or_a_cmp * 2 land (status * 4) in
+          if is_determined casn then raise_notrace Exit;
           determine casn
             (status lor a_cas_or_a_cmp lor a_cmp_followed_by_a_cas)
             r.gt
+        end
         else
           let matches_expected () =
             let expected = state.before in
@@ -283,34 +288,30 @@ let rec determine casn status = function
             || expected == current.before
                && (current.casn == casn_before || not (is_after current.casn))
           in
-          if (not (is_cmp casn state)) && matches_expected () then
-            (* Fenceless is safe as there are fences before and after. *)
-            match fenceless_get casn with
-            | Undetermined _ ->
-                (* We now know that the operation wasn't finished when we read
-                   [current], but it is possible that the [loc]ation has been
-                   updated since then by some other domain helping us (or even
-                   by some later operation). If so, then the [compare_and_set]
-                   below fails. Copying the awaiters from [current] is safe in
-                   either case, because we know that we have the [current]
-                   state that our operation is interested in.  By doing the
-                   copying here, we at most duplicate work already done by
-                   some other domain. However, it is necessary to do the copy
-                   before the [compare_and_set], because afterwards is too
-                   late as some other domain might finish the operation after
-                   the [compare_and_set] and miss the awaiters. *)
-                begin
-                  match current.awaiters with
-                  | [] -> ()
-                  | awaiters -> r.awaiters <- awaiters
-                end;
-                if Atomic.compare_and_set (as_atomic loc) current state then
-                  let a_cmp_followed_by_a_cas = a_cas * 2 land (status * 4) in
-                  determine casn
-                    (status lor a_cas lor a_cmp_followed_by_a_cas)
-                    r.gt
-                else determine casn status eq
-            | After | Before -> raise_notrace Exit
+          if is_cas casn state && matches_expected () then begin
+            if is_determined casn then raise_notrace Exit;
+            (* We now know that the operation wasn't finished when we read
+               [current], but it is possible that the [loc]ation has been
+               updated since then by some other domain helping us (or even by
+               some later operation).  If so, then the [compare_and_set] below
+               fails.  Copying the awaiters from [current] is safe in either
+               case, because we know that we have the [current] state that our
+               operation is interested in.  By doing the copying here, we at
+               most duplicate work already done by some other domain.  However,
+               it is necessary to do the copy before the [compare_and_set],
+               because afterwards is too late as some other domain might finish
+               the operation after the [compare_and_set] and miss the
+               awaiters. *)
+            begin
+              match current.awaiters with
+              | [] -> ()
+              | awaiters -> r.awaiters <- awaiters
+            end;
+            if Atomic.compare_and_set (as_atomic loc) current state then
+              let a_cmp_followed_by_a_cas = a_cas * 2 land (status * 4) in
+              determine casn (status lor a_cas lor a_cmp_followed_by_a_cas) r.gt
+            else determine casn status eq
+          end
           else -1
 
 and is_after casn =
