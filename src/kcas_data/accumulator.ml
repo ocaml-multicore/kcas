@@ -36,7 +36,10 @@ module Xt = struct
     let s = Xt.get ~xt (Array.unsafe_get a i) in
     if i = 0 then s else get ~xt a s (i - 1)
 
-  let set ~xt a n = add ~xt a (n - get ~xt a)
+  let set ~xt a n =
+    let delta = n - get ~xt a in
+    if delta <> 0 then
+      Xt.fetch_and_add ~xt (Array.unsafe_get a 0) delta |> ignore
 end
 
 let add a n = if n <> 0 then Loc.fetch_and_add (get_self a) n |> ignore
