@@ -753,7 +753,7 @@ module Xt = struct
       validate_all xt.casn xt.cass
     end
 
-  let[@inline] update0 loc f xt lt gt =
+  let[@inline] update_new loc f xt lt gt =
     (* Fenceless is safe inside transactions as each log update has a fence. *)
     let state = fenceless_get (as_atomic loc) in
     let before = eval state in
@@ -770,7 +770,7 @@ module Xt = struct
         xt.cass <- Cas { loc; state; lt; gt; awaiters = [] };
         raise exn
 
-  let[@inline] update loc f xt state' lt gt =
+  let[@inline] update_top loc f xt state' lt gt =
     let (State state_r as state) = Obj.magic state' in
     if is_cmp xt.casn state then begin
       let before = eval state in
@@ -792,17 +792,17 @@ module Xt = struct
     maybe_validate_log xt;
     let x = loc.id in
     match xt.cass with
-    | Bef | Aft -> update0 loc f xt Bef Bef
+    | Bef | Aft -> update_new loc f xt Bef Bef
     | Cas { loc = a; lt = Bef | Aft; _ } as cass when x < a.id ->
-        update0 loc f xt Bef cass
+        update_new loc f xt Bef cass
     | Cas { loc = a; gt = Bef | Aft; _ } as cass when a.id < x ->
-        update0 loc f xt cass Bef
+        update_new loc f xt cass Bef
     | Cas { loc = a; state; lt; gt; _ } when Obj.magic a == loc ->
-        update loc f xt state lt gt
+        update_top loc f xt state lt gt
     | cass -> begin
         match splay ~hit_parent:false x cass with
-        | l, Miss, r -> update0 loc f xt l r
-        | l, Hit (_loc', state'), r -> update loc f xt state' l r
+        | l, Miss, r -> update_new loc f xt l r
+        | l, Hit (_loc', state'), r -> update_top loc f xt state' l r
       end
 
   let[@inline] protect xt f x =
