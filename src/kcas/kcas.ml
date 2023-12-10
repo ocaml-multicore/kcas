@@ -142,8 +142,8 @@ module Mode = struct
 end
 
 type 'a state = {
-  mutable before : 'a;
-  mutable after : 'a;
+  mutable before : 'a;  (** Keep [before] first (i.e. at index [0]). *)
+  mutable after : 'a;  (** Keep [after] second (i.e. at index [1]). *)
   mutable which : which;
   awaiters : awaiter list;
 }
@@ -155,11 +155,11 @@ and _ tdt =
   | Before : [> `Before ] tdt
       (** The result has been determined to be the [before] value.
 
-          Keep this first (i.e. value [0] or [false]) for best performance. *)
+          Keep [Before] first (i.e. value [0] or [false]). *)
   | After : [> `After ] tdt
       (** The result has been determined to be the [after] value.
 
-          Keep this second (i.e. value [1] or [true]) for best performance. *)
+          Keep [After] second (i.e. value [1] or [true]). *)
   | Xt : {
       mutable rot : rot;
           (** [rot] is for Root or Tree.
@@ -230,6 +230,44 @@ let[@inline] is_node tree = tree != T Leaf
 let[@inline] is_cmp which state = state.which != W which
 let[@inline] is_cas which state = state.which == W which
 
+let () =
+  assert (Before == Obj.magic false);
+  assert (After == Obj.magic true)
+
+let[@inline] is_determined_after (status : [< `Before | `After ] tdt) : bool =
+  (* This is the identity function.  For some reason the OCaml 5.0 compiler is
+     not able to optimize
+
+     {[
+       match status with
+       | Before -> false
+       | After -> true
+     ]}
+
+     to the identity function.  It should be possible and the compiler can do
+     that in many cases. *)
+  Obj.magic status
+
+type not_float = which
+
+let[@inline] get (state : 'a state) (index : bool) : 'a =
+  (* Here we treat the [state] record as an array of non-float values.  This
+     allows accessing the value (i.e. [before] or [after]) without using
+     branches. *)
+  Obj.magic
+    (Array.unsafe_get (Obj.magic state : not_float array) (Bool.to_int index))
+
+let[@inline] isnt_int x = not (Obj.is_int (Obj.repr x))
+
+let[@inline] clear_other (state : 'a state) status =
+  (* Here we treat the [state] record as an array of non-float values.  This
+     allows accessing the value (i.e. [before] or [after]) without using
+     branches. *)
+  let i = 1 - Bool.to_int (is_determined_after status) in
+  let state = (Obj.magic state : not_float array) in
+  if isnt_int (Array.unsafe_get state i) then
+    Array.unsafe_set state i (Obj.magic ())
+
 let[@inline] is_determined = function
   | (Xt _ as xt : [< `Xt ] tdt) -> begin
       match fenceless_get (root_as_atomic xt) with
@@ -237,39 +275,19 @@ let[@inline] is_determined = function
       | R After | R Before -> true
     end
 
-let[@inline] isnt_int x = not (Obj.is_int (Obj.repr x))
+let[@inline] rec release_rec which status = function
+  | T Leaf -> is_determined_after status
+  | T (Node node_r) -> release which status (Node node_r)
 
-let[@inline] rec release_after_rec which = function
-  | T Leaf -> true
-  | T (Node node_r) -> release_after which (Node node_r)
-
-and release_after which (Node node_r : [< `Node ] tdt) =
-  release_after_rec which node_r.lt |> ignore;
+and release which status (Node node_r : [< `Node ] tdt) =
+  release_rec which status node_r.lt |> ignore;
   let state = node_r.state in
   if is_cas which state then begin
-    state.which <- W After;
-    if isnt_int state.before then state.before <- Obj.magic ();
+    state.which <- W status;
+    clear_other state status;
     resume_awaiters node_r.awaiters
   end;
-  release_after_rec which node_r.gt
-
-let[@inline] rec release_before_rec which = function
-  | T Leaf -> false
-  | T (Node node_r) -> release_before which (Node node_r)
-
-and release_before which (Node node_r : [< `Node ] tdt) =
-  release_before_rec which node_r.lt |> ignore;
-  let state = node_r.state in
-  if is_cas which state then begin
-    state.which <- W Before;
-    if isnt_int state.after then state.after <- Obj.magic ();
-    resume_awaiters node_r.awaiters
-  end;
-  release_before_rec which node_r.gt
-
-let release which tree status =
-  if status == After then release_after which tree
-  else release_before which tree
+  release_rec which status node_r.gt
 
 let[@inline] rec verify_rec which = function
   | T Leaf -> After
@@ -288,7 +306,7 @@ and verify which (Node node_r : [< `Node ] tdt) =
 
 let finish which root status =
   if Atomic.compare_and_set (root_as_atomic which) (R root) (R status) then
-    release which root status
+    release which status root
   else
     (* Fenceless is safe as we have a fence above. *)
     fenceless_get (root_as_atomic which) == R After
@@ -320,12 +338,13 @@ and determine_eq backoff which status (Node node_r as eq : [< `Node ] tdt) =
   end
   else
     let matches_expected () =
-      match current.which with
-      | W Before -> state.before == current.before
-      | W After -> state.before == current.after
-      | W (Xt _ as xt) ->
-          if is_after xt then state.before == current.after
-          else state.before == current.before
+      let current =
+        match current.which with
+        | W ((Before | After) as which) ->
+            get current (is_determined_after which)
+        | W (Xt _ as xt) -> get current (is_undetermined_after xt)
+      in
+      state.before == current
     in
     if is_cas which state && matches_expected () then begin
       if is_determined which then raise_notrace Exit;
@@ -347,7 +366,7 @@ and determine_eq backoff which status (Node node_r as eq : [< `Node ] tdt) =
     end
     else -1
 
-and is_after = function
+and is_undetermined_after = function
   | (Xt _ as xt : [< `Xt ] tdt) -> begin
       (* Fenceless at most gives old root and causes extra work. *)
       match fenceless_get (root_as_atomic xt) with
@@ -405,9 +424,8 @@ let[@inline] new_state after =
 
 let[@inline] eval state =
   match state.which with
-  | W Before -> state.before
-  | W After -> state.after
-  | W (Xt _ as xt) -> if is_after xt then state.after else state.before
+  | W ((Before | After) as which) -> get state (is_determined_after which)
+  | W (Xt _ as xt) -> get state (is_undetermined_after xt)
 
 module Retry = struct
   exception Later
