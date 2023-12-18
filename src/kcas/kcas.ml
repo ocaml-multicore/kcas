@@ -221,7 +221,7 @@ let rec release_after casn = function
       let (State state_r as state) = cas_r.state in
       if is_cas casn state then begin
         state_r.casn <- After;
-        state_r.before <- state_r.after;
+        state_r.before <- Obj.magic ();
         resume_awaiters cas_r.awaiters
       end;
       release_after casn cas_r.gt
@@ -234,7 +234,7 @@ let rec release_before casn = function
       let (State state_r as state) = cas_r.state in
       if is_cas casn state then begin
         state_r.casn <- Before;
-        state_r.after <- state_r.before;
+        state_r.after <- Obj.magic ();
         resume_awaiters cas_r.awaiters
       end;
       release_before casn cas_r.gt
@@ -405,7 +405,7 @@ let rec splay ~hit_parent x = function
       else (l, Hit (a, s), r)
 
 let[@inline] new_state after =
-  State { before = after; after; casn = After; awaiters = [] }
+  State { before = Obj.magic (); after; casn = After; awaiters = [] }
 
 let[@inline] eval (State state_r) =
   match state_r.casn with
@@ -430,7 +430,7 @@ let add_awaiter loc before awaiter =
   let (State state_old_r as state_old) = fenceless_get (as_atomic loc) in
   let state_new =
     let awaiters = awaiter :: state_old_r.awaiters in
-    State { before; after = before; casn = After; awaiters }
+    State { before = Obj.magic (); after = before; casn = After; awaiters }
   in
   before == eval state_old
   && Atomic.compare_and_set (as_atomic loc) state_old state_new
@@ -449,7 +449,7 @@ let rec remove_awaiter loc before awaiter =
     let awaiters = remove_first awaiter removed state_old_r.awaiters in
     if !removed then
       let state_new =
-        State { before; after = before; casn = After; awaiters }
+        State { before = Obj.magic (); after = before; casn = After; awaiters }
       in
       if not (Atomic.compare_and_set (as_atomic loc) state_old state_new) then
         remove_awaiter loc before awaiter
@@ -478,7 +478,6 @@ let rec update_no_alloc timeout backoff loc (State state_r as state) f =
         before
       end
       else if Atomic.compare_and_set (as_atomic loc) state_old state then begin
-        state_r.before <- after;
         resume_awaiters state_old_r.awaiters;
         Timeout.cancel timeout;
         before
@@ -984,7 +983,7 @@ module Xt = struct
             end
             else
               let before = state_r.before in
-              state_r.before <- state_r.after;
+              state_r.before <- Obj.magic ();
               state_r.casn <- After;
               (* Fenceless is safe inside transactions as each log update has a fence. *)
               let state_old = fenceless_get (as_atomic loc) in
