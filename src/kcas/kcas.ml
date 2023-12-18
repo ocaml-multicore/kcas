@@ -219,6 +219,8 @@ module Mode = struct
   exception Interference
 end
 
+let[@inline] isnt_int x = not (Obj.is_int (Obj.repr x))
+
 let rec release_after which = function
   | T Leaf -> true
   | T (Node node_r) ->
@@ -226,7 +228,7 @@ let rec release_after which = function
       let state = node_r.state in
       if is_cas which state then begin
         state.which <- W After;
-        state.before <- Obj.magic ();
+        if isnt_int state.before then state.before <- Obj.magic ();
         resume_awaiters node_r.awaiters
       end;
       release_after which node_r.gt
@@ -238,7 +240,7 @@ let rec release_before which = function
       let state = node_r.state in
       if is_cas which state then begin
         state.which <- W Before;
-        state.after <- Obj.magic ();
+        if isnt_int state.after then state.after <- Obj.magic ();
         resume_awaiters node_r.awaiters
       end;
       release_before which node_r.gt
@@ -917,7 +919,7 @@ module Xt = struct
             else begin
               state.which <- W After;
               let before = state.before in
-              state.before <- Obj.magic ();
+              if isnt_int before then state.before <- Obj.magic ();
               (* Fenceless is safe inside transactions as each log update has a fence. *)
               let state_old = fenceless_get (as_atomic loc) in
               if cas_with_state loc before state state_old then begin
