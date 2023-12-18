@@ -472,17 +472,19 @@ let rec update_no_alloc timeout backoff loc (State state_r as state) f =
   let before = eval state_old in
   match f before with
   | after ->
-      state_r.after <- after;
       if before == after then begin
         Timeout.cancel timeout;
         before
       end
-      else if Atomic.compare_and_set (as_atomic loc) state_old state then begin
-        resume_awaiters state_old_r.awaiters;
-        Timeout.cancel timeout;
-        before
+      else begin
+        state_r.after <- after;
+        if Atomic.compare_and_set (as_atomic loc) state_old state then begin
+          resume_awaiters state_old_r.awaiters;
+          Timeout.cancel timeout;
+          before
+        end
+        else update_no_alloc timeout (Backoff.once backoff) loc state f
       end
-      else update_no_alloc timeout (Backoff.once backoff) loc state f
   | exception Retry.Later ->
       block timeout loc before;
       update_no_alloc timeout backoff loc state f
