@@ -130,31 +130,43 @@ let[@inline] resume_awaiters = function
   | [ awaiter ] -> resume_awaiter awaiter
   | awaiters -> List.iter resume_awaiter awaiters
 
-type 'a state =
-  | State : {
-      mutable before : 'a;
-      mutable after : 'a;
-      mutable casn : [ `Determined | `Undetermined ] casn;
-      awaiters : awaiter list;
-    }
-      -> 'a state
+type 'a state = {
+  mutable before : 'a;
+  mutable after : 'a;
+  mutable which : which;
+  awaiters : awaiter list;
+}
 
-and cass =
-  | Bef : cass  (** [Bef] must be consistently used as the "Nil" value. *)
-  | Aft : cass
-  | Cas : {
+(** Tagged GADT for representing both the state of MCAS operations and of the
+    transaction log or splay [tree].  Different subsets of this GADT are used in
+    different contexts.  See the [root], [tree], and [which] existentials. *)
+and _ tdt =
+  | Before : [> `Before ] tdt
+      (** The result has been determined to be the [before] value.
+
+          Keep this first (i.e. value [0] or [false]) for best performance. *)
+  | After : [> `After ] tdt
+      (** The result has been determined to be the [after] value.
+
+          Keep this second (i.e. value [1] or [true]) for best performance. *)
+  | Undetermined : { mutable root : root } -> [> `Undetermined ] tdt
+      (** The result might not yet have been determined.  The [root] either says
+          which it is or points to the root of the transaction log or [tree]. *)
+  | Leaf : [> `Leaf ] tdt  (** Leaf node in the transaction log or [tree]. *)
+  | Node : {
       loc : 'a loc;
       state : 'a state;
-      lt : cass;
-      gt : cass;
+      lt : tree;
+      gt : tree;
       mutable awaiters : awaiter list;
     }
-      -> cass
+      -> [> `Node ] tdt
+      (** Branch node in the transaction log or [tree] that specifies a single
+          [CAS] or [CMP] operation. *)
 
-and _ casn =
-  | Before : [> `Determined ] casn
-  | After : [> `Determined ] casn
-  | Undetermined : { mutable cass : cass } -> [> `Undetermined ] casn
+and root = R : [< `Before | `After | `Node ] tdt -> root [@@unboxed]
+and tree = T : [< `Leaf | `Node ] tdt -> tree [@@unboxed]
+and which = W : [< `Before | `After | `Undetermined ] tdt -> which [@@unboxed]
 
 (* NOTE: You can adjust comment blocks below to select whether or not to use an
    unsafe cast to avoid a level of indirection due to [Atomic.t] and reduce the
@@ -185,123 +197,116 @@ let[@inline] make_loc padded state id =
   if padded then Multicore_magic.copy_as_padded record else record
 *)
 
-external casn_as_atomic : [ `Undetermined ] casn -> cass Atomic.t = "%identity"
+external root_as_atomic : [< `Undetermined ] tdt -> root Atomic.t = "%identity"
 
-external casn_upcast :
-  [ `Undetermined ] casn -> [ `Determined | `Undetermined ] casn = "%identity"
-
-let[@inline] is_node cass =
-  (* This assumes [Bef] is consistently used as the "Nil" value. *)
-  cass != Bef
-
-let[@inline] is_cmp casn (State state) = state.casn != casn_upcast casn
-let[@inline] is_cas casn (State state) = state.casn == casn_upcast casn
+let[@inline] is_node tree = tree != T Leaf
+let[@inline] is_cmp which state = state.which != W which
+let[@inline] is_cas which state = state.which == W which
 
 let[@inline] is_determined = function
-  | (Undetermined _ as casn : [ `Undetermined ] casn) -> begin
-      match fenceless_get (casn_as_atomic casn) with
-      | Cas _ -> false
-      | Aft | Bef -> true
+  | (Undetermined _ as which : [< `Undetermined ] tdt) -> begin
+      match fenceless_get (root_as_atomic which) with
+      | R (Node _) -> false
+      | R After | R Before -> true
     end
 
 module Mode = struct
-  type t = cass
+  type t = [ `Before | `After ] tdt
 
-  let lock_free = Aft
-  let obstruction_free = Bef
+  let lock_free = After
+  let obstruction_free = Before
 
   exception Interference
 end
 
-let rec release_after casn = function
-  | Bef | Aft -> true
-  | Cas cas_r ->
-      let lt = cas_r.lt in
-      if is_node lt then release_after casn lt |> ignore;
-      let (State state_r as state) = cas_r.state in
-      if is_cas casn state then begin
-        state_r.casn <- After;
-        state_r.before <- Obj.magic ();
-        resume_awaiters cas_r.awaiters
+let rec release_after which = function
+  | T Leaf -> true
+  | T (Node node_r) ->
+      if is_node node_r.lt then release_after which node_r.lt |> ignore;
+      let state = node_r.state in
+      if is_cas which state then begin
+        state.which <- W After;
+        state.before <- Obj.magic ();
+        resume_awaiters node_r.awaiters
       end;
-      release_after casn cas_r.gt
+      release_after which node_r.gt
 
-let rec release_before casn = function
-  | Bef | Aft -> false
-  | Cas cas_r ->
-      let lt = cas_r.lt in
-      if is_node lt then release_before casn lt |> ignore;
-      let (State state_r as state) = cas_r.state in
-      if is_cas casn state then begin
-        state_r.casn <- Before;
-        state_r.after <- Obj.magic ();
-        resume_awaiters cas_r.awaiters
+let rec release_before which = function
+  | T Leaf -> false
+  | T (Node node_r) ->
+      if is_node node_r.lt then release_before which node_r.lt |> ignore;
+      let state = node_r.state in
+      if is_cas which state then begin
+        state.which <- W Before;
+        state.after <- Obj.magic ();
+        resume_awaiters node_r.awaiters
       end;
-      release_before casn cas_r.gt
+      release_before which node_r.gt
 
-let release casn cass status =
-  if status == Aft then release_after casn cass else release_before casn cass
+let release which tree status =
+  if status == After then release_after which tree
+  else release_before which tree
 
-let rec verify casn = function
-  | Bef | Aft -> Aft
-  | Cas cas_r ->
-      let lt = cas_r.lt in
-      if is_node lt then
-        let status = verify casn lt in
-        if status == Aft then
-          let state = cas_r.state in
+let rec verify which = function
+  | T Leaf -> After
+  | T (Node node_r) ->
+      if is_node node_r.lt then
+        let status = verify which node_r.lt in
+        if status == After then
           (* Fenceless is safe as [finish] has a fence after. *)
-          if is_cmp casn state && fenceless_get (as_atomic cas_r.loc) != state
-          then Bef
-          else verify casn cas_r.gt
+          if
+            is_cmp which node_r.state
+            && fenceless_get (as_atomic node_r.loc) != node_r.state
+          then Before
+          else verify which node_r.gt
         else status
-      else
+      else if
         (* Fenceless is safe as [finish] has a fence after. *)
-        let state = cas_r.state in
-        if is_cmp casn state && fenceless_get (as_atomic cas_r.loc) != state
-        then Bef
-        else verify casn cas_r.gt
+        is_cmp which node_r.state
+        && fenceless_get (as_atomic node_r.loc) != node_r.state
+      then Before
+      else verify which node_r.gt
 
-let finish casn cass undetermined status =
-  if Atomic.compare_and_set (casn_as_atomic casn) undetermined status then
-    release casn cass status
+let finish which root status =
+  if Atomic.compare_and_set (root_as_atomic which) (R root) (R status) then
+    release which (T root) status
   else
     (* Fenceless is safe as we have a fence above. *)
-    fenceless_get (casn_as_atomic casn) == Aft
+    fenceless_get (root_as_atomic which) == R After
 
 let a_cmp = 1
 let a_cas = 2
 let a_cmp_followed_by_a_cas = 4
 
-let rec determine (casn : [ `Undetermined ] casn) status = function
-  | Bef | Aft -> status
-  | Cas r as eq ->
-      let lt = r.lt in
-      let status = if is_node lt then determine casn status lt else status in
+let rec determine which status = function
+  | T Leaf -> status
+  | T (Node node_r) as eq ->
+      let status =
+        if is_node node_r.lt then determine which status node_r.lt else status
+      in
       if status < 0 then status
       else
-        let loc = r.loc in
-        let (State current_r as current) = atomic_get (as_atomic loc) in
-        let (State state_r as state) = r.state in
+        let current = atomic_get (as_atomic node_r.loc) in
+        let state = node_r.state in
         if state == current then begin
-          let a_cas_or_a_cmp = 1 + Bool.to_int (is_cas casn state) in
+          let a_cas_or_a_cmp = 1 + Bool.to_int (is_cas which state) in
           let a_cmp_followed_by_a_cas = a_cas_or_a_cmp * 2 land (status * 4) in
-          if is_determined casn then raise_notrace Exit;
-          determine casn
+          if is_determined which then raise_notrace Exit;
+          determine which
             (status lor a_cas_or_a_cmp lor a_cmp_followed_by_a_cas)
-            r.gt
+            node_r.gt
         end
         else
           let matches_expected () =
-            match current_r.casn with
-            | Before -> state_r.before == current_r.before
-            | After -> state_r.before == current_r.after
-            | Undetermined _ as casn ->
-                if is_after casn then state_r.before == current_r.after
-                else state_r.before == current_r.before
+            match current.which with
+            | W Before -> state.before == current.before
+            | W After -> state.before == current.after
+            | W (Undetermined _ as which) ->
+                if is_after which then state.before == current.after
+                else state.before == current.before
           in
-          if is_cas casn state && matches_expected () then begin
-            if is_determined casn then raise_notrace Exit;
+          if is_cas which state && matches_expected () then begin
+            if is_determined which then raise_notrace Exit;
             (* We now know that the operation wasn't finished when we read
                [current], but it is possible that the [loc]ation has been
                updated since then by some other domain helping us (or even by
@@ -314,43 +319,42 @@ let rec determine (casn : [ `Undetermined ] casn) status = function
                because afterwards is too late as some other domain might finish
                the operation after the [compare_and_set] and miss the
                awaiters. *)
-            begin
-              match current_r.awaiters with
-              | [] -> ()
-              | awaiters -> r.awaiters <- awaiters
-            end;
-            if Atomic.compare_and_set (as_atomic loc) current state then
+            if current.awaiters != [] then node_r.awaiters <- current.awaiters;
+            if Atomic.compare_and_set (as_atomic node_r.loc) current state then
               let a_cmp_followed_by_a_cas = a_cas * 2 land (status * 4) in
-              determine casn (status lor a_cas lor a_cmp_followed_by_a_cas) r.gt
-            else determine casn status eq
+              determine which
+                (status lor a_cas lor a_cmp_followed_by_a_cas)
+                node_r.gt
+            else determine which status eq
           end
           else -1
 
 and is_after = function
-  | (Undetermined _ as casn : [ `Undetermined ] casn) -> begin
+  | (Undetermined _ as which : [< `Undetermined ] tdt) -> begin
       (* Fenceless at most gives old [Undetermined] and causes extra work. *)
-      match fenceless_get (casn_as_atomic casn) with
-      | Cas _ as cass -> begin
-          match determine casn 0 cass with
+      match fenceless_get (root_as_atomic which) with
+      | R (Node node_r) -> begin
+          let root = Node node_r in
+          match determine which 0 (T root) with
           | status ->
-              finish casn cass cass
-                (if a_cmp_followed_by_a_cas < status then verify casn cass
-                 else if 0 <= status then Aft
-                 else Bef)
+              finish which root
+                (if a_cmp_followed_by_a_cas < status then verify which (T root)
+                 else if 0 <= status then After
+                 else Before)
           | exception Exit ->
               (* Fenceless is safe as there was a fence before. *)
-              fenceless_get (casn_as_atomic casn) == Aft
+              fenceless_get (root_as_atomic which) == R After
         end
-      | Bef -> false
-      | Aft -> true
+      | R Before -> false
+      | R After -> true
     end
 
-let[@inline] determine_for_owner casn cass =
-  (* Fenceless is safe as [casn] is private at this point. *)
-  fenceless_set (casn_as_atomic casn) cass;
+let[@inline] determine_for_owner which root =
+  (* Fenceless is safe as [which] is private at this point. *)
+  fenceless_set (root_as_atomic which) (R root);
   (* The end result is a cyclic data structure, which is why we cannot
-     initialize the [casn] atomic directly. *)
-  match determine casn 0 cass with
+     initialize the [which] atomic directly. *)
+  match determine which 0 (T root) with
   | status ->
       if a_cmp_followed_by_a_cas < status then
         (* We only want to [raise Interference] in case it is the verify step
@@ -359,60 +363,58 @@ let[@inline] determine_for_owner casn cass =
            [lock_free] mode preventing interference.  If failure happens before
            the verify step then the [lock_free] mode would have likely also
            failed. *)
-        finish casn cass cass (verify casn cass)
+        finish which root (verify which (T root))
         || raise_notrace Mode.Interference
       else
         a_cmp = status
-        || finish casn cass cass (if 0 <= status then Aft else Bef)
+        || finish which root (if 0 <= status then After else Before)
   | exception Exit ->
       (* Fenceless is safe as there was a fence before. *)
-      fenceless_get (casn_as_atomic casn) == Aft
+      fenceless_get (root_as_atomic which) == R After
 
 let[@inline never] impossible () = failwith "impossible"
 let[@inline never] overlap () = failwith "kcas: location overlap"
 let[@inline never] invalid_retry () = failwith "kcas: invalid use of retry"
 
-type splay = Miss : splay | Hit : 'a loc * 'a state -> splay
-
-let[@inline] make_casn loc state lt gt =
-  Cas { loc; state; lt; gt; awaiters = [] }
+let[@inline] make_node loc state lt gt =
+  T (Node { loc; state; lt; gt; awaiters = [] })
 
 let rec splay ~hit_parent x = function
-  | Bef | Aft -> (Bef, Miss, Bef)
-  | Cas { loc = a; state = s; lt = l; gt = r; _ } as t ->
+  | T Leaf -> (T Leaf, T Leaf, T Leaf)
+  | T (Node { loc = a; state = s; lt = l; gt = r; _ }) as t ->
       if x < a.id && ((not hit_parent) || is_node l) then
         match l with
-        | Bef | Aft -> (Bef, Miss, t)
-        | Cas { loc = pa; state = ps; lt = ll; gt = lr; _ } ->
+        | T Leaf -> (T Leaf, T Leaf, t)
+        | T (Node { loc = pa; state = ps; lt = ll; gt = lr; _ }) ->
             if x < pa.id && ((not hit_parent) || is_node ll) then
               let lll, n, llr = splay ~hit_parent x ll in
-              (lll, n, make_casn pa ps llr (make_casn a s lr r))
+              (lll, n, make_node pa ps llr (make_node a s lr r))
             else if pa.id < x && ((not hit_parent) || is_node lr) then
               let lrl, n, lrr = splay ~hit_parent x lr in
-              (make_casn pa ps ll lrl, n, make_casn a s lrr r)
-            else (ll, Hit (pa, ps), make_casn a s lr r)
+              (make_node pa ps ll lrl, n, make_node a s lrr r)
+            else (ll, l, make_node a s lr r)
       else if a.id < x && ((not hit_parent) || is_node r) then
         match r with
-        | Bef | Aft -> (t, Miss, Bef)
-        | Cas { loc = pa; state = ps; lt = rl; gt = rr; _ } ->
+        | T Leaf -> (t, T Leaf, T Leaf)
+        | T (Node { loc = pa; state = ps; lt = rl; gt = rr; _ }) ->
             if x < pa.id && ((not hit_parent) || is_node rl) then
               let rll, n, rlr = splay ~hit_parent x rl in
-              (make_casn a s l rll, n, make_casn pa ps rlr rr)
+              (make_node a s l rll, n, make_node pa ps rlr rr)
             else if pa.id < x && ((not hit_parent) || is_node rr) then
               let rrl, n, rrr = splay ~hit_parent x rr in
-              (make_casn pa ps (make_casn a s l rl) rrl, n, rrr)
-            else (make_casn a s l rl, Hit (pa, ps), rr)
-      else (l, Hit (a, s), r)
+              (make_node pa ps (make_node a s l rl) rrl, n, rrr)
+            else (make_node a s l rl, r, rr)
+      else (l, t, r)
 
 let[@inline] new_state after =
-  State { before = Obj.magic (); after; casn = After; awaiters = [] }
+  { before = Obj.magic (); after; which = W After; awaiters = [] }
 
-let[@inline] eval (State state_r) =
-  match state_r.casn with
-  | Before -> state_r.before
-  | After -> state_r.after
-  | Undetermined _ as casn ->
-      if is_after casn then state_r.after else state_r.before
+let[@inline] eval state =
+  match state.which with
+  | W Before -> state.before
+  | W After -> state.after
+  | W (Undetermined _ as which) ->
+      if is_after which then state.after else state.before
 
 module Retry = struct
   exception Later
@@ -427,10 +429,10 @@ end
 
 let add_awaiter loc before awaiter =
   (* Fenceless is safe as we have fence after. *)
-  let (State state_old_r as state_old) = fenceless_get (as_atomic loc) in
+  let state_old = fenceless_get (as_atomic loc) in
   let state_new =
-    let awaiters = awaiter :: state_old_r.awaiters in
-    State { before = Obj.magic (); after = before; casn = After; awaiters }
+    let awaiters = awaiter :: state_old.awaiters in
+    { before = Obj.magic (); after = before; which = W After; awaiters }
   in
   before == eval state_old
   && Atomic.compare_and_set (as_atomic loc) state_old state_new
@@ -443,13 +445,13 @@ let[@tail_mod_cons] rec remove_first x' removed = function
 
 let rec remove_awaiter loc before awaiter =
   (* Fenceless is safe as we have fence after. *)
-  let (State state_old_r as state_old) = fenceless_get (as_atomic loc) in
+  let state_old = fenceless_get (as_atomic loc) in
   if before == eval state_old then
     let removed = ref true in
-    let awaiters = remove_first awaiter removed state_old_r.awaiters in
+    let awaiters = remove_first awaiter removed state_old.awaiters in
     if !removed then
       let state_new =
-        State { before = Obj.magic (); after = before; casn = After; awaiters }
+        { before = Obj.magic (); after = before; which = W After; awaiters }
       in
       if not (Atomic.compare_and_set (as_atomic loc) state_old state_new) then
         remove_awaiter loc before awaiter
@@ -466,9 +468,9 @@ let block timeout loc before =
   end;
   Timeout.unawait timeout alive
 
-let rec update_no_alloc timeout backoff loc (State state_r as state) f =
+let rec update_no_alloc timeout backoff loc state f =
   (* Fenceless is safe as we have had a fence before if needed and there is a fence after. *)
-  let (State state_old_r as state_old) = fenceless_get (as_atomic loc) in
+  let state_old = fenceless_get (as_atomic loc) in
   let before = eval state_old in
   match f before with
   | after ->
@@ -477,9 +479,9 @@ let rec update_no_alloc timeout backoff loc (State state_r as state) f =
         before
       end
       else begin
-        state_r.after <- after;
+        state.after <- after;
         if Atomic.compare_and_set (as_atomic loc) state_old state then begin
-          resume_awaiters state_old_r.awaiters;
+          resume_awaiters state_old.awaiters;
           Timeout.cancel timeout;
           before
         end
@@ -492,7 +494,7 @@ let rec update_no_alloc timeout backoff loc (State state_r as state) f =
       Timeout.cancel timeout;
       raise exn
 
-let update_with_state timeout backoff loc f (State state_old_r as state_old) =
+let update_with_state timeout backoff loc f state_old =
   let before = eval state_old in
   match f before with
   | after ->
@@ -503,7 +505,7 @@ let update_with_state timeout backoff loc f (State state_old_r as state_old) =
       else
         let state = new_state after in
         if Atomic.compare_and_set (as_atomic loc) state_old state then begin
-          resume_awaiters state_old_r.awaiters;
+          resume_awaiters state_old.awaiters;
           Timeout.cancel timeout;
           before
         end
@@ -516,27 +518,26 @@ let update_with_state timeout backoff loc f (State state_old_r as state_old) =
       Timeout.cancel timeout;
       raise exn
 
-let rec exchange_no_alloc backoff loc (State state_r as state) =
-  let (State state_old_r as state_old) = atomic_get (as_atomic loc) in
+let rec exchange_no_alloc backoff loc state =
+  let state_old = atomic_get (as_atomic loc) in
   let before = eval state_old in
-  if before == state_r.after then before
+  if before == state.after then before
   else if Atomic.compare_and_set (as_atomic loc) state_old state then begin
-    resume_awaiters state_old_r.awaiters;
+    resume_awaiters state_old.awaiters;
     before
   end
   else exchange_no_alloc (Backoff.once backoff) loc state
 
-let[@inline] is_obstruction_free casn loc =
+let[@inline] is_obstruction_free which loc =
   (* Fenceless is safe as we are accessing a private location. *)
-  fenceless_get (casn_as_atomic casn) == Mode.obstruction_free && 0 <= loc.id
+  fenceless_get (root_as_atomic which) == R Mode.obstruction_free && 0 <= loc.id
 
-let[@inline] rec cas_with_state loc before (State state_r as state)
-    (State state_old_r as state_old) =
+let[@inline] rec cas_with_state loc before state state_old =
   before == eval state_old
-  && (before == state_r.after
+  && (before == state.after
      ||
      if Atomic.compare_and_set (as_atomic loc) state_old state then begin
-       resume_awaiters state_old_r.awaiters;
+       resume_awaiters state_old.awaiters;
        true
      end
      else
@@ -633,23 +634,23 @@ module Loc = struct
     fenceless_update ?backoff loc dec |> ignore
 
   let has_awaiters loc =
-    let (State state_r) = atomic_get (as_atomic loc) in
-    state_r.awaiters != []
+    let state = atomic_get (as_atomic loc) in
+    state.awaiters != []
 
   let fenceless_get loc = eval (fenceless_get (as_atomic loc))
 end
 
-let[@inline] insert cass loc state =
+let[@inline] insert cas loc state =
   let x = loc.id in
-  match cass with
-  | Cas { loc = a; lt = Bef | Aft; _ } when x < a.id ->
-      Cas { loc; state; lt = Bef; gt = cass; awaiters = [] }
-  | Cas { loc = a; gt = Bef | Aft; _ } when a.id < x ->
-      Cas { loc; state; lt = cass; gt = Bef; awaiters = [] }
+  match cas with
+  | Node { loc = a; lt = T Leaf; _ } when x < a.id ->
+      Node { loc; state; lt = T Leaf; gt = T cas; awaiters = [] }
+  | Node { loc = a; gt = T Leaf; _ } when a.id < x ->
+      Node { loc; state; lt = T cas; gt = T Leaf; awaiters = [] }
   | _ -> begin
-      match splay ~hit_parent:false x cass with
-      | _, Hit _, _ -> overlap ()
-      | lt, Miss, gt -> Cas { loc; state; lt; gt; awaiters = [] }
+      match splay ~hit_parent:false x (T cas) with
+      | _, T (Node _), _ -> overlap ()
+      | lt, T Leaf, gt -> Node { loc; state; lt; gt; awaiters = [] }
     end
 
 module Op = struct
@@ -672,32 +673,33 @@ module Op = struct
     | [] -> true
     | [ op ] -> atomic op
     | first :: rest ->
-        let casn = Undetermined { cass = mode } in
-        let rec run cass = function
-          | [] -> determine_for_owner casn cass
+        let which = Undetermined { root = R mode } in
+        let rec run cas = function
+          | [] -> determine_for_owner which cas
           | CAS (loc, before, after) :: rest ->
-              if before == after && is_obstruction_free casn loc then
+              if before == after && is_obstruction_free which loc then
                 (* Fenceless is safe as there are fences in [determine]. *)
                 let state = fenceless_get (as_atomic loc) in
-                before == eval state && run (insert cass loc state) rest
+                before == eval state && run (insert cas loc state) rest
               else
                 run
-                  (insert cass loc
-                     (let casn = casn_upcast casn in
-                      State { before; after; casn; awaiters = [] }))
+                  (insert cas loc
+                     { before; after; which = W which; awaiters = [] })
                   rest
         in
         let (CAS (loc, before, after)) = first in
-        if before == after && is_obstruction_free casn loc then
+        if before == after && is_obstruction_free which loc then
           (* Fenceless is safe as there are fences in [determine]. *)
           let state = fenceless_get (as_atomic loc) in
           before == eval state
-          && run (Cas { loc; state; lt = Bef; gt = Bef; awaiters = [] }) rest
+          && run
+               (Node { loc; state; lt = T Leaf; gt = T Leaf; awaiters = [] })
+               rest
         else
-          let state =
-            State { before; after; casn = casn_upcast casn; awaiters = [] }
-          in
-          run (Cas { loc; state; lt = Bef; gt = Bef; awaiters = [] }) rest
+          let state = { before; after; which = W which; awaiters = [] } in
+          run
+            (Node { loc; state; lt = T Leaf; gt = T Leaf; awaiters = [] })
+            rest
 end
 
 module Xt = struct
@@ -707,8 +709,8 @@ module Xt = struct
   (**)
   type 'x t = {
     mutable _timeout : Timeout.t;
-    mutable casn : [ `Undetermined ] casn;
-    mutable cass : cass;
+    mutable which : [ `Undetermined ] tdt;
+    mutable tree : tree;
     mutable validate_counter : int;
     mutable post_commit : Action.t;
   }
@@ -721,8 +723,8 @@ module Xt = struct
   (*
   type 'x t = {
     mutable _timeout : Timeout.t Atomic.t;
-    mutable casn : casn;
-    mutable cass : cass;
+    mutable which : [ `Undetermined ] tdt;
+    mutable tree : tree;
     mutable validate_counter : int;
     mutable post_commit : Action.t;
   }
@@ -731,18 +733,17 @@ module Xt = struct
   let[@inline] timeout_as_atomic r = r._timeout
   *)
 
-  let[@inline] validate_one casn loc (State state_r as state) =
-    let before = if is_cmp casn state then eval state else state_r.before in
+  let[@inline] validate_one which loc state =
+    let before = if is_cmp which state then eval state else state.before in
     (* Fenceless is safe inside transactions as each log update has a fence. *)
     if before != eval (fenceless_get (as_atomic loc)) then Retry.invalid ()
 
-  let rec validate_all casn = function
-    | Bef | Aft -> ()
-    | Cas r ->
-        let lt = r.lt in
-        if is_node lt then validate_all casn lt;
-        validate_one casn r.loc r.state;
-        validate_all casn r.gt
+  let rec validate_all which = function
+    | T Leaf -> ()
+    | T (Node node_r) ->
+        if is_node node_r.lt then validate_all which node_r.lt;
+        validate_one which node_r.loc node_r.state;
+        validate_all which node_r.gt
 
   let[@inline] maybe_validate_log xt =
     let c0 = xt.validate_counter in
@@ -751,7 +752,7 @@ module Xt = struct
     (* Validate whenever counter reaches next power of 2. *)
     if c0 land c1 = 0 then begin
       Timeout.check (timeout_as_atomic xt);
-      validate_all xt.casn xt.cass
+      validate_all xt.which xt.tree
     end
 
   let[@inline] update_new loc f xt lt gt =
@@ -761,55 +762,54 @@ module Xt = struct
     match f before with
     | after ->
         let state =
-          if before == after && is_obstruction_free xt.casn loc then state
-          else
-            State { before; after; casn = casn_upcast xt.casn; awaiters = [] }
+          if before == after && is_obstruction_free xt.which loc then state
+          else { before; after; which = W xt.which; awaiters = [] }
         in
-        xt.cass <- Cas { loc; state; lt; gt; awaiters = [] };
+        xt.tree <- T (Node { loc; state; lt; gt; awaiters = [] });
         before
     | exception exn ->
-        xt.cass <- Cas { loc; state; lt; gt; awaiters = [] };
+        xt.tree <- T (Node { loc; state; lt; gt; awaiters = [] });
         raise exn
 
   let[@inline] update_top loc f xt state' lt gt =
-    let (State state_r as state) = Obj.magic state' in
-    if is_cmp xt.casn state then begin
+    let state = Obj.magic state' in
+    if is_cmp xt.which state then begin
       let before = eval state in
       let after = f before in
       let state =
         if before == after then state
-        else State { before; after; casn = casn_upcast xt.casn; awaiters = [] }
+        else { before; after; which = W xt.which; awaiters = [] }
       in
-      xt.cass <- Cas { loc; state; lt; gt; awaiters = [] };
+      xt.tree <- T (Node { loc; state; lt; gt; awaiters = [] });
       before
     end
     else
-      let current = state_r.after in
-      let state = State { state_r with after = f current } in
-      xt.cass <- Cas { loc; state; lt; gt; awaiters = [] };
+      let current = state.after in
+      let state = { state with after = f current } in
+      xt.tree <- T (Node { loc; state; lt; gt; awaiters = [] });
       current
 
   let[@inline] unsafe_update ~xt loc f =
     maybe_validate_log xt;
     let x = loc.id in
-    match xt.cass with
-    | Bef | Aft -> update_new loc f xt Bef Bef
-    | Cas { loc = a; lt = Bef | Aft; _ } as cass when x < a.id ->
-        update_new loc f xt Bef cass
-    | Cas { loc = a; gt = Bef | Aft; _ } as cass when a.id < x ->
-        update_new loc f xt cass Bef
-    | Cas { loc = a; state; lt; gt; _ } when Obj.magic a == loc ->
+    match xt.tree with
+    | T Leaf -> update_new loc f xt (T Leaf) (T Leaf)
+    | T (Node { loc = a; lt = T Leaf; _ }) as tree when x < a.id ->
+        update_new loc f xt (T Leaf) tree
+    | T (Node { loc = a; gt = T Leaf; _ }) as tree when a.id < x ->
+        update_new loc f xt tree (T Leaf)
+    | T (Node { loc = a; state; lt; gt; _ }) when Obj.magic a == loc ->
         update_top loc f xt state lt gt
-    | cass -> begin
-        match splay ~hit_parent:false x cass with
-        | l, Miss, r -> update_new loc f xt l r
-        | l, Hit (_loc', state'), r -> update_top loc f xt state' l r
+    | tree -> begin
+        match splay ~hit_parent:false x tree with
+        | l, T Leaf, r -> update_new loc f xt l r
+        | l, T (Node node_r), r -> update_top loc f xt node_r.state l r
       end
 
   let[@inline] protect xt f x =
-    let cass = xt.cass in
+    let tree = xt.tree in
     let y = f x in
-    assert (xt.cass == cass);
+    assert (xt.tree == tree);
     y
 
   let get ~xt loc = unsafe_update ~xt loc Fun.id
@@ -843,68 +843,68 @@ module Xt = struct
 
   let validate ~xt loc =
     let x = loc.id in
-    match xt.cass with
-    | Bef | Aft -> ()
-    | Cas { loc = a; lt = Bef | Aft; _ } when x < a.id -> ()
-    | Cas { loc = a; gt = Bef | Aft; _ } when a.id < x -> ()
-    | Cas { loc = a; state; _ } when Obj.magic a == loc ->
-        validate_one xt.casn a state
-    | cass -> begin
-        match splay ~hit_parent:true x cass with
-        | lt, Hit (a, state), gt ->
-            xt.cass <- Cas { loc = a; state; lt; gt; awaiters = [] };
-            if Obj.magic a == loc then validate_one xt.casn a state
-        | _, Miss, _ -> impossible ()
+    match xt.tree with
+    | T Leaf -> ()
+    | T (Node { loc = a; lt = T Leaf; _ }) when x < a.id -> ()
+    | T (Node { loc = a; gt = T Leaf; _ }) when a.id < x -> ()
+    | T (Node { loc = a; state; _ }) when Obj.magic a == loc ->
+        validate_one xt.which a state
+    | tree -> begin
+        match splay ~hit_parent:true x tree with
+        | lt, T (Node node_r), gt ->
+            xt.tree <- T (Node { node_r with lt; gt; awaiters = [] });
+            if Obj.magic node_r.loc == loc then
+              validate_one xt.which node_r.loc node_r.state
+        | _, T Leaf, _ -> impossible ()
       end
 
   let is_in_log ~xt loc =
     let x = loc.id in
-    match xt.cass with
-    | Bef | Aft -> false
-    | Cas { loc = a; lt = Bef | Aft; _ } when x < a.id -> false
-    | Cas { loc = a; gt = Bef | Aft; _ } when a.id < x -> false
-    | Cas { loc = a; _ } when Obj.magic a == loc -> true
-    | cass -> begin
-        match splay ~hit_parent:true x cass with
-        | lt, Hit (a, state), gt ->
-            xt.cass <- Cas { loc = a; state; lt; gt; awaiters = [] };
-            Obj.magic a == loc
-        | _, Miss, _ -> impossible ()
+    match xt.tree with
+    | T Leaf -> false
+    | T (Node { loc = a; lt = T Leaf; _ }) when x < a.id -> false
+    | T (Node { loc = a; gt = T Leaf; _ }) when a.id < x -> false
+    | T (Node { loc = a; _ }) when Obj.magic a == loc -> true
+    | tree -> begin
+        match splay ~hit_parent:true x tree with
+        | lt, T (Node node_r), gt ->
+            xt.tree <- T (Node { node_r with lt; gt; awaiters = [] });
+            Obj.magic node_r.loc == loc
+        | _, T Leaf, _ -> impossible ()
       end
 
-  let rec rollback casn cass_snap cass =
-    if cass_snap == cass then cass
+  let rec rollback which tree_snap tree =
+    if tree_snap == tree then tree
     else
-      match cass with
-      | (Bef | Aft) as nil -> nil
-      | Cas r -> begin
-          let loc = r.loc in
-          match splay ~hit_parent:false loc.id cass_snap with
-          | lt_mark, Miss, gt_mark ->
-              let lt = rollback casn lt_mark r.lt
-              and gt = rollback casn gt_mark r.gt in
+      match tree with
+      | T Leaf -> T Leaf
+      | T (Node node_r) -> begin
+          match splay ~hit_parent:false node_r.loc.id tree_snap with
+          | lt_mark, T Leaf, gt_mark ->
+              let lt = rollback which lt_mark node_r.lt
+              and gt = rollback which gt_mark node_r.gt in
               let state =
-                let (State state_r as state) = r.state in
-                if is_cmp casn state then state
+                let state = node_r.state in
+                if is_cmp which state then state
                 else
                   (* Fenceless is safe inside transactions as each log update has a fence. *)
-                  let current = fenceless_get (as_atomic loc) in
-                  if state_r.before != eval current then Retry.invalid ()
+                  let current = fenceless_get (as_atomic node_r.loc) in
+                  if state.before != eval current then Retry.invalid ()
                   else current
               in
-              Cas { loc; state; lt; gt; awaiters = [] }
-          | lt_mark, Hit (loc, state), gt_mark ->
-              let lt = rollback casn lt_mark r.lt
-              and gt = rollback casn gt_mark r.gt in
-              Cas { loc; state; lt; gt; awaiters = [] }
+              T (Node { loc = node_r.loc; state; lt; gt; awaiters = [] })
+          | lt_mark, T (Node inner_node_r), gt_mark ->
+              let lt = rollback which lt_mark node_r.lt
+              and gt = rollback which gt_mark node_r.gt in
+              T (Node { inner_node_r with lt; gt; awaiters = [] })
         end
 
-  type 'x snap = cass * Action.t
+  type 'x snap = tree * Action.t
 
-  let snapshot ~xt = (xt.cass, xt.post_commit)
+  let snapshot ~xt = (xt.tree, xt.post_commit)
 
   let rollback ~xt (snap, post_commit) =
-    xt.cass <- rollback xt.casn snap xt.cass;
+    xt.tree <- rollback xt.which snap xt.tree;
     xt.post_commit <- post_commit
 
   let rec first ~xt tx = function
@@ -923,70 +923,64 @@ module Xt = struct
 
   let[@inline] call ~xt { tx } = tx ~xt
 
-  let rec add_awaiters awaiter casn = function
-    | (Bef | Aft) as nil -> nil
-    | Cas r as stop -> begin
-        let lt = r.lt in
-        match if is_node lt then add_awaiters awaiter casn lt else lt with
-        | Bef | Aft ->
+  let rec add_awaiters awaiter which = function
+    | T Leaf -> T Leaf
+    | T (Node node_r) as stop -> begin
+        match
+          if is_node node_r.lt then add_awaiters awaiter which node_r.lt
+          else node_r.lt
+        with
+        | T Leaf ->
             if
-              add_awaiter r.loc
-                (let (State state_r as state) = r.state in
-                 if is_cmp casn state then eval state else state_r.before)
+              add_awaiter node_r.loc
+                (let state = node_r.state in
+                 if is_cmp which state then eval state else state.before)
                 awaiter
-            then add_awaiters awaiter casn r.gt
+            then add_awaiters awaiter which node_r.gt
             else stop
-        | Cas _ as stop -> stop
+        | T (Node _) as stop -> stop
       end
 
-  let rec remove_awaiters awaiter casn stop = function
-    | Bef | Aft -> ()
-    | Cas r as current ->
-        let lt = r.lt in
-        if is_node lt then remove_awaiters awaiter casn stop lt;
+  let rec remove_awaiters awaiter which stop = function
+    | T Leaf -> ()
+    | T (Node node_r) as current ->
+        if is_node node_r.lt then remove_awaiters awaiter which stop node_r.lt;
         if current != stop then begin
-          remove_awaiter r.loc
-            (let (State state_r as state) = r.state in
-             if is_cmp casn state then eval state else state_r.before)
+          remove_awaiter node_r.loc
+            (let state = node_r.state in
+             if is_cmp which state then eval state else state.before)
             awaiter;
-          remove_awaiters awaiter casn stop r.gt
+          remove_awaiters awaiter which stop node_r.gt
         end
 
   let initial_validate_period = 16
 
   let[@inline] reset_quick xt =
-    xt.cass <- Bef;
+    xt.tree <- T Leaf;
     xt.validate_counter <- initial_validate_period;
     xt.post_commit <- Action.noop;
     xt
 
   let reset mode xt =
-    xt.casn <- Undetermined { cass = mode };
+    xt.which <- Undetermined { root = R mode };
     reset_quick xt
 
   let rec commit backoff mode xt tx =
     match tx ~xt with
     | result -> begin
-        match xt.cass with
-        | Bef | Aft ->
+        match xt.tree with
+        | T Leaf ->
             Timeout.cancel (timeout_as_atomic xt);
             Action.run xt.post_commit result
-        | Cas
-            {
-              loc;
-              state = State state_r as state;
-              lt = Bef | Aft;
-              gt = Bef | Aft;
-              _;
-            } ->
-            if is_cmp xt.casn state then begin
+        | T (Node { loc; state; lt = T Leaf; gt = T Leaf; _ }) ->
+            if is_cmp xt.which state then begin
               Timeout.cancel (timeout_as_atomic xt);
               Action.run xt.post_commit result
             end
-            else
-              let before = state_r.before in
-              state_r.before <- Obj.magic ();
-              state_r.casn <- After;
+            else begin
+              state.which <- W After;
+              let before = state.before in
+              state.before <- Obj.magic ();
               (* Fenceless is safe inside transactions as each log update has a fence. *)
               let state_old = fenceless_get (as_atomic loc) in
               if cas_with_state loc before state state_old then begin
@@ -994,8 +988,10 @@ module Xt = struct
                 Action.run xt.post_commit result
               end
               else commit (Backoff.once backoff) mode (reset_quick xt) tx
-        | cass -> begin
-            match determine_for_owner xt.casn cass with
+            end
+        | T (Node node_r) -> begin
+            let root = Node node_r in
+            match determine_for_owner xt.which root with
             | true ->
                 Timeout.cancel (timeout_as_atomic xt);
                 Action.run xt.post_commit result
@@ -1009,23 +1005,23 @@ module Xt = struct
         Timeout.check (timeout_as_atomic xt);
         commit (Backoff.once backoff) mode (reset_quick xt) tx
     | exception Retry.Later -> begin
-        if xt.cass == Bef then invalid_retry ();
+        if xt.tree == T Leaf then invalid_retry ();
         let t = Domain_local_await.prepare_for_await () in
         let alive = Timeout.await (timeout_as_atomic xt) t.release in
-        match add_awaiters t.release xt.casn xt.cass with
-        | Bef | Aft -> begin
+        match add_awaiters t.release xt.which xt.tree with
+        | T Leaf -> begin
             match t.await () with
             | () ->
-                remove_awaiters t.release xt.casn Bef xt.cass;
+                remove_awaiters t.release xt.which (T Leaf) xt.tree;
                 Timeout.unawait (timeout_as_atomic xt) alive;
                 commit (Backoff.reset backoff) mode (reset_quick xt) tx
             | exception cancellation_exn ->
-                remove_awaiters t.release xt.casn Bef xt.cass;
+                remove_awaiters t.release xt.which (T Leaf) xt.tree;
                 Timeout.cancel_alive alive;
                 raise cancellation_exn
           end
-        | Cas _ as stop ->
-            remove_awaiters t.release xt.casn stop xt.cass;
+        | T (Node _) as stop ->
+            remove_awaiters t.release xt.which stop xt.tree;
             Timeout.unawait (timeout_as_atomic xt) alive;
             commit (Backoff.once backoff) mode (reset_quick xt) tx
       end
@@ -1035,13 +1031,12 @@ module Xt = struct
 
   let[@inline] commit ?timeoutf ?(backoff = Backoff.default)
       ?(mode = Mode.obstruction_free) tx =
-    let casn = Undetermined { cass = mode }
-    and cass = Bef
+    let _timeout = timeout_unset ()
+    and which = Undetermined { root = R mode }
+    and tree = T Leaf
     and validate_counter = initial_validate_period
     and post_commit = Action.noop in
-    let xt =
-      { _timeout = timeout_unset (); casn; cass; validate_counter; post_commit }
-    in
+    let xt = { _timeout; which; tree; validate_counter; post_commit } in
     Timeout.set_opt (timeout_as_atomic xt) timeoutf;
     commit backoff mode xt tx.tx
 end
