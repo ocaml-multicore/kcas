@@ -20,10 +20,10 @@ jobs:
       QCHECK_MSG_INTERVAL: '60'
 
     steps:
-      - name: Checkout code
+      - name: Check out code
         uses: actions/checkout@v3
 
-      - name: Set-up OCaml
+      - name: Set up OCaml
         uses: ocaml/setup-ocaml@v2
         with:
           ocaml-compiler: ${{ matrix.ocaml-compiler }}
