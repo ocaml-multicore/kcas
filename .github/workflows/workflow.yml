@@ -16,6 +16,9 @@ jobs:
 
     runs-on: windows-latest
 
+    env:
+      QCHECK_MSG_INTERVAL: '60'
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
