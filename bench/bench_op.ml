@@ -5,20 +5,26 @@ let run_one ?(n_locs = 2) ?(factor = 1)
     ?(n_iter = 10 * factor * Util.iter_factor) () =
   let locs = Loc.make_array n_locs 0 in
 
-  let to_1 =
-    locs |> Array.map (fun loc -> Op.make_cas loc 0 1) |> Array.to_list
+  let rec make_incr cass i n =
+    if i < n then
+      let loc = Array.unsafe_get locs i in
+      let x = Loc.fenceless_get loc in
+      let cas = Op.make_cas loc x (x + 1) in
+      make_incr (cas :: cass) (i + 1) n
+    else cass
   in
-  let to_0 =
-    locs |> Array.map (fun loc -> Op.make_cas loc 1 0) |> Array.to_list
+
+  let rec incr () =
+    let cass = make_incr [] 0 n_locs in
+    if not (Op.atomically cass) then incr ()
   in
 
   let init _ = () in
   let work _ () =
     let rec loop i =
       if i > 0 then begin
-        Op.atomically to_1 |> ignore;
-        Op.atomically to_0 |> ignore;
-        loop (i - 2)
+        incr ();
+        loop (i - 1)
       end
     in
     loop n_iter
