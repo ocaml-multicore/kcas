@@ -26,7 +26,7 @@ jobs:
           ocaml-compiler: ${{ matrix.ocaml-compiler }}
           opam-repositories: |
             dra27: https://github.com/dra27/opam-repository.git#windows-5.0
-            default: https://github.com/fdopen/opam-repository-mingw.git#opam2
+            default: https://github.com/ocaml-opam/opam-repository-mingw.git#sunset
             standard: https://github.com/ocaml/opam-repository.git
 
       - name: Install dependencies
