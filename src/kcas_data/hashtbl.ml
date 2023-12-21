@@ -328,8 +328,8 @@ module Xt = struct
   let reset ~xt t =
     let r = perform_pending ~xt t in
     Accumulator.Xt.set ~xt r.length 0;
-    Xt.set ~xt t
-      { r with pending = make_rehash 0 r.min_buckets; buckets = [||] }
+    let buckets = Loc.make_array r.min_buckets Assoc.Nil in
+    Xt.set ~xt t { r with buckets }
 
   let clear ~xt t = reset ~xt t
 
