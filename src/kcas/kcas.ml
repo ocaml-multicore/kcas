@@ -29,66 +29,72 @@ module Timeout = struct
 
   let[@inline never] timeout () = raise Timeout
 
-  type t = Unset | Elapsed | Call of (unit -> unit)
+  type _ t =
+    | Unset : [> `Unset ] t
+    | Elapsed : [> `Elapsed ] t
+    | Call : (unit -> unit) -> [> `Call ] t
+    | Set : { mutable state : [< `Elapsed | `Call ] t } -> [> `Set ] t
 
-  let unset = Atomic.make Unset
+  external as_atomic : [< `Set ] t -> [< `Elapsed | `Call ] t Atomic.t
+    = "%identity"
 
   (* Fenceless operations are safe here as the timeout state is not not visible
      outside of the library and we don't always need the latest value and, when
      we do, there is a fence after. *)
 
-  let[@inline] check state = if fenceless_get state == Elapsed then timeout ()
+  let[@inline] check (t : [< `Set | `Unset ] t) =
+    match t with
+    | Unset -> ()
+    | Set set_r ->
+        if fenceless_get (as_atomic (Set set_r)) == Elapsed then timeout ()
 
-  let set seconds state =
+  let set seconds (state : [< `Elapsed | `Call ] t Atomic.t) =
     Domain_local_timeout.set_timeoutf seconds @@ fun () ->
     match Atomic.exchange state Elapsed with
     | Call release_or_cancel -> release_or_cancel ()
-    | Unset | Elapsed -> ()
+    | Elapsed -> ()
 
-  let[@inline never] alloc_opt = function
-    | None -> unset
-    | Some seconds ->
-        let state = Atomic.make Unset in
-        let cancel = set seconds state in
-        fenceless_set state @@ Call cancel;
-        state
+  let[@inline never] alloc seconds =
+    let (Set set_r as t : [ `Set ] t) = Set { state = Elapsed } in
+    let cancel = set seconds (as_atomic t) in
+    fenceless_set (as_atomic t) (Call cancel);
+    Set set_r
 
-  let[@inline] alloc_opt seconds =
-    if seconds == None then unset else alloc_opt seconds
+  let[@inline] alloc_opt = function
+    | None -> Unset
+    | Some seconds -> alloc seconds
 
-  let[@inline never] set_opt state = function
-    | None -> ()
-    | Some seconds ->
-        let cancel = set seconds state in
-        fenceless_set state @@ Call cancel
-
-  let[@inline] set_opt state seconds =
-    if seconds != None then set_opt state seconds
-
-  let[@inline never] await state release =
+  let[@inline never] await (state : [< `Elapsed | `Call ] t Atomic.t) release =
     match fenceless_get state with
-    | Call _ as alive ->
-        if Atomic.compare_and_set state alive (Call release) then alive
+    | Call cancel as alive ->
+        if Atomic.compare_and_set state alive (Call release) then Call cancel
         else timeout ()
-    | Unset | Elapsed -> timeout ()
+    | Elapsed -> timeout ()
 
-  let[@inline] await state release =
-    let alive = fenceless_get state in
-    if alive == Unset then Unset else await state release
+  let[@inline] await (t : [ `Unset | `Set ] t) release =
+    match t with Unset -> Unset | Set r -> await (as_atomic (Set r)) release
 
-  let[@inline never] unawait state alive =
+  let[@inline never] unawait (state : [< `Elapsed | `Call ] t Atomic.t) alive =
     match fenceless_get state with
     | Call _ as await ->
         if not (Atomic.compare_and_set state await alive) then timeout ()
-    | Unset | Elapsed -> timeout ()
+    | Elapsed -> timeout ()
 
-  let[@inline] unawait state alive = if alive != Unset then unawait state alive
+  let[@inline] unawait t alive =
+    match (t, alive) with
+    | Set set_r, Call call_r -> unawait (as_atomic (Set set_r)) (Call call_r)
+    | _ -> ()
 
-  let[@inline never] cancel_alive alive =
-    match alive with Call cancel -> cancel () | Unset | Elapsed -> ()
+  let[@inline] cancel_alive (alive : [< `Unset | `Call ] t) =
+    match alive with Unset -> () | Call cancel -> cancel ()
 
-  let[@inline] cancel_alive alive = if alive != Unset then cancel_alive alive
-  let[@inline] cancel state = cancel_alive (fenceless_get state)
+  let[@inline] cancel (t : [< `Set | `Unset ] t) =
+    match t with
+    | Unset -> ()
+    | Set set_r -> (
+        match fenceless_get (as_atomic (Set set_r)) with
+        | Elapsed -> ()
+        | Call cancel -> cancel ())
 end
 
 module Id = struct
@@ -130,6 +136,8 @@ let[@inline] resume_awaiters = function
   | [ awaiter ] -> resume_awaiter awaiter
   | awaiters -> List.iter resume_awaiter awaiters
 
+type mode = Lock_free | Obstruction_free
+
 type 'a state = {
   mutable before : 'a;
   mutable after : 'a;
@@ -149,7 +157,18 @@ and _ tdt =
       (** The result has been determined to be the [after] value.
 
           Keep this second (i.e. value [1] or [true]) for best performance. *)
-  | Undetermined : { mutable root : root } -> [> `Undetermined ] tdt
+  | Xt : {
+      mutable rot : rot;
+          (** [rot] is for Root or Tree.
+
+              This field must be first, see [root_as_atomic] and
+              [tree_as_ref]. *)
+      timeout : [ `Set | `Unset ] Timeout.t;
+      mutable mode : mode;
+      mutable validate_counter : int;
+      mutable post_commit : Action.t;
+    }
+      -> [> `Xt ] tdt
       (** The result might not yet have been determined.  The [root] either says
           which it is or points to the root of the transaction log or [tree]. *)
   | Leaf : [> `Leaf ] tdt  (** Leaf node in the transaction log or [tree]. *)
@@ -166,7 +185,8 @@ and _ tdt =
 
 and root = R : [< `Before | `After | `Node ] tdt -> root [@@unboxed]
 and tree = T : [< `Leaf | `Node ] tdt -> tree [@@unboxed]
-and which = W : [< `Before | `After | `Undetermined ] tdt -> which [@@unboxed]
+and rot = U : [< `Before | `After | `Node | `Leaf ] tdt -> rot [@@unboxed]
+and which = W : [< `Before | `After | `Xt ] tdt -> which [@@unboxed]
 
 (* NOTE: You can adjust comment blocks below to select whether or not to use an
    unsafe cast to avoid a level of indirection due to [Atomic.t] and reduce the
@@ -197,24 +217,25 @@ let[@inline] make_loc padded state id =
   if padded then Multicore_magic.copy_as_padded record else record
 *)
 
-external root_as_atomic : [< `Undetermined ] tdt -> root Atomic.t = "%identity"
+external root_as_atomic : [< `Xt ] tdt -> root Atomic.t = "%identity"
+external tree_as_ref : [< `Xt ] tdt -> tree ref = "%identity"
 
 let[@inline] is_node tree = tree != T Leaf
 let[@inline] is_cmp which state = state.which != W which
 let[@inline] is_cas which state = state.which == W which
 
 let[@inline] is_determined = function
-  | (Undetermined _ as which : [< `Undetermined ] tdt) -> begin
-      match fenceless_get (root_as_atomic which) with
+  | (Xt _ as xt : [< `Xt ] tdt) -> begin
+      match fenceless_get (root_as_atomic xt) with
       | R (Node _) -> false
       | R After | R Before -> true
     end
 
 module Mode = struct
-  type t = [ `Before | `After ] tdt
+  type t = mode
 
-  let lock_free = After
-  let obstruction_free = Before
+  let lock_free = Lock_free
+  let obstruction_free = Obstruction_free
 end
 
 let[@inline] isnt_int x = not (Obj.is_int (Obj.repr x))
@@ -303,8 +324,8 @@ and determine_eq backoff which status (Node node_r as eq : [< `Node ] tdt) =
       match current.which with
       | W Before -> state.before == current.before
       | W After -> state.before == current.after
-      | W (Undetermined _ as which) ->
-          if is_after which then state.before == current.after
+      | W (Xt _ as xt) ->
+          if is_after xt then state.before == current.after
           else state.before == current.before
     in
     if is_cas which state && matches_expected () then begin
@@ -328,20 +349,20 @@ and determine_eq backoff which status (Node node_r as eq : [< `Node ] tdt) =
     else -1
 
 and is_after = function
-  | (Undetermined _ as which : [< `Undetermined ] tdt) -> begin
-      (* Fenceless at most gives old [Undetermined] and causes extra work. *)
-      match fenceless_get (root_as_atomic which) with
+  | (Xt _ as xt : [< `Xt ] tdt) -> begin
+      (* Fenceless at most gives old root and causes extra work. *)
+      match fenceless_get (root_as_atomic xt) with
       | R (Node node_r) -> begin
           let root = Node node_r in
-          match determine which 0 root with
+          match determine xt 0 root with
           | status ->
-              finish which root
-                (if a_cmp_followed_by_a_cas < status then verify which root
+              finish xt root
+                (if a_cmp_followed_by_a_cas < status then verify xt root
                  else if 0 <= status then After
                  else Before)
           | exception Exit ->
               (* Fenceless is safe as there was a fence before. *)
-              fenceless_get (root_as_atomic which) == R After
+              fenceless_get (root_as_atomic xt) == R After
         end
       | R Before -> false
       | R After -> true
@@ -387,8 +408,7 @@ let[@inline] eval state =
   match state.which with
   | W Before -> state.before
   | W After -> state.after
-  | W (Undetermined _ as which) ->
-      if is_after which then state.after else state.before
+  | W (Xt _ as xt) -> if is_after xt then state.after else state.before
 
 module Retry = struct
   exception Later
@@ -502,10 +522,6 @@ let rec exchange_no_alloc backoff loc state =
   end
   else exchange_no_alloc (Backoff.once backoff) loc state
 
-let[@inline] is_obstruction_free which loc =
-  (* Fenceless is safe as we are accessing a private location. *)
-  fenceless_get (root_as_atomic which) == R Mode.obstruction_free && 0 <= loc.id
-
 let[@inline] rec cas_with_state backoff loc before state state_old =
   before == eval state_old
   && (before == state.after
@@ -616,35 +632,7 @@ module Loc = struct
 end
 
 module Xt = struct
-  (* NOTE: You can adjust comment blocks below to select whether or not to use
-     an unsafe cast to avoid a level of indirection due to [Atomic.t]. *)
-
-  (**)
-  type 'x t = {
-    mutable _timeout : Timeout.t;
-    mutable which : [ `Undetermined ] tdt;
-    mutable tree : tree;
-    mutable validate_counter : int;
-    mutable post_commit : Action.t;
-  }
-
-  let[@inline] timeout_unset () = Timeout.Unset
-
-  external timeout_as_atomic : 'x t -> Timeout.t Atomic.t = "%identity"
-  (**)
-
-  (*
-  type 'x t = {
-    mutable _timeout : Timeout.t Atomic.t;
-    mutable which : [ `Undetermined ] tdt;
-    mutable tree : tree;
-    mutable validate_counter : int;
-    mutable post_commit : Action.t;
-  }
-
-  let[@inline] timeout_unset () = Atomic.make Timeout.Unset
-  let[@inline] timeout_as_atomic r = r._timeout
-  *)
+  type 'x t = [ `Xt ] tdt
 
   let[@inline] validate_one which loc state =
     let before = if is_cmp which state then eval state else state.before in
@@ -660,15 +648,19 @@ module Xt = struct
     validate_one which node_r.loc node_r.state;
     validate_all_rec which node_r.gt
 
-  let[@inline] maybe_validate_log xt =
-    let c0 = xt.validate_counter in
+  let[@inline] maybe_validate_log (Xt xt_r as xt : _ t) =
+    let c0 = xt_r.validate_counter in
     let c1 = c0 + 1 in
-    xt.validate_counter <- c1;
+    xt_r.validate_counter <- c1;
     (* Validate whenever counter reaches next power of 2. *)
     if c0 land c1 = 0 then begin
-      Timeout.check (timeout_as_atomic xt);
-      validate_all_rec xt.which xt.tree
+      Timeout.check xt_r.timeout;
+      validate_all_rec xt !(tree_as_ref xt)
     end
+
+  let[@inline] is_obstruction_free (Xt xt_r : _ t) loc =
+    (* Fenceless is safe as we are accessing a private location. *)
+    xt_r.mode == Mode.obstruction_free && 0 <= loc.id
 
   let[@inline] update_new loc f xt lt gt =
     (* Fenceless is safe inside transactions as each log update has a fence. *)
@@ -677,37 +669,37 @@ module Xt = struct
     match f before with
     | after ->
         let state =
-          if before == after && is_obstruction_free xt.which loc then state
-          else { before; after; which = W xt.which; awaiters = [] }
+          if before == after && is_obstruction_free xt loc then state
+          else { before; after; which = W xt; awaiters = [] }
         in
-        xt.tree <- T (Node { loc; state; lt; gt; awaiters = [] });
+        tree_as_ref xt := T (Node { loc; state; lt; gt; awaiters = [] });
         before
     | exception exn ->
-        xt.tree <- T (Node { loc; state; lt; gt; awaiters = [] });
+        tree_as_ref xt := T (Node { loc; state; lt; gt; awaiters = [] });
         raise exn
 
   let[@inline] update_top loc f xt state' lt gt =
     let state = Obj.magic state' in
-    if is_cmp xt.which state then begin
+    if is_cmp xt state then begin
       let before = eval state in
       let after = f before in
       let state =
         if before == after then state
-        else { before; after; which = W xt.which; awaiters = [] }
+        else { before; after; which = W xt; awaiters = [] }
       in
-      xt.tree <- T (Node { loc; state; lt; gt; awaiters = [] });
+      tree_as_ref xt := T (Node { loc; state; lt; gt; awaiters = [] });
       before
     end
     else
       let current = state.after in
       let state = { state with after = f current } in
-      xt.tree <- T (Node { loc; state; lt; gt; awaiters = [] });
+      tree_as_ref xt := T (Node { loc; state; lt; gt; awaiters = [] });
       current
 
   let[@inline] unsafe_update ~xt loc f =
     maybe_validate_log xt;
     let x = loc.id in
-    match xt.tree with
+    match !(tree_as_ref xt) with
     | T Leaf -> update_new loc f xt (T Leaf) (T Leaf)
     | T (Node { loc = a; lt = T Leaf; _ }) as tree when x < a.id ->
         update_new loc f xt (T Leaf) tree
@@ -722,9 +714,9 @@ module Xt = struct
       end
 
   let[@inline] protect xt f x =
-    let tree = xt.tree in
+    let tree = !(tree_as_ref xt) in
     let y = f x in
-    assert (xt.tree == tree);
+    assert (!(tree_as_ref xt) == tree);
     y
 
   let get ~xt loc = unsafe_update ~xt loc Fun.id
@@ -753,29 +745,29 @@ module Xt = struct
   let[@inline] to_nonblocking ~xt tx =
     match tx ~xt with value -> Some value | exception Retry.Later -> None
 
-  let post_commit ~xt action =
-    xt.post_commit <- Action.append action xt.post_commit
+  let post_commit ~xt:(Xt xt_r : _ t) action =
+    xt_r.post_commit <- Action.append action xt_r.post_commit
 
   let validate ~xt loc =
     let x = loc.id in
-    match xt.tree with
+    match !(tree_as_ref xt) with
     | T Leaf -> ()
     | T (Node { loc = a; lt = T Leaf; _ }) when x < a.id -> ()
     | T (Node { loc = a; gt = T Leaf; _ }) when a.id < x -> ()
     | T (Node { loc = a; state; _ }) when Obj.magic a == loc ->
-        validate_one xt.which a state
+        validate_one xt a state
     | tree -> begin
         match splay ~hit_parent:true x tree with
         | lt, T (Node node_r), gt ->
-            xt.tree <- T (Node { node_r with lt; gt; awaiters = [] });
+            tree_as_ref xt := T (Node { node_r with lt; gt; awaiters = [] });
             if Obj.magic node_r.loc == loc then
-              validate_one xt.which node_r.loc node_r.state
+              validate_one xt node_r.loc node_r.state
         | _, T Leaf, _ -> impossible ()
       end
 
   let is_in_log ~xt loc =
     let x = loc.id in
-    match xt.tree with
+    match !(tree_as_ref xt) with
     | T Leaf -> false
     | T (Node { loc = a; lt = T Leaf; _ }) when x < a.id -> false
     | T (Node { loc = a; gt = T Leaf; _ }) when a.id < x -> false
@@ -783,7 +775,7 @@ module Xt = struct
     | tree -> begin
         match splay ~hit_parent:true x tree with
         | lt, T (Node node_r), gt ->
-            xt.tree <- T (Node { node_r with lt; gt; awaiters = [] });
+            tree_as_ref xt := T (Node { node_r with lt; gt; awaiters = [] });
             Obj.magic node_r.loc == loc
         | _, T Leaf, _ -> impossible ()
       end
@@ -817,11 +809,11 @@ module Xt = struct
 
   type 'x snap = tree * Action.t
 
-  let snapshot ~xt = (xt.tree, xt.post_commit)
+  let snapshot ~xt:(Xt xt_r as xt : _ t) = (!(tree_as_ref xt), xt_r.post_commit)
 
-  let rollback ~xt (snap, post_commit) =
-    xt.tree <- rollback xt.which snap xt.tree;
-    xt.post_commit <- post_commit
+  let rollback ~xt:(Xt xt_r as xt : _ t) (snap, post_commit) =
+    tree_as_ref xt := rollback xt snap !(tree_as_ref xt);
+    xt_r.post_commit <- post_commit
 
   let rec first ~xt tx = function
     | [] -> tx ~xt
@@ -874,27 +866,17 @@ module Xt = struct
 
   let initial_validate_period = 16
 
-  let[@inline] reset_quick xt =
-    xt.tree <- T Leaf;
-    xt.validate_counter <- initial_validate_period;
-    xt.post_commit <- Action.noop;
-    xt
+  let success (Xt xt_r : _ t) result =
+    Timeout.cancel xt_r.timeout;
+    Action.run xt_r.post_commit result
 
-  let reset mode xt =
-    xt.which <- Undetermined { root = R mode };
-    reset_quick xt
-
-  let success xt result =
-    Timeout.cancel (timeout_as_atomic xt);
-    Action.run xt.post_commit result
-
-  let rec commit backoff mode xt tx =
+  let rec commit backoff (Xt xt_r as xt : _ t) tx =
     match tx ~xt with
     | result -> begin
-        match xt.tree with
+        match !(tree_as_ref xt) with
         | T Leaf -> success xt result
         | T (Node { loc; state; lt = T Leaf; gt = T Leaf; _ }) ->
-            if is_cmp xt.which state then success xt result
+            if is_cmp xt state then success xt result
             else begin
               state.which <- W After;
               let before = state.before in
@@ -904,79 +886,90 @@ module Xt = struct
               let state_old = fenceless_get (as_atomic loc) in
               if cas_with_state Backoff.default loc before state state_old then
                 success xt result
-              else commit (Backoff.once backoff) mode (reset_quick xt) tx
+              else commit_once_reuse backoff xt tx
             end
         | T (Node node_r) -> begin
             let root = Node node_r in
-            (* Fenceless is safe as [which] is private at this point. *)
-            fenceless_set (root_as_atomic xt.which) (R root);
-            (* The end result is a cyclic data structure, which is why we cannot
-               initialize the [which] atomic directly. *)
-            match determine xt.which 0 root with
+            match determine xt 0 root with
             | status ->
                 if a_cmp_followed_by_a_cas < status then begin
-                  if finish xt.which root (verify xt.which root) then
-                    success xt result
+                  if finish xt root (verify xt root) then success xt result
                   else begin
                     (* We switch to [Mode.lock_free] as there was
                        interference. *)
-                    commit (Backoff.once backoff) Mode.lock_free
-                      (reset Mode.lock_free xt) tx
+                    commit_once_alloc backoff Mode.lock_free xt tx
                   end
                 end
                 else if
                   a_cmp = status
-                  || finish xt.which root
-                       (if 0 <= status then After else Before)
+                  || finish xt root (if 0 <= status then After else Before)
                 then success xt result
-                else commit (Backoff.once backoff) mode (reset mode xt) tx
+                else commit_once_alloc backoff xt_r.mode xt tx
             | exception Exit ->
                 (* Fenceless is safe as there was a fence before. *)
-                if fenceless_get (root_as_atomic xt.which) == R After then
+                if fenceless_get (root_as_atomic xt) == R After then
                   success xt result
-                else commit (Backoff.once backoff) mode (reset mode xt) tx
+                else commit_once_alloc backoff xt_r.mode xt tx
           end
       end
-    | exception Retry.Invalid ->
-        Timeout.check (timeout_as_atomic xt);
-        commit (Backoff.once backoff) mode (reset_quick xt) tx
+    | exception Retry.Invalid -> commit_once_reuse backoff xt tx
     | exception Retry.Later -> begin
-        match xt.tree with
+        match !(tree_as_ref xt) with
         | T Leaf -> invalid_retry ()
         | T (Node node_r) -> begin
             let root = Node node_r in
             let t = Domain_local_await.prepare_for_await () in
-            let alive = Timeout.await (timeout_as_atomic xt) t.release in
-            match add_awaiters t.release xt.which root with
+            let alive = Timeout.await xt_r.timeout t.release in
+            match add_awaiters t.release xt root with
             | T Leaf -> begin
                 match t.await () with
                 | () ->
-                    remove_awaiters t.release xt.which (T Leaf) root |> ignore;
-                    Timeout.unawait (timeout_as_atomic xt) alive;
-                    commit (Backoff.reset backoff) mode (reset_quick xt) tx
+                    remove_awaiters t.release xt (T Leaf) root |> ignore;
+                    Timeout.unawait xt_r.timeout alive;
+                    commit_reset_reuse backoff xt tx
                 | exception cancellation_exn ->
-                    remove_awaiters t.release xt.which (T Leaf) root |> ignore;
+                    remove_awaiters t.release xt (T Leaf) root |> ignore;
                     Timeout.cancel_alive alive;
                     raise cancellation_exn
               end
             | T (Node _) as stop ->
-                remove_awaiters t.release xt.which stop root |> ignore;
-                Timeout.unawait (timeout_as_atomic xt) alive;
-                commit (Backoff.once backoff) mode (reset_quick xt) tx
+                remove_awaiters t.release xt stop root |> ignore;
+                Timeout.unawait xt_r.timeout alive;
+                commit_once_reuse backoff xt tx
           end
       end
     | exception exn ->
-        Timeout.cancel (timeout_as_atomic xt);
+        Timeout.cancel xt_r.timeout;
         raise exn
 
+  and commit_once_reuse backoff xt tx =
+    commit_reuse (Backoff.once backoff) xt tx
+
+  and commit_reset_reuse backoff xt tx =
+    commit_reuse (Backoff.reset backoff) xt tx
+
+  and commit_reuse backoff (Xt xt_r as xt : _ t) tx =
+    tree_as_ref xt := T Leaf;
+    xt_r.validate_counter <- initial_validate_period;
+    xt_r.post_commit <- Action.noop;
+    Timeout.check xt_r.timeout;
+    commit backoff xt tx
+
+  and commit_once_alloc backoff mode (Xt xt_r : _ t) tx =
+    let backoff = Backoff.once backoff in
+    Timeout.check xt_r.timeout;
+    let rot = U Leaf in
+    let validate_counter = initial_validate_period in
+    let post_commit = Action.noop in
+    let xt = Xt { xt_r with rot; mode; validate_counter; post_commit } in
+    commit backoff xt tx
+
   let[@inline] commit ?timeoutf ?(backoff = Backoff.default)
-      ?(mode = Mode.obstruction_free) tx =
-    let _timeout = timeout_unset ()
-    and which = Undetermined { root = R mode }
-    and tree = T Leaf
+      ?(mode = Mode.obstruction_free) { tx } =
+    let timeout = Timeout.alloc_opt timeoutf
+    and rot = U Leaf
     and validate_counter = initial_validate_period
     and post_commit = Action.noop in
-    let xt = { _timeout; which; tree; validate_counter; post_commit } in
-    Timeout.set_opt (timeout_as_atomic xt) timeoutf;
-    commit backoff mode xt tx.tx
+    let xt = Xt { rot; timeout; mode; validate_counter; post_commit } in
+    commit backoff xt tx
 end
