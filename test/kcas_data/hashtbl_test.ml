@@ -89,7 +89,9 @@ let basics () =
     = [ ("bar", 19); ("foo", 76) ]);
   Hashtbl.remove t "foo";
   assert (Hashtbl.length t = 1);
-  assert (Hashtbl.to_seq t |> List.of_seq |> List.sort compare = [ ("bar", 19) ])
+  assert (Hashtbl.to_seq t |> List.of_seq |> List.sort compare = [ ("bar", 19) ]);
+  Hashtbl.reset t;
+  assert (not (Hashtbl.mem t "nope"))
 
 let () =
   Alcotest.run "Hashtbl"
