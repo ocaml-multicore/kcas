@@ -215,8 +215,6 @@ module Mode = struct
 
   let lock_free = After
   let obstruction_free = Before
-
-  exception Interference
 end
 
 let[@inline] isnt_int x = not (Obj.is_int (Obj.repr x))
@@ -350,29 +348,6 @@ and is_after = function
       | R Before -> false
       | R After -> true
     end
-
-let[@inline] determine_for_owner which root =
-  (* Fenceless is safe as [which] is private at this point. *)
-  fenceless_set (root_as_atomic which) (R root);
-  (* The end result is a cyclic data structure, which is why we cannot
-     initialize the [which] atomic directly. *)
-  match determine which 0 (T root) with
-  | status ->
-      if a_cmp_followed_by_a_cas < status then
-        (* We only want to [raise Interference] in case it is the verify step
-           that fails.  The idea is that in [lock_free] mode the attempt might
-           have succeeded as the compared locations would have been set in
-           [lock_free] mode preventing interference.  If failure happens before
-           the verify step then the [lock_free] mode would have likely also
-           failed. *)
-        finish which root (verify which (T root))
-        || raise_notrace Mode.Interference
-      else
-        a_cmp = status
-        || finish which root (if 0 <= status then After else Before)
-  | exception Exit ->
-      (* Fenceless is safe as there was a fence before. *)
-      fenceless_get (root_as_atomic which) == R After
 
 let[@inline never] impossible () = failwith "impossible"
 let[@inline never] invalid_retry () = failwith "kcas: invalid use of retry"
@@ -826,7 +801,8 @@ module Xt = struct
                 let state = node_r.state in
                 if is_cmp which state then state
                 else
-                  (* Fenceless is safe inside transactions as each log update has a fence. *)
+                  (* Fenceless is safe inside transactions as each log update
+                     has a fence. *)
                   let current = fenceless_get (as_atomic node_r.loc) in
                   if state.before != eval current then Retry.invalid ()
                   else current
@@ -904,40 +880,57 @@ module Xt = struct
     xt.which <- Undetermined { root = R mode };
     reset_quick xt
 
+  let success xt result =
+    Timeout.cancel (timeout_as_atomic xt);
+    Action.run xt.post_commit result
+
   let rec commit backoff mode xt tx =
     match tx ~xt with
     | result -> begin
         match xt.tree with
-        | T Leaf ->
-            Timeout.cancel (timeout_as_atomic xt);
-            Action.run xt.post_commit result
+        | T Leaf -> success xt result
         | T (Node { loc; state; lt = T Leaf; gt = T Leaf; _ }) ->
-            if is_cmp xt.which state then begin
-              Timeout.cancel (timeout_as_atomic xt);
-              Action.run xt.post_commit result
-            end
+            if is_cmp xt.which state then success xt result
             else begin
               state.which <- W After;
               let before = state.before in
               if isnt_int before then state.before <- Obj.magic ();
-              (* Fenceless is safe inside transactions as each log update has a fence. *)
+              (* Fenceless is safe inside transactions as each log update has a
+                 fence. *)
               let state_old = fenceless_get (as_atomic loc) in
-              if cas_with_state loc before state state_old then begin
-                Timeout.cancel (timeout_as_atomic xt);
-                Action.run xt.post_commit result
-              end
+              if cas_with_state loc before state state_old then
+                success xt result
               else commit (Backoff.once backoff) mode (reset_quick xt) tx
             end
         | T (Node node_r) -> begin
             let root = Node node_r in
-            match determine_for_owner xt.which root with
-            | true ->
-                Timeout.cancel (timeout_as_atomic xt);
-                Action.run xt.post_commit result
-            | false -> commit (Backoff.once backoff) mode (reset mode xt) tx
-            | exception Mode.Interference ->
-                commit (Backoff.once backoff) Mode.lock_free
-                  (reset Mode.lock_free xt) tx
+            (* Fenceless is safe as [which] is private at this point. *)
+            fenceless_set (root_as_atomic xt.which) (R root);
+            (* The end result is a cyclic data structure, which is why we cannot
+               initialize the [which] atomic directly. *)
+            match determine xt.which 0 (T root) with
+            | status ->
+                if a_cmp_followed_by_a_cas < status then begin
+                  if finish xt.which root (verify xt.which (T root)) then
+                    success xt result
+                  else begin
+                    (* We switch to [Mode.lock_free] as there was
+                       interference. *)
+                    commit (Backoff.once backoff) Mode.lock_free
+                      (reset Mode.lock_free xt) tx
+                  end
+                end
+                else if
+                  a_cmp = status
+                  || finish xt.which root
+                       (if 0 <= status then After else Before)
+                then success xt result
+                else commit (Backoff.once backoff) mode (reset mode xt) tx
+            | exception Exit ->
+                (* Fenceless is safe as there was a fence before. *)
+                if fenceless_get (root_as_atomic xt.which) == R After then
+                  success xt result
+                else commit (Backoff.once backoff) mode (reset mode xt) tx
           end
       end
     | exception Retry.Invalid ->

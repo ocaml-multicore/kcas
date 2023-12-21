@@ -150,15 +150,8 @@ module Mode : sig
 
   val obstruction_free : t
   (** In [obstruction_free] mode the algorithm proceeds optimistically and
-      allows read-only operations to fail due to {!Interference} from other
-      domains that might have been prevented in the {!lock_free} mode. *)
-
-  exception Interference
-  (** Exception raised when interference from other domains is detected in the
-      {!obstruction_free} mode.  Interference may happen when some location is
-      accessed by both a compare-and-set and a (read-only) compare operation.
-      It is not necessary for the compare-and-set to actually change the logical
-      value of the location. *)
+      allows read-only operations to fail due to interference from other domains
+      that might have been prevented in the {!lock_free} mode. *)
 end
 
 (** {1 Individual locations}
@@ -300,8 +293,8 @@ end
 
     Each phase may fail.  In particular, in the first phase, as no changes to
     shared memory have yet been attempted, it is safe, for example, to raise
-    exceptions to signal failure.  Failure on the third phase raises
-    {!Mode.Interference}, which is automatically handled by {!Xt.commit}.
+    exceptions to signal failure.  Failure on the third phase is automatically
+    handled by {!Xt.commit}.
 
     Only after all phases have completed succesfully, the writes to shared
     memory locations are atomically marked as having taken effect and subsequent
@@ -546,8 +539,7 @@ module Xt : sig
 
       The default for [commit] is {!Mode.obstruction_free}.  However, after
       enough attempts have failed during the verification step, [commit]
-      switches to {!Mode.lock_free}.  Note that [commit] never raises the
-      {!Mode.Interference} exception. *)
+      switches to {!Mode.lock_free}. *)
 
   (**/**)
 
