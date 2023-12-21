@@ -75,7 +75,6 @@ is distributed under the [ISC license](LICENSE.md).
   - [Programming with transactional data structures](#programming-with-transactional-data-structures)
     - [The dining philosophers problem](#the-dining-philosophers-problem)
     - [A transactional LRU cache](#a-transactional-lru-cache)
-  - [Programming with primitive operations](#programming-with-primitive-operations)
 - [Designing lock-free algorithms with k-CAS](#designing-lock-free-algorithms-with-k-cas)
   - [Understand performance](#understand-performance)
   - [Minimize accesses](#minimize-accesses)
