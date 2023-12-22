@@ -30,37 +30,11 @@ module Times = struct
           results.(domain_i)
       done
     in
-    let prepare_for_await () =
-      let open struct
-        type state = Init | Released | Awaiting of { mutable released : bool }
-      end in
-      let state = Atomic.make Init in
-      let release () =
-        if Multicore_magic.fenceless_get state != Released then
-          match Atomic.exchange state Released with
-          | Awaiting r -> r.released <- true
-          | _ -> ()
-      in
-      let await () =
-        if Multicore_magic.fenceless_get state != Released then
-          let awaiting = Awaiting { released = false } in
-          if Atomic.compare_and_set state Init awaiting then
-            match awaiting with
-            | Awaiting r ->
-                (* Avoid sleeping *)
-                while not r.released do
-                  Domain.cpu_relax ()
-                done
-            | _ -> ()
-      in
-      Domain_local_await.{ release; await }
+    let domains =
+      Array.init n_domains @@ fun domain_i ->
+      Domain.spawn @@ fun () -> main domain_i
     in
-    Domain_local_await.using ~prepare_for_await ~while_running:(fun () ->
-        let domains =
-          Array.init n_domains @@ fun domain_i ->
-          Domain.spawn @@ fun () -> main domain_i
-        in
-        Array.iter Domain.join domains);
+    Array.iter Domain.join domains;
     let n = Stack.length results.(0) in
     let times = Array.create_float n in
     for run_i = 0 to n - 1 do

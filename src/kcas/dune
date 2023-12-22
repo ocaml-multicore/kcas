@@ -1,7 +1,7 @@
 (library
  (name kcas)
  (public_name kcas)
- (libraries domain-local-await domain-local-timeout backoff multicore-magic))
+ (libraries picos backoff multicore-magic))
 
 (mdx
  (package kcas)

@@ -1,1 +1,4 @@
 doc: "https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/"
+pin-depends: [
+  [ "picos.dev" "git+https://github.com/ocaml-multicore/picos#aaf9a284882328afffa1bdefc309623deb272aaa" ]
+]

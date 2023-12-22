@@ -32,10 +32,7 @@
    (>= 4.13.0))
   (backoff
    (>= 0.1.0))
-  (domain-local-await
-   (>= 1.0.0))
-  (domain-local-timeout
-   (>= 1.0.0))
+  picos
   (multicore-magic
    (>= 2.0.0))
   (domain_shims
@@ -66,10 +63,7 @@
    (= :version))
   (multicore-magic
    (>= 2.0.0))
-  (domain-local-await
-   (and
-    (>= 1.0.0)
-    :with-test))
+  (picos :with-test)
   (domain_shims
    (and
     (>= 0.1.0)
