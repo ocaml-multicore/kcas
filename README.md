@@ -319,7 +319,7 @@ leak the log as described in the paper
 As an astute reader you may wonder why we wrote `push` and `try_pop` to take a
 transaction log as a parameter and then separately called
 [`commit`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-commit)
-rather than call just call
+rather than just call
 [`commit`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-commit)
 inside the `push` and `try_pop` functions and avoid exposing the `~xt`
 parameter. We'll get to that soon!
