@@ -508,7 +508,7 @@ let[@inline] is_obstruction_free which loc =
   (* Fenceless is safe as we are accessing a private location. *)
   fenceless_get (root_as_atomic which) == R Mode.obstruction_free && 0 <= loc.id
 
-let[@inline] rec cas_with_state loc before state state_old =
+let[@inline] rec cas_with_state backoff loc before state state_old =
   before == eval state_old
   && (before == state.after
      ||
@@ -522,7 +522,8 @@ let[@inline] rec cas_with_state loc before state state_old =
           having installed or removed a waiter.
 
           Fenceless is safe as there was a fence before. *)
-       cas_with_state loc before state (fenceless_get (as_atomic loc)))
+       cas_with_state (Backoff.once backoff) loc before state
+         (fenceless_get (as_atomic loc)))
 
 let inc x = x + 1
 let dec x = x - 1
@@ -571,10 +572,10 @@ module Loc = struct
   let[@inline] get_mode loc =
     if loc.id < 0 then Mode.lock_free else Mode.obstruction_free
 
-  let compare_and_set loc before after =
+  let compare_and_set ?(backoff = Backoff.default) loc before after =
     let state = new_state after in
     let state_old = atomic_get (as_atomic loc) in
-    cas_with_state loc before state state_old
+    cas_with_state backoff loc before state state_old
 
   let fenceless_update ?timeoutf ?(backoff = Backoff.default) loc f =
     let timeout = Timeout.alloc_opt timeoutf in
@@ -898,7 +899,7 @@ module Xt = struct
               (* Fenceless is safe inside transactions as each log update has a
                  fence. *)
               let state_old = fenceless_get (as_atomic loc) in
-              if cas_with_state loc before state state_old then
+              if cas_with_state Backoff.default loc before state state_old then
                 success xt result
               else commit (Backoff.once backoff) mode (reset_quick xt) tx
             end
