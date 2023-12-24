@@ -219,57 +219,56 @@ end
 
 let[@inline] isnt_int x = not (Obj.is_int (Obj.repr x))
 
-let rec release_after which = function
+let[@inline] rec release_after_rec which = function
   | T Leaf -> true
-  | T (Node node_r) ->
-      if is_node node_r.lt then release_after which node_r.lt |> ignore;
-      let state = node_r.state in
-      if is_cas which state then begin
-        state.which <- W After;
-        if isnt_int state.before then state.before <- Obj.magic ();
-        resume_awaiters node_r.awaiters
-      end;
-      release_after which node_r.gt
+  | T (Node node_r) -> release_after which (Node node_r)
 
-let rec release_before which = function
+and release_after which (Node node_r : [< `Node ] tdt) =
+  release_after_rec which node_r.lt |> ignore;
+  let state = node_r.state in
+  if is_cas which state then begin
+    state.which <- W After;
+    if isnt_int state.before then state.before <- Obj.magic ();
+    resume_awaiters node_r.awaiters
+  end;
+  release_after_rec which node_r.gt
+
+let[@inline] rec release_before_rec which = function
   | T Leaf -> false
-  | T (Node node_r) ->
-      if is_node node_r.lt then release_before which node_r.lt |> ignore;
-      let state = node_r.state in
-      if is_cas which state then begin
-        state.which <- W Before;
-        if isnt_int state.after then state.after <- Obj.magic ();
-        resume_awaiters node_r.awaiters
-      end;
-      release_before which node_r.gt
+  | T (Node node_r) -> release_before which (Node node_r)
+
+and release_before which (Node node_r : [< `Node ] tdt) =
+  release_before_rec which node_r.lt |> ignore;
+  let state = node_r.state in
+  if is_cas which state then begin
+    state.which <- W Before;
+    if isnt_int state.after then state.after <- Obj.magic ();
+    resume_awaiters node_r.awaiters
+  end;
+  release_before_rec which node_r.gt
 
 let release which tree status =
   if status == After then release_after which tree
   else release_before which tree
 
-let rec verify which = function
+let[@inline] rec verify_rec which = function
   | T Leaf -> After
-  | T (Node node_r) ->
-      if is_node node_r.lt then
-        let status = verify which node_r.lt in
-        if status == After then
-          (* Fenceless is safe as [finish] has a fence after. *)
-          if
-            is_cmp which node_r.state
-            && fenceless_get (as_atomic node_r.loc) != node_r.state
-          then Before
-          else verify which node_r.gt
-        else status
-      else if
-        (* Fenceless is safe as [finish] has a fence after. *)
-        is_cmp which node_r.state
-        && fenceless_get (as_atomic node_r.loc) != node_r.state
-      then Before
-      else verify which node_r.gt
+  | T (Node node_r) -> verify which (Node node_r)
+
+and verify which (Node node_r : [< `Node ] tdt) =
+  let status = verify_rec which node_r.lt in
+  if status == After then
+    (* Fenceless is safe as [finish] has a fence after. *)
+    if
+      is_cmp which node_r.state
+      && fenceless_get (as_atomic node_r.loc) != node_r.state
+    then Before
+    else verify_rec which node_r.gt
+  else status
 
 let finish which root status =
   if Atomic.compare_and_set (root_as_atomic which) (R root) (R status) then
-    release which (T root) status
+    release which root status
   else
     (* Fenceless is safe as we have a fence above. *)
     fenceless_get (root_as_atomic which) == R After
@@ -278,25 +277,26 @@ let a_cmp = 1
 let a_cas = 2
 let a_cmp_followed_by_a_cas = 4
 
-let rec determine which status = function
+let[@inline] next_status a_cas_or_a_cmp status =
+  let a_cmp_followed_by_a_cas = a_cas_or_a_cmp * 2 land (status * 4) in
+  status lor a_cas_or_a_cmp lor a_cmp_followed_by_a_cas
+
+let[@inline] rec determine_rec which status = function
   | T Leaf -> status
-  | T (Node node_r) ->
-      let status =
-        if is_node node_r.lt then determine which status node_r.lt else status
-      in
-      if status < 0 then status
-      else determine_eq Backoff.default which status (Node node_r)
+  | T (Node node_r) -> determine which status (Node node_r)
+
+and determine which status (Node node_r : [< `Node ] tdt) =
+  let status = determine_rec which status node_r.lt in
+  if status < 0 then status
+  else determine_eq Backoff.default which status (Node node_r)
 
 and determine_eq backoff which status (Node node_r as eq : [< `Node ] tdt) =
   let current = atomic_get (as_atomic node_r.loc) in
   let state = node_r.state in
   if state == current then begin
     let a_cas_or_a_cmp = 1 + Bool.to_int (is_cas which state) in
-    let a_cmp_followed_by_a_cas = a_cas_or_a_cmp * 2 land (status * 4) in
     if is_determined which then raise_notrace Exit;
-    determine which
-      (status lor a_cas_or_a_cmp lor a_cmp_followed_by_a_cas)
-      node_r.gt
+    determine_rec which (next_status a_cas_or_a_cmp status) node_r.gt
   end
   else
     let matches_expected () =
@@ -322,8 +322,7 @@ and determine_eq backoff which status (Node node_r as eq : [< `Node ] tdt) =
          awaiters. *)
       if current.awaiters != [] then node_r.awaiters <- current.awaiters;
       if Atomic.compare_and_set (as_atomic node_r.loc) current state then
-        let a_cmp_followed_by_a_cas = a_cas * 2 land (status * 4) in
-        determine which (status lor a_cas lor a_cmp_followed_by_a_cas) node_r.gt
+        determine_rec which (next_status a_cas status) node_r.gt
       else determine_eq (Backoff.once backoff) which status eq
     end
     else -1
@@ -334,10 +333,10 @@ and is_after = function
       match fenceless_get (root_as_atomic which) with
       | R (Node node_r) -> begin
           let root = Node node_r in
-          match determine which 0 (T root) with
+          match determine which 0 root with
           | status ->
               finish which root
-                (if a_cmp_followed_by_a_cas < status then verify which (T root)
+                (if a_cmp_followed_by_a_cas < status then verify which root
                  else if 0 <= status then After
                  else Before)
           | exception Exit ->
@@ -652,12 +651,14 @@ module Xt = struct
     (* Fenceless is safe inside transactions as each log update has a fence. *)
     if before != eval (fenceless_get (as_atomic loc)) then Retry.invalid ()
 
-  let rec validate_all which = function
+  let[@inline] rec validate_all_rec which = function
     | T Leaf -> ()
-    | T (Node node_r) ->
-        if is_node node_r.lt then validate_all which node_r.lt;
-        validate_one which node_r.loc node_r.state;
-        validate_all which node_r.gt
+    | T (Node node_r) -> validate_all which (Node node_r)
+
+  and validate_all which (Node node_r : [< `Node ] tdt) =
+    validate_all_rec which node_r.lt;
+    validate_one which node_r.loc node_r.state;
+    validate_all_rec which node_r.gt
 
   let[@inline] maybe_validate_log xt =
     let c0 = xt.validate_counter in
@@ -666,7 +667,7 @@ module Xt = struct
     (* Validate whenever counter reaches next power of 2. *)
     if c0 land c1 = 0 then begin
       Timeout.check (timeout_as_atomic xt);
-      validate_all xt.which xt.tree
+      validate_all_rec xt.which xt.tree
     end
 
   let[@inline] update_new loc f xt lt gt =
@@ -838,35 +839,38 @@ module Xt = struct
 
   let[@inline] call ~xt { tx } = tx ~xt
 
-  let rec add_awaiters awaiter which = function
+  let[@inline] rec add_awaiters_rec awaiter which = function
     | T Leaf -> T Leaf
-    | T (Node node_r) as stop -> begin
-        match
-          if is_node node_r.lt then add_awaiters awaiter which node_r.lt
-          else node_r.lt
-        with
-        | T Leaf ->
-            if
-              add_awaiter node_r.loc
-                (let state = node_r.state in
-                 if is_cmp which state then eval state else state.before)
-                awaiter
-            then add_awaiters awaiter which node_r.gt
-            else stop
-        | T (Node _) as stop -> stop
-      end
+    | T (Node node_r) -> add_awaiters awaiter which (Node node_r)
 
-  let rec remove_awaiters awaiter which stop = function
-    | T Leaf -> ()
-    | T (Node node_r) as current ->
-        if is_node node_r.lt then remove_awaiters awaiter which stop node_r.lt;
-        if current != stop then begin
+  and add_awaiters awaiter which (Node node_r as stop : [< `Node ] tdt) =
+    match add_awaiters_rec awaiter which node_r.lt with
+    | T Leaf ->
+        if
+          add_awaiter node_r.loc
+            (let state = node_r.state in
+             if is_cmp which state then eval state else state.before)
+            awaiter
+        then add_awaiters_rec awaiter which node_r.gt
+        else T stop
+    | T (Node _) as stop -> stop
+
+  let[@inline] rec remove_awaiters_rec awaiter which stop = function
+    | T Leaf -> T Leaf
+    | T (Node node_r) -> remove_awaiters awaiter which stop (Node node_r)
+
+  and remove_awaiters awaiter which stop (Node node_r as at : [< `Node ] tdt) =
+    match remove_awaiters_rec awaiter which stop node_r.lt with
+    | T Leaf ->
+        if T at != stop then begin
           remove_awaiter Backoff.default node_r.loc
             (let state = node_r.state in
              if is_cmp which state then eval state else state.before)
             awaiter;
-          remove_awaiters awaiter which stop node_r.gt
+          remove_awaiters_rec awaiter which stop node_r.gt
         end
+        else stop
+    | T (Node _) as stop -> stop
 
   let initial_validate_period = 16
 
@@ -908,10 +912,10 @@ module Xt = struct
             fenceless_set (root_as_atomic xt.which) (R root);
             (* The end result is a cyclic data structure, which is why we cannot
                initialize the [which] atomic directly. *)
-            match determine xt.which 0 (T root) with
+            match determine xt.which 0 root with
             | status ->
                 if a_cmp_followed_by_a_cas < status then begin
-                  if finish xt.which root (verify xt.which (T root)) then
+                  if finish xt.which root (verify xt.which root) then
                     success xt result
                   else begin
                     (* We switch to [Mode.lock_free] as there was
@@ -937,25 +941,29 @@ module Xt = struct
         Timeout.check (timeout_as_atomic xt);
         commit (Backoff.once backoff) mode (reset_quick xt) tx
     | exception Retry.Later -> begin
-        if xt.tree == T Leaf then invalid_retry ();
-        let t = Domain_local_await.prepare_for_await () in
-        let alive = Timeout.await (timeout_as_atomic xt) t.release in
-        match add_awaiters t.release xt.which xt.tree with
-        | T Leaf -> begin
-            match t.await () with
-            | () ->
-                remove_awaiters t.release xt.which (T Leaf) xt.tree;
+        match xt.tree with
+        | T Leaf -> invalid_retry ()
+        | T (Node node_r) -> begin
+            let root = Node node_r in
+            let t = Domain_local_await.prepare_for_await () in
+            let alive = Timeout.await (timeout_as_atomic xt) t.release in
+            match add_awaiters t.release xt.which root with
+            | T Leaf -> begin
+                match t.await () with
+                | () ->
+                    remove_awaiters t.release xt.which (T Leaf) root |> ignore;
+                    Timeout.unawait (timeout_as_atomic xt) alive;
+                    commit (Backoff.reset backoff) mode (reset_quick xt) tx
+                | exception cancellation_exn ->
+                    remove_awaiters t.release xt.which (T Leaf) root |> ignore;
+                    Timeout.cancel_alive alive;
+                    raise cancellation_exn
+              end
+            | T (Node _) as stop ->
+                remove_awaiters t.release xt.which stop root |> ignore;
                 Timeout.unawait (timeout_as_atomic xt) alive;
-                commit (Backoff.reset backoff) mode (reset_quick xt) tx
-            | exception cancellation_exn ->
-                remove_awaiters t.release xt.which (T Leaf) xt.tree;
-                Timeout.cancel_alive alive;
-                raise cancellation_exn
+                commit (Backoff.once backoff) mode (reset_quick xt) tx
           end
-        | T (Node _) as stop ->
-            remove_awaiters t.release xt.which stop xt.tree;
-            Timeout.unawait (timeout_as_atomic xt) alive;
-            commit (Backoff.once backoff) mode (reset_quick xt) tx
       end
     | exception exn ->
         Timeout.cancel (timeout_as_atomic xt);
