@@ -419,7 +419,7 @@ let[@tail_mod_cons] rec remove_first x' removed = function
       []
   | x :: xs -> if x == x' then xs else x :: remove_first x' removed xs
 
-let rec remove_awaiter loc before awaiter =
+let rec remove_awaiter backoff loc before awaiter =
   (* Fenceless is safe as we have fence after. *)
   let state_old = fenceless_get (as_atomic loc) in
   if before == eval state_old then
@@ -430,7 +430,7 @@ let rec remove_awaiter loc before awaiter =
         { before = Obj.magic (); after = before; which = W After; awaiters }
       in
       if not (Atomic.compare_and_set (as_atomic loc) state_old state_new) then
-        remove_awaiter loc before awaiter
+        remove_awaiter (Backoff.once backoff) loc before awaiter
 
 let block timeout loc before =
   let t = Domain_local_await.prepare_for_await () in
@@ -438,7 +438,7 @@ let block timeout loc before =
   if add_awaiter loc before t.release then begin
     try t.await ()
     with cancellation_exn ->
-      remove_awaiter loc before t.release;
+      remove_awaiter Backoff.default loc before t.release;
       Timeout.cancel_alive alive;
       raise cancellation_exn
   end;
@@ -862,7 +862,7 @@ module Xt = struct
     | T (Node node_r) as current ->
         if is_node node_r.lt then remove_awaiters awaiter which stop node_r.lt;
         if current != stop then begin
-          remove_awaiter node_r.loc
+          remove_awaiter Backoff.default node_r.loc
             (let state = node_r.state in
              if is_cmp which state then eval state else state.before)
             awaiter;
