@@ -280,54 +280,53 @@ let a_cmp_followed_by_a_cas = 4
 
 let rec determine which status = function
   | T Leaf -> status
-  | T (Node node_r) as eq ->
+  | T (Node node_r) ->
       let status =
         if is_node node_r.lt then determine which status node_r.lt else status
       in
       if status < 0 then status
-      else
-        let current = atomic_get (as_atomic node_r.loc) in
-        let state = node_r.state in
-        if state == current then begin
-          let a_cas_or_a_cmp = 1 + Bool.to_int (is_cas which state) in
-          let a_cmp_followed_by_a_cas = a_cas_or_a_cmp * 2 land (status * 4) in
-          if is_determined which then raise_notrace Exit;
-          determine which
-            (status lor a_cas_or_a_cmp lor a_cmp_followed_by_a_cas)
-            node_r.gt
-        end
-        else
-          let matches_expected () =
-            match current.which with
-            | W Before -> state.before == current.before
-            | W After -> state.before == current.after
-            | W (Undetermined _ as which) ->
-                if is_after which then state.before == current.after
-                else state.before == current.before
-          in
-          if is_cas which state && matches_expected () then begin
-            if is_determined which then raise_notrace Exit;
-            (* We now know that the operation wasn't finished when we read
-               [current], but it is possible that the [loc]ation has been
-               updated since then by some other domain helping us (or even by
-               some later operation).  If so, then the [compare_and_set] below
-               fails.  Copying the awaiters from [current] is safe in either
-               case, because we know that we have the [current] state that our
-               operation is interested in.  By doing the copying here, we at
-               most duplicate work already done by some other domain.  However,
-               it is necessary to do the copy before the [compare_and_set],
-               because afterwards is too late as some other domain might finish
-               the operation after the [compare_and_set] and miss the
-               awaiters. *)
-            if current.awaiters != [] then node_r.awaiters <- current.awaiters;
-            if Atomic.compare_and_set (as_atomic node_r.loc) current state then
-              let a_cmp_followed_by_a_cas = a_cas * 2 land (status * 4) in
-              determine which
-                (status lor a_cas lor a_cmp_followed_by_a_cas)
-                node_r.gt
-            else determine which status eq
-          end
-          else -1
+      else determine_eq Backoff.default which status (Node node_r)
+
+and determine_eq backoff which status (Node node_r as eq : [< `Node ] tdt) =
+  let current = atomic_get (as_atomic node_r.loc) in
+  let state = node_r.state in
+  if state == current then begin
+    let a_cas_or_a_cmp = 1 + Bool.to_int (is_cas which state) in
+    let a_cmp_followed_by_a_cas = a_cas_or_a_cmp * 2 land (status * 4) in
+    if is_determined which then raise_notrace Exit;
+    determine which
+      (status lor a_cas_or_a_cmp lor a_cmp_followed_by_a_cas)
+      node_r.gt
+  end
+  else
+    let matches_expected () =
+      match current.which with
+      | W Before -> state.before == current.before
+      | W After -> state.before == current.after
+      | W (Undetermined _ as which) ->
+          if is_after which then state.before == current.after
+          else state.before == current.before
+    in
+    if is_cas which state && matches_expected () then begin
+      if is_determined which then raise_notrace Exit;
+      (* We now know that the operation wasn't finished when we read [current],
+         but it is possible that the [loc]ation has been updated since then by
+         some other domain helping us (or even by some later operation).  If so,
+         then the [compare_and_set] below fails.  Copying the awaiters from
+         [current] is safe in either case, because we know that we have the
+         [current] state that our operation is interested in.  By doing the
+         copying here, we at most duplicate work already done by some other
+         domain.  However, it is necessary to do the copy before the
+         [compare_and_set], because afterwards is too late as some other domain
+         might finish the operation after the [compare_and_set] and miss the
+         awaiters. *)
+      if current.awaiters != [] then node_r.awaiters <- current.awaiters;
+      if Atomic.compare_and_set (as_atomic node_r.loc) current state then
+        let a_cmp_followed_by_a_cas = a_cas * 2 land (status * 4) in
+        determine which (status lor a_cas lor a_cmp_followed_by_a_cas) node_r.gt
+      else determine_eq (Backoff.once backoff) which status eq
+    end
+    else -1
 
 and is_after = function
   | (Undetermined _ as which : [< `Undetermined ] tdt) -> begin
