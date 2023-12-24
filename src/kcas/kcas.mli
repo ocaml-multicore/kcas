@@ -215,7 +215,7 @@ module Loc : sig
       conditional load.  It is also safe for the given function [f] to raise any
       other exception to abort the conditional load. *)
 
-  val compare_and_set : 'a t -> 'a -> 'a -> bool
+  val compare_and_set : ?backoff:Backoff.t -> 'a t -> 'a -> 'a -> bool
   (** [compare_and_set r before after] atomically updates the shared memory
       location [r] to the [after] value if the current value of [r] is the
       [before] value. *)
