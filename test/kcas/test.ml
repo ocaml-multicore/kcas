@@ -44,7 +44,7 @@ let run_domains = function
 (* *)
 
 let test_non_linearizable_xt () =
-  [ Mode.obstruction_free; Mode.lock_free ]
+  [ `Obstruction_free; `Lock_free ]
   |> List.iter @@ fun mode ->
      let barrier = Barrier.make 2
      and n_iter = 100 * Util.iter_factor
@@ -63,7 +63,7 @@ let test_non_linearizable_xt () =
      in
 
      let atomically tx =
-       if Random.bool () then Xt.commit ~mode:Mode.obstruction_free tx
+       if Random.bool () then Xt.commit ~mode:`Obstruction_free tx
        else Xt.commit tx
      in
 
@@ -103,7 +103,7 @@ let test_set () =
 (* *)
 
 let test_no_skew_xt () =
-  [ Mode.obstruction_free; Mode.lock_free ]
+  [ `Obstruction_free; `Lock_free ]
   |> List.iter @@ fun mode ->
      let barrier = Barrier.make 3 in
      let test_finished = Atomic.make false in
@@ -168,7 +168,7 @@ let test_no_skew_xt () =
 (* *)
 
 let test_get_seq_xt () =
-  [ Mode.obstruction_free; Mode.lock_free ]
+  [ `Obstruction_free; `Lock_free ]
   |> List.iter @@ fun mode ->
      let barrier = Barrier.make 4 in
      let test_finished = Atomic.make false in
@@ -225,7 +225,7 @@ let test_get_seq_xt () =
 (* *)
 
 let test_stress_xt n nb_loop =
-  [ Mode.obstruction_free; Mode.lock_free ]
+  [ `Obstruction_free; `Lock_free ]
   |> List.iter @@ fun mode ->
      let make_loc n =
        let rec loop n out =
@@ -326,7 +326,7 @@ let test_post_commit () =
     begin
       try
         count := 0;
-        Xt.commit ~mode:Mode.obstruction_free { tx }
+        Xt.commit ~mode:`Obstruction_free { tx }
       with Exit -> ()
     end;
     assert (!count = expect)
@@ -613,11 +613,9 @@ let test_timeout () =
 (* *)
 
 let test_mode () =
-  assert (Loc.get_mode (Loc.make ~mode:Mode.lock_free 0) == Mode.lock_free);
-  assert (
-    Loc.get_mode (Loc.make ~mode:Mode.obstruction_free 0)
-    == Mode.obstruction_free);
-  assert (Loc.get_mode (Loc.make 0) == Mode.obstruction_free)
+  assert (Loc.get_mode (Loc.make ~mode:`Lock_free 0) == `Lock_free);
+  assert (Loc.get_mode (Loc.make ~mode:`Obstruction_free 0) == `Obstruction_free);
+  assert (Loc.get_mode (Loc.make 0) == `Obstruction_free)
 
 (* *)
 

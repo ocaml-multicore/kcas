@@ -136,7 +136,9 @@ let[@inline] resume_awaiters = function
   | [ awaiter ] -> resume_awaiter awaiter
   | awaiters -> List.iter resume_awaiter awaiters
 
-type mode = Lock_free | Obstruction_free
+module Mode = struct
+  type t = [ `Lock_free | `Obstruction_free ]
+end
 
 type 'a state = {
   mutable before : 'a;
@@ -164,7 +166,7 @@ and _ tdt =
               This field must be first, see [root_as_atomic] and
               [tree_as_ref]. *)
       timeout : [ `Set | `Unset ] Timeout.t;
-      mutable mode : mode;
+      mutable mode : Mode.t;
       mutable validate_counter : int;
       mutable post_commit : Action.t;
     }
@@ -230,13 +232,6 @@ let[@inline] is_determined = function
       | R (Node _) -> false
       | R After | R Before -> true
     end
-
-module Mode = struct
-  type t = mode
-
-  let lock_free = Lock_free
-  let obstruction_free = Obstruction_free
-end
 
 let[@inline] isnt_int x = not (Obj.is_int (Obj.repr x))
 
@@ -545,20 +540,18 @@ let dec x = x - 1
 module Loc = struct
   type 'a t = 'a loc
 
-  let make ?(padded = false) ?(mode = Mode.obstruction_free) after =
+  let make ?(padded = false) ?(mode = `Obstruction_free) after =
     let state = new_state after
-    and id =
-      if mode == Mode.obstruction_free then Id.nat_id () else Id.neg_id ()
-    in
+    and id = if mode == `Obstruction_free then Id.nat_id () else Id.neg_id () in
     make_loc padded state id
 
   let make_contended ?mode after = make ~padded:true ?mode after
 
-  let make_array ?(padded = false) ?(mode = Mode.obstruction_free) n after =
+  let make_array ?(padded = false) ?(mode = `Obstruction_free) n after =
     assert (0 <= n);
     let state = new_state after
     and id =
-      (if mode == Mode.obstruction_free then Id.nat_ids n else Id.neg_ids n)
+      (if mode == `Obstruction_free then Id.nat_ids n else Id.neg_ids n)
       - (n - 1)
     in
     Array.init n @@ fun i -> make_loc padded state (id + i)
@@ -584,7 +577,7 @@ module Loc = struct
     get_as (Timeout.alloc_opt timeoutf) f loc (atomic_get (as_atomic loc))
 
   let[@inline] get_mode loc =
-    if loc.id < 0 then Mode.lock_free else Mode.obstruction_free
+    if loc.id < 0 then `Lock_free else `Obstruction_free
 
   let compare_and_set ?(backoff = Backoff.default) loc before after =
     let state = new_state after in
@@ -660,7 +653,7 @@ module Xt = struct
 
   let[@inline] is_obstruction_free (Xt xt_r : _ t) loc =
     (* Fenceless is safe as we are accessing a private location. *)
-    xt_r.mode == Mode.obstruction_free && 0 <= loc.id
+    xt_r.mode == `Obstruction_free && 0 <= loc.id
 
   let[@inline] update_new loc f xt lt gt =
     (* Fenceless is safe inside transactions as each log update has a fence. *)
@@ -895,9 +888,9 @@ module Xt = struct
                 if a_cmp_followed_by_a_cas < status then begin
                   if finish xt root (verify xt root) then success xt result
                   else begin
-                    (* We switch to [Mode.lock_free] as there was
+                    (* We switch to [`Lock_free] as there was
                        interference. *)
-                    commit_once_alloc backoff Mode.lock_free xt tx
+                    commit_once_alloc backoff `Lock_free xt tx
                   end
                 end
                 else if
@@ -965,7 +958,7 @@ module Xt = struct
     commit backoff xt tx
 
   let[@inline] commit ?timeoutf ?(backoff = Backoff.default)
-      ?(mode = Mode.obstruction_free) { tx } =
+      ?(mode = `Obstruction_free) { tx } =
     let timeout = Timeout.alloc_opt timeoutf
     and rot = U Leaf
     and validate_counter = initial_validate_period
