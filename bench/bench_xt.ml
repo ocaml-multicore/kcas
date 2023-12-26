@@ -41,4 +41,5 @@ let run_one ?(n_locs = 2) ?(factor = 1)
     ]
 
 let run_suite ~factor =
-  [ 1; 2; 4; 8 ] |> List.concat_map @@ fun n_locs -> run_one ~n_locs ~factor ()
+  [ 0; 1; 2; 4; 8 ]
+  |> List.concat_map @@ fun n_locs -> run_one ~n_locs ~factor ()
