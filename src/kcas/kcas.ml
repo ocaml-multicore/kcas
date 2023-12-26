@@ -14,14 +14,12 @@ let[@inline] atomic_get x =
 
 (**)
 external fenceless_get : 'a Atomic.t -> 'a = "%field0"
-external fenceless_set : 'a Atomic.t -> 'a -> unit = "%setfield0"
 
 let[@inline] fenceless_get x =
   fenceless_get ((* Prevents CSE *) Sys.opaque_identity x)
 (**)
 (*
 let fenceless_get = atomic_get
-let fenceless_set = Atomic.set
 *)
 
 module Timeout = struct
@@ -54,10 +52,13 @@ module Timeout = struct
     | Call release_or_cancel -> release_or_cancel ()
     | Elapsed -> ()
 
+  let call_id = Call Fun.id
+
   let[@inline never] alloc seconds =
-    let (Set set_r as t : [ `Set ] t) = Set { state = Elapsed } in
+    let (Set set_r as t : [ `Set ] t) = Set { state = call_id } in
     let cancel = set seconds (as_atomic t) in
-    fenceless_set (as_atomic t) (Call cancel);
+    if not (Atomic.compare_and_set (as_atomic t) call_id (Call cancel)) then
+      timeout ();
     Set set_r
 
   let[@inline] alloc_opt = function
