@@ -172,7 +172,10 @@ and _ tdt =
     }
       -> [> `Xt ] tdt
       (** The result might not yet have been determined.  The [root] either says
-          which it is or points to the root of the transaction log or [tree]. *)
+          which it is or points to the root of the transaction log or [tree].
+
+          Note that if/when local/stack allocation mode becomes available in
+          OCaml, the transaction log should be mostly stack allocated. *)
   | Leaf : [> `Leaf ] tdt  (** Leaf node in the transaction log or [tree]. *)
   | Node : {
       loc : 'a loc;
