@@ -140,18 +140,17 @@ end
 
 (** Operating modes of the [k-CAS-n-CMP] algorithm. *)
 module Mode : sig
-  type t
-  (** Type of an operating mode of the [k-CAS-n-CMP] algorithm. *)
-
-  val lock_free : t
-  (** In [lock_free] mode the algorithm makes sure that at least one domain will
+  type t =
+    [ `Lock_free
+      (** In [`Lock_free] mode the algorithm makes sure that at least one domain will
       be able to make progress at the cost of performing read-only operations as
       read-write operations. *)
-
-  val obstruction_free : t
-  (** In [obstruction_free] mode the algorithm proceeds optimistically and
+    | `Obstruction_free
+      (** In [`Obstruction_free] mode the algorithm proceeds optimistically and
       allows read-only operations to fail due to interference from other domains
-      that might have been prevented in the {!lock_free} mode. *)
+      that might have been prevented in the [`Lock_free] mode. *)
+    ]
+  (** Type of an operating mode of the [k-CAS-n-CMP] algorithm. *)
 end
 
 (** {1 Individual locations}
@@ -185,8 +184,8 @@ module Loc : sig
       of using more memory.  It is not recommended to use [~padded:true] for
       short lived shared memory locations.
 
-      The optional [mode] argument defaults to {!Mode.obstruction_free}.  If
-      explicitly specified as {!Mode.lock_free}, the location will always be
+      The optional {{!Mode.t} [mode]} argument defaults to [`Obstruction_free].
+      If explicitly specified as [`Lock_free], the location will always be
       accessed using the lock-free operating mode.  This may improve performance
       in rare cases where a location is updated frequently and obstruction-free
       read-only accesses would almost certainly suffer from interference. *)
@@ -288,8 +287,9 @@ end
     done internally by the library implementation.  Only logically invisible
     writes to shared memory locations are performed during this phase.
 
-    3. In {!Mode.obstruction_free} a third phase verifies all read-only
-    operations.  This is also done internally by the library implementation.
+    3. In [`Obstruction_free] {{!Mode.t} mode} a third phase verifies all
+    read-only operations.  This is also done internally by the library
+    implementation.
 
     Each phase may fail.  In particular, in the first phase, as no changes to
     shared memory have yet been attempted, it is safe, for example, to raise
@@ -537,9 +537,9 @@ module Xt : sig
       {!Retry.Invalid} to explicitly request a retry or any other exception to
       abort the transaction.
 
-      The default for [commit] is {!Mode.obstruction_free}.  However, after
-      enough attempts have failed during the verification step, [commit]
-      switches to {!Mode.lock_free}. *)
+      The default {{!Mode.t} [mode]} for [commit] is [`Obstruction_free].
+      However, after enough attempts have failed during the verification step,
+      [commit] switches to [`Lock_free]. *)
 
   (**/**)
 

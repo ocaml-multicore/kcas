@@ -5,9 +5,9 @@ let loop_count = try int_of_string Sys.argv.(1) with _ -> Util.iter_factor
 let mode =
   Some
     (try
-       if Sys.argv.(2) = "obstruction-free" then Mode.obstruction_free
-       else Mode.lock_free
-     with _ -> Mode.lock_free)
+       if Sys.argv.(2) = "obstruction-free" then `Obstruction_free
+       else `Lock_free
+     with _ -> `Lock_free)
 
 (* Number of shared counters being used to try to cause interference *)
 
