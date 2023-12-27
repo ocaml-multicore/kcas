@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 
 Next version:
 
+- Fix single location updates to be linearizable (@polytypic)
 - Add `Xt.compare_and_set` (@polytypic)
 - Add `Dllist.create_node value` (@polytypic)
 - Workarounds for CSE optimization (@polytypic)
