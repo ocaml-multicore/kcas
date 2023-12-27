@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 
 Next version:
 
+- Add `Xt.compare_and_set` (@polytypic)
 - Add `Dllist.create_node value` (@polytypic)
 - Workarounds for CSE optimization (@polytypic)
 - Changed to use `(implicit_transitive_deps false)` (@polytypic)
