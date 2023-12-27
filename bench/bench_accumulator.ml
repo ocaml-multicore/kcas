@@ -3,6 +3,8 @@ open Bench
 
 let run_one ~n_domains ?(factor = 1) ?(n_ops = 60 * factor * Util.iter_factor)
     () =
+  let n_ops = n_ops * n_domains in
+
   let t = Accumulator.make 0 in
 
   let n_ops_todo = Atomic.make n_ops |> Multicore_magic.copy_as_padded in
