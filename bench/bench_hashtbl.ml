@@ -11,6 +11,9 @@ let run_one ~n_domains ?(factor = 1) ?(n_ops = 50 * factor * Util.iter_factor)
     ?(n_keys = 1000) ~percent_read () =
   let t = Hashtbl.create ~hashed_type:(module Int) () in
 
+  let n_ops = (100 + percent_read) * n_ops / 100 in
+  let n_ops = n_ops * n_domains in
+
   for i = 0 to n_keys - 1 do
     Hashtbl.replace t i i
   done;
