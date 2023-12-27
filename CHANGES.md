@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 
 Next version:
 
+- Remove the Op API (@polytypic, @lyrm)
 - Fix `Hashtbl.clear` (@polytypic)
 - Fix single location updates to be linearizable (@polytypic)
 - Add `Xt.compare_and_set` (@polytypic)
