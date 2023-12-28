@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 
 Next version:
 
+- Use polymorphic variant for `mode` (@polytypic)
 - Add `?backoff` to `Loc.compare_and_set` (@polytypic)
 - Remove the Op API (@polytypic, @lyrm)
 - Fix `Hashtbl.clear` (@polytypic)
