@@ -1,4 +1,5 @@
-[API reference](https://ocaml-multicore.github.io/kcas/doc/)
+[API reference](https://ocaml-multicore.github.io/kcas/doc/) &middot;
+[Benchmarks](https://bench.ci.dev/ocaml-multicore/kcas/branch/main/benchmark/default)
 
 <div align="center">
 
@@ -48,10 +49,11 @@ Features and properties:
 - **_Composable_**: Independently developed transactions can be composed with
   ease sequentially, conjunctively, conditionally, and disjunctively.
 
-In other words, performance should be acceptable and scalable for many use
-cases, the non-blocking properties should allow use in many contexts including
-those where locks are not acceptable, and the features provided should support
-most practical needs.
+In other words,
+[performance](https://bench.ci.dev/ocaml-multicore/kcas/branch/main/benchmark/default)
+should be acceptable and scalable for many use cases, the non-blocking
+properties should allow use in many contexts including those where locks are not
+acceptable, and the features provided should support most practical needs.
 
 **Kcas** is [published on **opam**](https://opam.ocaml.org/packages/kcas/) and
 is distributed under the [ISC license](LICENSE.md).
