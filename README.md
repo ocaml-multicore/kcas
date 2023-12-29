@@ -91,6 +91,7 @@ is distributed under the [ISC license](LICENSE.md).
     - [A rehashable lock-free hash table](#a-rehashable-lock-free-hash-table)
   - [Avoid false sharing](#avoid-false-sharing)
   - [Beware of torn reads](#beware-of-torn-reads)
+- [Additional resources](#additional-resources)
 
 ## A quick tour
 
@@ -2150,3 +2151,11 @@ outside of the transaction:
 Notice that above we only validated the access of `a`, because we know that `a`
 and `b` are always updated atomically and we read `b` after reading `a`. In this
 case that is enough to ensure that read skew is not possible.
+
+## Additional resources
+
+- [Kcas: Building a Lock-Free STM for OCaml (1/2)](https://tarides.com/blog/2023-08-07-kcas-building-a-lock-free-stm-for-ocaml-1-2/)
+  [and (2/2)](https://tarides.com/blog/2023-08-10-kcas-building-a-lock-free-stm-for-ocaml-2-2/)
+- [Building a lock-free STM for OCaml](https://icfp23.sigplan.org/details/ocaml-2023-papers/6/Building-a-lock-free-STM-for-OCaml),
+  see [video](https://www.youtube.com/watch?v=Mt8wPCHU1ZU) and
+  [slides](https://polytypic.github.io/kcas-talk/).
