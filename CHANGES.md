@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 Next version:
 
+- Made `Accumulator` automatically scaling and removed optional `n_way`
+  arguments (@polytypic)
 - Use polymorphic variant for `mode` (@polytypic)
 - Add `?backoff` to `Loc.compare_and_set` (@polytypic)
 - Remove the Op API (@polytypic, @lyrm)
