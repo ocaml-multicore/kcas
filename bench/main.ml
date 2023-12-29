@@ -1,5 +1,6 @@
 let benchmarks =
   [
+    ("Atomic", Bench_atomic.run_suite);
     ("Kcas Loc", Bench_loc.run_suite);
     ("Kcas Xt", Bench_xt.run_suite);
     ("Kcas parallel CMP", Bench_parallel_cmp.run_suite);
