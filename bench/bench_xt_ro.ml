@@ -4,14 +4,14 @@ open Bench
 let run_one ?(n_locs = 2) ?(factor = 1)
     ?(n_iter = 10 * factor * Util.iter_factor) () =
   let locs = Loc.make_array n_locs 0 in
-  let rec loop ~xt i =
-    Xt.incr ~xt (Array.unsafe_get locs i);
+  let rec loop ~xt s i =
+    let s = s + Xt.get ~xt (Array.unsafe_get locs i) in
     let i = i - 1 in
-    if 0 <= i then loop ~xt i
+    if 0 <= i then loop ~xt s i else s
   in
   let tx ~xt =
     let i = n_locs - 1 in
-    if 0 <= i then loop ~xt i
+    if 0 <= i then loop ~xt 0 i |> ignore
   in
 
   let init _ = () in
