@@ -2,16 +2,19 @@ open Kcas
 open Bench
 
 let run_one ?(factor = 1) ?(n_iter = 10 * factor * Util.iter_factor) () =
-  let a = Loc.make ~padded:true 10 and b = Loc.make ~padded:true 52 in
+  let a = Loc.make ~padded:true 10 in
+  let b = Loc.make ~padded:true 52 in
 
   let init _ = Loc.make ~padded:true 0 in
   let work i x =
     if i land 1 = 0 then begin
       let tx1 ~xt =
-        let a = Xt.get ~xt a and b = Xt.get ~xt b in
+        let a = Xt.get ~xt a in
+        let b = Xt.get ~xt b in
         Xt.set ~xt x (b - a)
       and tx2 ~xt =
-        let a = Xt.get ~xt a and b = Xt.get ~xt b in
+        let a = Xt.get ~xt a in
+        let b = Xt.get ~xt b in
         Xt.set ~xt x (a + b)
       in
       let tx1 = { Xt.tx = tx1 } and tx2 = { Xt.tx = tx2 } in
@@ -22,10 +25,12 @@ let run_one ?(factor = 1) ?(n_iter = 10 * factor * Util.iter_factor) () =
     end
     else begin
       let tx1 ~xt =
-        let a = Xt.get ~xt a and b = Xt.get ~xt b in
+        let a = Xt.get ~xt a in
+        let b = Xt.get ~xt b in
         Xt.set ~xt x (b - a)
       and tx2 ~xt =
-        let a = Xt.get ~xt a and b = Xt.get ~xt b in
+        let a = Xt.get ~xt a in
+        let b = Xt.get ~xt b in
         Xt.set ~xt x (a + b)
       in
       let tx1 = { Xt.tx = tx1 } and tx2 = { Xt.tx = tx2 } in
