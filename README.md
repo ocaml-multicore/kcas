@@ -10,7 +10,7 @@
     src="https://raw.githubusercontent.com/ocaml-multicore/kcas/main/doc/kcas.svg">
 </a>
 
-# **Kcas** &mdash; STM based on lock-free MCAS
+# **Kcas** &mdash; Software Transactional Memory for OCaml
 
 </div>
 
