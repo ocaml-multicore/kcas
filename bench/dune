@@ -3,6 +3,7 @@
  (package kcas_data)
  (libraries
   kcas_data
+  backoff
   domain-local-await
   multicore-magic
   yojson

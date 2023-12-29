@@ -66,6 +66,10 @@
    (= :version))
   (multicore-magic
    (>= 2.1.0))
+  (backoff
+   (and
+    (>= 0.1.0)
+    :with-test))
   (domain-local-await
    (and
     (>= 1.0.0)
