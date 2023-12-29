@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 
 Next version:
 
+- Numerous minor internal improvements (@polytypic)
 - Made `Accumulator` automatically scaling and removed optional `n_way`
   arguments (@polytypic)
 - Use polymorphic variant for `mode` (@polytypic)
