@@ -8,7 +8,10 @@ maintainer: [
   "Vesa Karvonen <vesa.a.j.k@gmail.com>"
   "KC Sivaramakrishnan <kc@tarides.com>"
 ]
-authors: ["KC Sivaramakrishnan <kc@tarides.com>"]
+authors: [
+  "KC Sivaramakrishnan <kc@tarides.com>"
+  "Vesa Karvonen <vesa.a.j.k@gmail.com>"
+]
 license: "ISC"
 homepage: "https://github.com/ocaml-multicore/kcas"
 bug-reports: "https://github.com/ocaml-multicore/kcas/issues"

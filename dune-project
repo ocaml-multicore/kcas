@@ -6,7 +6,9 @@
 
 (implicit_transitive_deps false)
 
-(authors "KC Sivaramakrishnan <kc@tarides.com>")
+(authors
+ "KC Sivaramakrishnan <kc@tarides.com>"
+ "Vesa Karvonen <vesa.a.j.k@gmail.com>")
 
 (maintainers
  "Vesa Karvonen <vesa.a.j.k@gmail.com>"
