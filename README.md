@@ -114,9 +114,9 @@ one first creates shared memory locations:
 # let a = Loc.make 0
   and b = Loc.make 0
   and x = Loc.make 0
-val a : int Loc.t = <abstr>
-val b : int Loc.t = <abstr>
-val x : int Loc.t = <abstr>
+val a : int Loc.t = Kcas.Loc.Loc {Kcas.Loc.state = <poly>; id = <poly>}
+val b : int Loc.t = Kcas.Loc.Loc {Kcas.Loc.state = <poly>; id = <poly>}
+val x : int Loc.t = Kcas.Loc.Loc {Kcas.Loc.state = <poly>; id = <poly>}
 ```
 
 One can then manipulate the locations individually:
@@ -300,7 +300,7 @@ transactions to `push` and `try_pop` elements:
 
 ```ocaml
 # let a_stack : int stack = stack ()
-val a_stack : int stack = <abstr>
+val a_stack : int stack = Kcas.Loc.Loc {Kcas.Loc.state = <poly>; id = <poly>}
 
 # Xt.commit { tx = push a_stack 101 }
 - : unit = ()
@@ -418,7 +418,9 @@ transactions to `enqueue` and `try_dequeue` elements:
 
 ```ocaml
 # let a_queue : int queue = queue ()
-val a_queue : int queue = {front = <abstr>; back = <abstr>}
+val a_queue : int queue =
+  {front = Kcas.Loc.Loc {Kcas.Loc.state = <poly>; id = <poly>};
+   back = Kcas.Loc.Loc {Kcas.Loc.state = <poly>; id = <poly>}}
 
 # Xt.commit { tx = enqueue a_queue 76 }
 - : unit = ()
@@ -533,10 +535,12 @@ To test them out, let's create a fresh stack and a queue
 
 ```ocaml
 # let a_stack : int stack = stack ()
-val a_stack : int stack = <abstr>
+val a_stack : int stack = Kcas.Loc.Loc {Kcas.Loc.state = <poly>; id = <poly>}
 
 # let a_queue : int queue = queue ()
-val a_queue : int queue = {front = <abstr>; back = <abstr>}
+val a_queue : int queue =
+  {front = Kcas.Loc.Loc {Kcas.Loc.state = <poly>; id = <poly>};
+   back = Kcas.Loc.Loc {Kcas.Loc.state = <poly>; id = <poly>}}
 ```
 
 and then spawn a domain that tries to atomically both pop and dequeue:
@@ -759,7 +763,8 @@ and create a leftist heap:
 
 ```ocaml
 # let a_heap : int leftist Loc.t = leftist ()
-val a_heap : int leftist Loc.t = <abstr>
+val a_heap : int leftist Loc.t =
+  Kcas.Loc.Loc {Kcas.Loc.state = <poly>; id = <poly>}
 ```
 
 To populate the heap we need to define a transaction passing function and pass
@@ -1018,7 +1023,8 @@ We can then test that the cache works as expected:
 ```ocaml
 # let a_cache : (int, string) cache = cache 2
 val a_cache : (int, string) cache =
-  {space = <abstr>; table = <abstr>; order = <abstr>}
+  {space = Kcas.Loc.Loc {Kcas.Loc.state = <poly>; id = <poly>};
+   table = <abstr>; order = <abstr>}
 
 # Xt.commit { tx = set_blocking a_cache 101 "basics" }
 - : unit = ()
@@ -1266,7 +1272,8 @@ Consider the following example of computing the size of a stack:
 
 ```ocaml
 # let a_stack = Loc.make [2; 3]
-val a_stack : int list Loc.t = <abstr>
+val a_stack : int list Loc.t =
+  Kcas.Loc.Loc {Kcas.Loc.state = <poly>; id = <poly>}
 
 # let n_elems =
     let tx ~xt =
@@ -1432,7 +1439,9 @@ Using the Michael-Scott style queue is as easy as any other transactional queue:
 
 ```ocaml
 # let a_queue : int queue = queue ()
-val a_queue : int queue = {head = <abstr>; tail = <abstr>}
+val a_queue : int queue =
+  {head = Kcas.Loc.Loc {Kcas.Loc.state = <poly>; id = <poly>};
+   tail = <abstr>}
 
 # Xt.commit { tx = enqueue a_queue 19 }
 - : unit = ()
@@ -1884,7 +1893,10 @@ for hash tables, we are ready to take it out for a spin:
 ```ocaml
 # let a_hashtbl : (string, int) hashtbl = hashtbl ()
 val a_hashtbl : (string, int) hashtbl =
-  {pending = <abstr>; basic = {size = <abstr>; data = <abstr>}}
+  {pending = Kcas.Loc.Loc {Kcas.Loc.state = <poly>; id = <poly>};
+   basic =
+    {size = Kcas.Loc.Loc {Kcas.Loc.state = <poly>; id = <poly>};
+     data = Kcas.Loc.Loc {Kcas.Loc.state = <poly>; id = <poly>}}}
 
 # let assoc = [
     ("Intro", 101);
@@ -1999,7 +2011,9 @@ in the earlier example:
 
 ```ocaml
 # let a_queue : int queue = queue ()
-val a_queue : int queue = {head = <abstr>; tail = <abstr>}
+val a_queue : int queue =
+  {head = Kcas.Loc.Loc {Kcas.Loc.state = <poly>; id = <poly>};
+   tail = Kcas.Loc.Loc {Kcas.Loc.state = <poly>; id = <poly>}}
 
 # let counter = ref 1_000
 val counter : int ref = {contents = 1000}
@@ -2054,8 +2068,8 @@ locations. Let's just create two locations `a` and `b`:
 
 ```ocaml
 # let a = Loc.make 0 and b = Loc.make 0
-val a : int Loc.t = <abstr>
-val b : int Loc.t = <abstr>
+val a : int Loc.t = Kcas.Loc.Loc {Kcas.Loc.state = <poly>; id = <poly>}
+val b : int Loc.t = Kcas.Loc.Loc {Kcas.Loc.state = <poly>; id = <poly>}
 ```
 
 And create a helper that spawns a domain that repeatedly increments `a` and

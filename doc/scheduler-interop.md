@@ -131,7 +131,7 @@ state in between, and then returns their sum:
 
 ```ocaml
 # let state = Loc.make 0
-val state : int Loc.t = <abstr>
+val state : int Loc.t = Kcas.Loc.Loc {Kcas.Loc.state = <poly>; id = <poly>}
 # let sync_to target =
     state
     |> Loc.get_as @@ fun current ->

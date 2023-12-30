@@ -45,9 +45,9 @@
       # let a = Loc.make 0
         and b = Loc.make 0
         and x = Loc.make 0
-      val a : int Loc.t = <abstr>
-      val b : int Loc.t = <abstr>
-      val x : int Loc.t = <abstr>
+      val a : int Loc.t = Kcas.Loc.Loc {Kcas.Loc.state = <poly>; id = <poly>}
+      val b : int Loc.t = Kcas.Loc.Loc {Kcas.Loc.state = <poly>; id = <poly>}
+      val x : int Loc.t = Kcas.Loc.Loc {Kcas.Loc.state = <poly>; id = <poly>}
     ]}
 
     One can then manipulate the locations individually:
@@ -170,8 +170,12 @@ end
 
 (** Shared memory locations. *)
 module Loc : sig
-  type !'a t
   (** Type of shared memory locations. *)
+  type !'a t =
+    | Loc : { state : 'state; id : 'id } -> 'a t
+        (** The shape is transparent to allow the compiler to perform
+            optimizations on array accesses.  User code should treat this tyoe
+            as abstract. *)
 
   val make : ?padded:bool -> ?mode:Mode.t -> 'a -> 'a t
   (** [make initial] creates a new shared memory location with the [initial]
