@@ -560,12 +560,15 @@ let inc x = x + 1
 let dec x = x - 1
 
 module Loc = struct
-  type 'a t = 'a loc
+  type !'a t = Loc : { state : 'state; id : 'id } -> 'a t
+
+  external of_loc : 'a loc -> 'a t = "%identity"
+  external to_loc : 'a t -> 'a loc = "%identity"
 
   let make ?(padded = false) ?(mode = `Obstruction_free) after =
     let state = new_state after
     and id = if mode == `Obstruction_free then Id.nat_id () else Id.neg_id () in
-    make_loc padded state id
+    make_loc padded state id |> of_loc
 
   let make_contended ?mode after = make ~padded:true ?mode after
 
@@ -576,10 +579,10 @@ module Loc = struct
       (if mode == `Obstruction_free then Id.nat_ids n else Id.neg_ids n)
       - (n - 1)
     in
-    Array.init n @@ fun i -> make_loc padded state (id + i)
+    Array.init n @@ fun i -> make_loc padded state (id + i) |> of_loc
 
-  let[@inline] get_id loc = loc.id
-  let get loc = eval (atomic_get (as_atomic loc))
+  let[@inline] get_id loc = (to_loc loc).id
+  let get loc = eval (atomic_get (as_atomic (to_loc loc)))
 
   let rec get_as timeout f loc state =
     let before = eval state in
@@ -588,40 +591,45 @@ module Loc = struct
         Timeout.cancel timeout;
         value
     | exception Retry.Later ->
-        block timeout loc before;
+        block timeout (to_loc loc) before;
         (* Fenceless is safe as there was already a fence before. *)
-        get_as timeout f loc (fenceless_get (as_atomic loc))
+        get_as timeout f loc (fenceless_get (as_atomic (to_loc loc)))
     | exception exn ->
         Timeout.cancel timeout;
         raise exn
 
   let[@inline] get_as ?timeoutf f loc =
-    get_as (Timeout.alloc_opt timeoutf) f loc (atomic_get (as_atomic loc))
+    get_as
+      (Timeout.alloc_opt timeoutf)
+      f loc
+      (atomic_get (as_atomic (to_loc loc)))
 
   let[@inline] get_mode loc =
-    if loc.id < 0 then `Lock_free else `Obstruction_free
+    if (to_loc loc).id < 0 then `Lock_free else `Obstruction_free
 
   let compare_and_set ?(backoff = Backoff.default) loc before after =
     let state = new_state after in
-    let state_old = atomic_get (as_atomic loc) in
-    cas_with_state backoff loc before state state_old
+    let state_old = atomic_get (as_atomic (to_loc loc)) in
+    cas_with_state backoff (to_loc loc) before state state_old
 
   let fenceless_update ?timeoutf ?(backoff = Backoff.default) loc f =
     let timeout = Timeout.alloc_opt timeoutf in
-    update_with_state timeout backoff loc f (fenceless_get (as_atomic loc))
+    update_with_state timeout backoff (to_loc loc) f
+      (fenceless_get (as_atomic (to_loc loc)))
 
   let[@inline] fenceless_modify ?timeoutf ?backoff loc f =
     fenceless_update ?timeoutf ?backoff loc f |> ignore
 
   let update ?timeoutf ?(backoff = Backoff.default) loc f =
     let timeout = Timeout.alloc_opt timeoutf in
-    update_with_state timeout backoff loc f (atomic_get (as_atomic loc))
+    update_with_state timeout backoff (to_loc loc) f
+      (atomic_get (as_atomic (to_loc loc)))
 
   let[@inline] modify ?timeoutf ?backoff loc f =
     update ?timeoutf ?backoff loc f |> ignore
 
   let exchange ?(backoff = Backoff.default) loc value =
-    exchange_no_alloc backoff loc (new_state value)
+    exchange_no_alloc backoff (to_loc loc) (new_state value)
 
   let set ?backoff loc value = exchange ?backoff loc value |> ignore
 
@@ -640,10 +648,10 @@ module Loc = struct
     fenceless_update ?backoff loc dec |> ignore
 
   let has_awaiters loc =
-    let state = atomic_get (as_atomic loc) in
+    let state = atomic_get (as_atomic (to_loc loc)) in
     state.awaiters != []
 
-  let fenceless_get loc = eval (fenceless_get (as_atomic loc))
+  let fenceless_get loc = eval (fenceless_get (as_atomic (to_loc loc)))
 end
 
 module Xt = struct
@@ -712,6 +720,7 @@ module Xt = struct
       current
 
   let[@inline] unsafe_update ~xt loc f =
+    let loc = Loc.to_loc loc in
     maybe_validate_log xt;
     let x = loc.id in
     match !(tree_as_ref xt) with
@@ -764,6 +773,7 @@ module Xt = struct
     xt_r.post_commit <- Action.append action xt_r.post_commit
 
   let validate ~xt loc =
+    let loc = Loc.to_loc loc in
     let x = loc.id in
     match !(tree_as_ref xt) with
     | T Leaf -> ()
@@ -781,6 +791,7 @@ module Xt = struct
       end
 
   let is_in_log ~xt loc =
+    let loc = Loc.to_loc loc in
     let x = loc.id in
     match !(tree_as_ref xt) with
     | T Leaf -> false
