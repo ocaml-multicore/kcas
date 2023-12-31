@@ -539,22 +539,15 @@ let rec exchange_no_alloc backoff loc state =
   end
   else exchange_no_alloc (Backoff.once backoff) loc state
 
-let[@inline] rec cas_with_state backoff loc before state state_old =
+let[@inline] cas_with_state loc before state state_old =
   before == eval state_old
   && (before == state.after
-     ||
-     if Atomic.compare_and_set (as_atomic loc) state_old state then begin
-       resume_awaiters state_old.awaiters;
-       true
-     end
-     else
-       (* We must retry, because compare is by value rather than by state.  In
-          other words, we should not fail spuriously due to some other thread
-          having installed or removed a waiter.
-
-          Fenceless is safe as there was a fence before. *)
-       cas_with_state (Backoff.once backoff) loc before state
-         (fenceless_get (as_atomic loc)))
+     || atomic_get (as_atomic loc) == state_old
+        && Atomic.compare_and_set (as_atomic loc) state_old state
+        && begin
+             resume_awaiters state_old.awaiters;
+             true
+           end)
 
 let inc x = x + 1
 let dec x = x - 1
@@ -607,10 +600,18 @@ module Loc = struct
   let[@inline] get_mode loc =
     if (to_loc loc).id < 0 then `Lock_free else `Obstruction_free
 
-  let compare_and_set ?(backoff = Backoff.default) loc before after =
-    let state = new_state after in
+  let compare_and_set loc before after =
     let state_old = atomic_get (as_atomic (to_loc loc)) in
-    cas_with_state backoff (to_loc loc) before state state_old
+    before == eval state_old
+    && (before == after
+       || atomic_get (as_atomic (to_loc loc)) == state_old
+          && Atomic.compare_and_set
+               (as_atomic (to_loc loc))
+               state_old (new_state after)
+          && begin
+               resume_awaiters state_old.awaiters;
+               true
+             end)
 
   let fenceless_update ?timeoutf ?(backoff = Backoff.default) loc f =
     let timeout = Timeout.alloc_opt timeoutf in
@@ -947,7 +948,7 @@ module Xt = struct
               (* Fenceless is safe inside transactions as each log update has a
                  fence. *)
               let state_old = fenceless_get (as_atomic loc) in
-              if cas_with_state Backoff.default loc before state state_old then
+              if cas_with_state loc before state state_old then
                 success xt result
               else commit_once_reuse backoff xt tx
             end
