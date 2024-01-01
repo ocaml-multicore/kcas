@@ -170,7 +170,11 @@ end
       {!Timeout.Timeout} exception may be raised by the operation to signal that
       the timeout expired. *)
 
-(** Shared memory locations. *)
+(** Shared memory locations.
+
+    This module is essentially compatible with the [Stdlib.Atomic] module,
+    except that a number of functions take some optional arguments that one
+    usually need not worry about. *)
 module Loc : sig
   (** Type of shared memory locations. *)
   type !'a t =
