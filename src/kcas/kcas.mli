@@ -194,14 +194,22 @@ module Loc : sig
       If explicitly specified as [`Lock_free], the location will always be
       accessed using the lock-free operating mode.  This may improve performance
       in rare cases where a location is updated frequently and obstruction-free
-      read-only accesses would almost certainly suffer from interference. *)
+      read-only accesses would almost certainly suffer from interference.
+
+      Locations are allocated such that accessing the locations inside a
+      transaction in allocation order from oldest to youngest is as fast as
+      possible. *)
 
   val make_contended : ?mode:Mode.t -> 'a -> 'a t
   (** [make_contended initial] is equivalent to [make ~padded:true initial]. *)
 
   val make_array : ?padded:bool -> ?mode:Mode.t -> int -> 'a -> 'a t array
   (** [make_array n initial] creates an array of [n] new shared memory locations
-      with the [initial] value. *)
+      with the [initial] value.
+
+      The locations are allocated in such an order that accessing the locations
+      in the array inside a transaction in order from the highest index to the
+      lowest index is as fast as possible. *)
 
   val get_mode : 'a t -> Mode.t
   (** [get_mode r] returns the operating mode of the shared memory location
