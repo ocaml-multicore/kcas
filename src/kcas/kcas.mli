@@ -1,7 +1,9 @@
 (** This library provides a software transactional memory (STM) implementation
-    based on an atomic lock-free multi-word compare-and-set (MCAS) algorithm
-    enhanced with read-only compare operations and ability to block awaiting for
-    changes.
+    based on an atomic
+    {{:https://en.wikipedia.org/wiki/Non-blocking_algorithm#Lock-freedom}
+    lock-free} multi-word {{:https://en.wikipedia.org/wiki/Compare-and-swap}
+    compare-and-set} (MCAS) algorithm enhanced with read-only compare operations
+    and ability to block awaiting for changes.
 
     Features and properties:
 
