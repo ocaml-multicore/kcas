@@ -117,8 +117,8 @@ module Stats = struct
           ("value", `Float value);
           ("units", `String units);
           ( "trend",
-            `String
-              (if t.inverted then "higher-is-better" else "lower-is-better") );
+            if t.inverted then `String "higher-is-better"
+            else `String "lower-is-better" );
           ("description", `String description);
         ]
     in
