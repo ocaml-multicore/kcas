@@ -1,9 +1,8 @@
 open Kcas_data
 open Bench
 
-let run_one ?(n_adders = 2) ?(blocking_add = false) ?(n_takers = 2)
-    ?(blocking_take = false) ?(factor = 1)
-    ?(n_msgs = 25 * factor * Util.iter_factor) () =
+let run_one ~budgetf ?(n_adders = 2) ?(blocking_add = false) ?(n_takers = 2)
+    ?(blocking_take = false) ?(n_msgs = 50 * Util.iter_factor) () =
   let n_domains = n_adders + n_takers in
 
   let t = Stack.create () in
@@ -54,7 +53,7 @@ let run_one ?(n_adders = 2) ?(blocking_add = false) ?(n_takers = 2)
     Atomic.set n_msgs_to_add n_msgs
   in
 
-  let times = Times.record ~n_domains ~init ~work ~after () in
+  let times = Times.record ~n_domains ~budgetf ~init ~work ~after () in
 
   let name metric =
     let format role blocking n =
@@ -85,10 +84,10 @@ let run_one ?(n_adders = 2) ?(blocking_add = false) ?(n_takers = 2)
            ~units:"M/s";
     ]
 
-let run_suite ~factor =
+let run_suite ~budgetf =
   Util.cross
     (Util.cross [ 1; 2 ] [ false ])
     (Util.cross [ 1; 2 ] [ false; true ])
   |> List.concat_map
      @@ fun ((n_adders, blocking_add), (n_takers, blocking_take)) ->
-     run_one ~n_adders ~blocking_add ~n_takers ~blocking_take ~factor ()
+     run_one ~budgetf ~n_adders ~blocking_add ~n_takers ~blocking_take ()

@@ -1,8 +1,8 @@
 open Kcas
 open Bench
 
-let run_one ?(n_locs = 2) ?(factor = 1)
-    ?(n_iter = 10 * factor * Util.iter_factor) () =
+let run_one ~budgetf ?(n_locs = 2)
+    ?(n_iter = 20 * (9 - n_locs) * Util.iter_factor) () =
   let locs = Loc.make_array n_locs 0 in
   let rec loop ~xt s i =
     let s = s + Xt.get ~xt (Array.unsafe_get locs i) in
@@ -25,7 +25,7 @@ let run_one ?(n_locs = 2) ?(factor = 1)
     loop n_iter
   in
 
-  let times = Times.record ~n_domains:1 ~init ~work () in
+  let times = Times.record ~n_domains:1 ~budgetf ~init ~work () in
 
   let name metric = Printf.sprintf "%s/%d loc tx" metric n_locs in
 
@@ -44,10 +44,6 @@ let run_one ?(n_locs = 2) ?(factor = 1)
            ~units:"M/s";
     ]
 
-let run_suite ~factor =
+let run_suite ~budgetf =
   [ 0; 1; 2; 4; 8 ]
-  |> List.concat_map @@ fun n_locs ->
-     let factor =
-       Float.to_int (Float.of_int factor *. 9.0 /. Float.of_int (n_locs + 1))
-     in
-     run_one ~n_locs ~factor ()
+  |> List.concat_map @@ fun n_locs -> run_one ~budgetf ~n_locs ()

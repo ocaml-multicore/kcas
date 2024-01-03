@@ -9,7 +9,7 @@ test:
 	@dune runtest --force
 
 bench:
-	@dune exec --release -- bench/main.exe 10
+	@dune exec --release -- bench/main.exe -budget 1
 
 clean:
 	@dune clean

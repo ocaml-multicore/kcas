@@ -1,7 +1,7 @@
 open Kcas_data
 open Bench
 
-let run_single ?(factor = 1) ?(n_msgs = 10 * factor * Util.iter_factor) () =
+let run_single ~budgetf ?(n_msgs = 15 * Util.iter_factor) () =
   let t = Dllist.create () in
 
   let init _ = () in
@@ -12,7 +12,7 @@ let run_single ?(factor = 1) ?(n_msgs = 10 * factor * Util.iter_factor) () =
     done
   in
 
-  let times = Times.record ~n_domains:1 ~init ~work () in
+  let times = Times.record ~n_domains:1 ~budgetf ~init ~work () in
 
   let name metric = Printf.sprintf "%s/single-domain" metric in
 
@@ -33,8 +33,8 @@ let run_single ?(factor = 1) ?(n_msgs = 10 * factor * Util.iter_factor) () =
            ~units:"M/s";
     ]
 
-let run_one ?(n_adders = 2) ?(n_takers = 2) ?(factor = 1)
-    ?(n_msgs = 50 * factor * Util.iter_factor) () =
+let run_one ~budgetf ?(n_adders = 2) ?(n_takers = 2) ?(factor = 1)
+    ?(n_msgs = 20 * factor * Util.iter_factor) () =
   let n_domains = n_adders + n_takers in
 
   let t = Dllist.create () in
@@ -74,7 +74,7 @@ let run_one ?(n_adders = 2) ?(n_takers = 2) ?(factor = 1)
     Atomic.set n_msgs_to_add n_msgs
   in
 
-  let times = Times.record ~n_domains ~init ~work ~after () in
+  let times = Times.record ~n_domains ~budgetf ~init ~work ~after () in
 
   let name metric =
     let format role blocking n =
@@ -105,8 +105,8 @@ let run_one ?(n_adders = 2) ?(n_takers = 2) ?(factor = 1)
            ~units:"M/s";
     ]
 
-let run_suite ~factor =
-  run_single ~factor ()
+let run_suite ~budgetf =
+  run_single ~budgetf ()
   @ (Util.cross [ 1; 2 ] [ 1; 2 ]
     |> List.concat_map @@ fun (n_adders, n_takers) ->
-       run_one ~n_adders ~n_takers ~factor ())
+       run_one ~budgetf ~n_adders ~n_takers ())
