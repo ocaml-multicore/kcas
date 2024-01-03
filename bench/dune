@@ -8,5 +8,6 @@
   multicore-magic
   yojson
   domain_shims
+  str
   mtime
   mtime.clock.os))

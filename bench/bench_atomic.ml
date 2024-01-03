@@ -13,7 +13,7 @@ end
 type t =
   | Op : string * int * 'a * ('a Atomic.t -> unit) * ('a Atomic.t -> unit) -> t
 
-let run_one ?(factor = 1) ?(n_iter = 50 * factor * Util.iter_factor)
+let run_one ~budgetf ?(n_iter = 500 * Util.iter_factor)
     (Op (name, extra, value, op1, op2)) =
   let n_iter = n_iter * extra in
 
@@ -31,7 +31,7 @@ let run_one ?(factor = 1) ?(n_iter = 50 * factor * Util.iter_factor)
     loop n_iter
   in
 
-  let times = Times.record ~n_domains:1 ~init ~work () in
+  let times = Times.record ~n_domains:1 ~budgetf ~init ~work () in
 
   List.concat
     [
@@ -47,7 +47,7 @@ let run_one ?(factor = 1) ?(n_iter = 50 * factor * Util.iter_factor)
            ~description:"Number of operations performed over time" ~units:"M/s";
     ]
 
-let run_suite ~factor =
+let run_suite ~budgetf =
   [
     (let get x = Atomic.get x |> ignore in
      Op ("get", 10, 42, get, get));
@@ -65,4 +65,4 @@ let run_suite ~factor =
     (let swap x = Atomic.modify x (fun (x, y) -> (y, x)) in
      Op ("swap", 2, (4, 2), swap, swap));
   ]
-  |> List.concat_map @@ run_one ~factor
+  |> List.concat_map @@ run_one ~budgetf

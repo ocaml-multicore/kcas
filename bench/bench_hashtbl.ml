@@ -7,7 +7,7 @@ module Int = struct
   let hash = Fun.id
 end
 
-let run_one ~n_domains ?(factor = 1) ?(n_ops = 50 * factor * Util.iter_factor)
+let run_one ~budgetf ~n_domains ?(n_ops = 40 * Util.iter_factor)
     ?(n_keys = 1000) ~percent_read () =
   let t = Hashtbl.create ~hashed_type:(module Int) () in
 
@@ -48,7 +48,7 @@ let run_one ~n_domains ?(factor = 1) ?(n_ops = 50 * factor * Util.iter_factor)
   in
   let after () = Atomic.set n_ops_todo n_ops in
 
-  let times = Times.record ~n_domains ~init ~work ~after () in
+  let times = Times.record ~n_domains ~budgetf ~init ~work ~after () in
 
   let name metric =
     Printf.sprintf "%s/%d worker%s, %d%% reads" metric n_domains
@@ -73,7 +73,7 @@ let run_one ~n_domains ?(factor = 1) ?(n_ops = 50 * factor * Util.iter_factor)
            ~units:"M/s";
     ]
 
-let run_suite ~factor =
+let run_suite ~budgetf =
   Util.cross [ 90; 50; 10 ] [ 1; 2; 4 ]
   |> List.concat_map @@ fun (percent_read, n_domains) ->
-     run_one ~n_domains ~percent_read ~factor ()
+     run_one ~budgetf ~n_domains ~percent_read ()

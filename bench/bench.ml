@@ -1,22 +1,47 @@
 module Times = struct
-  type t = { inverted : bool; times : float array }
+  type t = { inverted : bool; times : float array; runs : int }
 
-  let record ~n_domains ?(n_warmups = 3) ?(n_runs = 17) ?(before = Fun.id) ~init
-      ~work ?(after = Fun.id) () =
+  let record ~n_domains ~budgetf ?(n_warmups = 3) ?(n_runs_min = 7)
+      ?(before = Fun.id) ~init ~work ?(after = Fun.id) () =
+    let barrier_init = Barrier.make n_domains in
     let barrier_before = Barrier.make n_domains in
     let barrier_after = Barrier.make n_domains in
-    let results = Array.init n_domains @@ fun _ -> Stack.create () in
+    let results =
+      Array.init n_domains @@ fun _ ->
+      Stack.create () |> Multicore_magic.copy_as_padded
+    in
+    let budget_used = ref false |> Multicore_magic.copy_as_padded in
+    let runs = ref 0 |> Multicore_magic.copy_as_padded in
+    Gc.full_major ();
+    let budget_start = Mtime_clock.elapsed () in
     let main domain_i =
       for _ = 1 to n_warmups do
-        if domain_i = 0 then before ();
+        if domain_i = 0 then begin
+          before ();
+          Gc.major ()
+        end;
         let state = init domain_i in
         Barrier.await barrier_before;
         work domain_i state;
         Barrier.await barrier_after;
         if domain_i = 0 then after ()
       done;
-      for _run_i = 0 to n_runs - 1 do
-        if domain_i = 0 then before ();
+      while !runs < n_runs_min || not !budget_used do
+        Barrier.await barrier_init;
+        if domain_i = 0 then begin
+          before ();
+          if
+            let budget_stop = Mtime_clock.elapsed () in
+            let elapsedf =
+              Mtime.Span.to_float_ns
+                (Mtime.Span.abs_diff budget_stop budget_start)
+              *. (1. /. 1_000_000_000.0)
+            in
+            budgetf < elapsedf
+          then budget_used := true;
+          incr runs;
+          Gc.major ()
+        end;
         let state = init domain_i in
         Barrier.await barrier_before;
         let start = Mtime_clock.elapsed () in
@@ -69,21 +94,32 @@ module Times = struct
         times.(run_i) <- times.(run_i) +. Stack.pop results.(domain_i)
       done
     done;
-    { inverted = false; times }
+    { inverted = false; times; runs = !runs }
 
-  let invert t =
-    { inverted = not t.inverted; times = Array.map (fun v -> 1.0 /. v) t.times }
+  let invert { inverted; times; runs } =
+    {
+      inverted = not inverted;
+      times = Array.map (fun v -> 1.0 /. v) times;
+      runs;
+    }
 end
 
 module Stats = struct
-  type t = { mean : float; median : float; sd : float; inverted : bool }
+  type t = {
+    mean : float;
+    median : float;
+    sd : float;
+    inverted : bool;
+    runs : int;
+  }
 
-  let scale factor t =
+  let scale factor { mean; median; sd; inverted; runs } =
     {
-      mean = t.mean *. factor;
-      median = t.median *. factor;
-      sd = t.sd *. factor;
-      inverted = t.inverted;
+      mean = mean *. factor;
+      median = median *. factor;
+      sd = sd *. factor;
+      inverted;
+      runs;
     }
 
   let mean_of times =
@@ -99,11 +135,11 @@ module Stats = struct
     if n land 1 = 0 then (times.((n asr 1) - 1) +. times.(n asr 1)) /. 2.0
     else times.(n asr 1)
 
-  let of_times (t : Times.t) =
-    let mean = mean_of t.times in
-    let sd = sd_of t.times mean in
-    let median = median_of t.times in
-    { mean; sd; median; inverted = t.inverted }
+  let of_times Times.{ inverted; times; runs } =
+    let mean = mean_of times in
+    let sd = sd_of times mean in
+    let median = median_of times in
+    { mean; sd; median; inverted; runs }
 
   let to_nonbreaking s =
     s |> String.split_on_char ' '
@@ -120,6 +156,7 @@ module Stats = struct
             if t.inverted then `String "higher-is-better"
             else `String "lower-is-better" );
           ("description", `String description);
+          ("#runs", `Int t.runs);
         ]
     in
     [ metric t.median ]

@@ -1,8 +1,7 @@
 open Kcas
 open Bench
 
-let run_one ~n_domains ?(factor = 1) ?(n_ops = 50 * factor * Util.iter_factor)
-    () =
+let run_one ~budgetf ~n_domains ?(n_ops = 50 * Util.iter_factor) () =
   let n_ops = n_ops * n_domains in
 
   let a = Loc.make ~padded:true 10 in
@@ -38,7 +37,7 @@ let run_one ~n_domains ?(factor = 1) ?(n_ops = 50 * factor * Util.iter_factor)
 
   let after () = Atomic.set n_ops_todo n_ops in
 
-  let times = Times.record ~n_domains ~init ~work ~after () in
+  let times = Times.record ~n_domains ~budgetf ~init ~work ~after () in
 
   let name metric =
     Printf.sprintf "%s/%d worker%s" metric n_domains
@@ -61,6 +60,6 @@ let run_one ~n_domains ?(factor = 1) ?(n_ops = 50 * factor * Util.iter_factor)
            ~units:"M/s";
     ]
 
-let run_suite ~factor =
+let run_suite ~budgetf =
   [ 1; 2; 4 ]
-  |> List.concat_map @@ fun n_domains -> run_one ~n_domains ~factor ()
+  |> List.concat_map @@ fun n_domains -> run_one ~budgetf ~n_domains ()
