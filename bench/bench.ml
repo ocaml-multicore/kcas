@@ -110,15 +110,17 @@ module Stats = struct
     median : float;
     sd : float;
     inverted : bool;
+    best : float;
     runs : int;
   }
 
-  let scale factor { mean; median; sd; inverted; runs } =
+  let scale factor { mean; median; sd; inverted; best; runs } =
     {
       mean = mean *. factor;
       median = median *. factor;
       sd = sd *. factor;
       inverted;
+      best = best *. factor;
       runs;
     }
 
@@ -139,25 +141,34 @@ module Stats = struct
     let mean = mean_of times in
     let sd = sd_of times mean in
     let median = median_of times in
-    { mean; sd; median; inverted; runs }
+    let best =
+      if inverted then Array.fold_left Float.max Float.min_float times
+      else Array.fold_left Float.min Float.max_float times
+    in
+    { mean; sd; median; inverted; best; runs }
 
   let to_nonbreaking s =
     s |> String.split_on_char ' '
     |> String.concat " " (* a non-breaking space *)
 
   let to_json ~name ~description ~units t =
-    let metric value =
+    let trend =
+      if t.inverted then `String "higher-is-better"
+      else `String "lower-is-better"
+    in
+    [
       `Assoc
         [
           ("name", `String (to_nonbreaking name));
-          ("value", `Float value);
+          ("value", `Float t.median);
           ("units", `String units);
-          ( "trend",
-            if t.inverted then `String "higher-is-better"
-            else `String "lower-is-better" );
+          ("trend", trend);
           ("description", `String description);
+          ("#best", `Float t.best);
+          ("#mean", `Float t.mean);
+          ("#median", `Float t.median);
+          ("#sd", `Float t.sd);
           ("#runs", `Int t.runs);
-        ]
-    in
-    [ metric t.median ]
+        ];
+    ]
 end
