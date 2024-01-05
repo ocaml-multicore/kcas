@@ -1,5 +1,5 @@
 open Kcas_data
-open Bench
+open Multicore_bench
 
 module Int = struct
   include Int
@@ -48,30 +48,14 @@ let run_one ~budgetf ~n_domains ?(n_ops = 40 * Util.iter_factor)
   in
   let after () = Atomic.set n_ops_todo n_ops in
 
-  let times = Times.record ~n_domains ~budgetf ~init ~work ~after () in
-
-  let name metric =
-    Printf.sprintf "%s/%d worker%s, %d%% reads" metric n_domains
+  let config =
+    Printf.sprintf "%d worker%s, %d%% reads" n_domains
       (if n_domains = 1 then "" else "s")
       percent_read
   in
 
-  List.concat
-    [
-      Stats.of_times times
-      |> Stats.scale (1_000_000_000.0 /. Float.of_int n_ops)
-      |> Stats.to_json
-           ~name:(name "time per operation")
-           ~description:"Average time to find, remove, or add a binding"
-           ~units:"ns";
-      Times.invert times |> Stats.of_times
-      |> Stats.scale (Float.of_int (n_ops * n_domains) /. 1_000_000.0)
-      |> Stats.to_json
-           ~name:(name "operations over time")
-           ~description:
-             "Number of operations performed over time using all domains"
-           ~units:"M/s";
-    ]
+  Times.record ~budgetf ~n_domains ~init ~work ~after ()
+  |> Times.to_thruput_metrics ~n:n_ops ~singular:"operation" ~config
 
 let run_suite ~budgetf =
   Util.cross [ 90; 50; 10 ] [ 1; 2; 4 ]

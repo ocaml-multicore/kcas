@@ -1,5 +1,19 @@
 open Kcas_data
-open Bench
+open Multicore_bench
+
+let run_one_domain ~budgetf ?(n_msgs = 50 * Util.iter_factor) () =
+  let t = Queue.create () in
+
+  let op push = if push then Queue.push 101 t else Queue.take_opt t |> ignore in
+
+  let init _ =
+    assert (Queue.is_empty t);
+    Util.generate_push_and_pop_sequence n_msgs
+  in
+  let work _ bits = Util.Bits.iter op bits in
+
+  Times.record ~budgetf ~n_domains:1 ~init ~work ()
+  |> Times.to_thruput_metrics ~n:n_msgs ~singular:"message" ~config:"one domain"
 
 let run_one ~budgetf ?(n_adders = 2) ?(blocking_add = false) ?(n_takers = 2)
     ?(blocking_take = false) ?(n_msgs = 50 * Util.iter_factor) () =
@@ -7,10 +21,14 @@ let run_one ~budgetf ?(n_adders = 2) ?(blocking_add = false) ?(n_takers = 2)
 
   let t = Queue.create () in
 
-  let n_msgs_to_take = Atomic.make n_msgs |> Multicore_magic.copy_as_padded in
-  let n_msgs_to_add = Atomic.make n_msgs |> Multicore_magic.copy_as_padded in
+  let n_msgs_to_take = Atomic.make 0 |> Multicore_magic.copy_as_padded in
+  let n_msgs_to_add = Atomic.make 0 |> Multicore_magic.copy_as_padded in
 
-  let init _ = () in
+  let init _ =
+    assert (Queue.is_empty t);
+    Atomic.set n_msgs_to_take n_msgs;
+    Atomic.set n_msgs_to_add n_msgs
+  in
   let work i () =
     if i < n_adders then
       let rec work () =
@@ -48,46 +66,27 @@ let run_one ~budgetf ?(n_adders = 2) ?(blocking_add = false) ?(n_takers = 2)
       in
       work ()
   in
-  let after () =
-    Atomic.set n_msgs_to_take n_msgs;
-    Atomic.set n_msgs_to_add n_msgs
-  in
 
-  let times = Times.record ~n_domains ~budgetf ~init ~work ~after () in
-
-  let name metric =
+  let config =
     let format role blocking n =
       Printf.sprintf "%d %s%s%s" n
         (if blocking then "" else "nb ")
         role
         (if n = 1 then "" else "s")
     in
-    Printf.sprintf "%s/%s, %s" metric
+    Printf.sprintf "%s, %s"
       (format "adder" blocking_add n_adders)
       (format "taker" blocking_take n_takers)
   in
 
-  List.concat
-    [
-      Stats.of_times times
-      |> Stats.scale (1_000_000_000.0 /. Float.of_int n_msgs)
-      |> Stats.to_json ~name:(name "time per message")
-           ~description:
-             "Time to transmit one message from one domain to another"
-           ~units:"ns";
-      Times.invert times |> Stats.of_times
-      |> Stats.scale (Float.of_int (n_msgs * n_domains) /. 1_000_000.0)
-      |> Stats.to_json
-           ~name:(name "messages over time")
-           ~description:
-             "Number of messages transmitted over time using all domains"
-           ~units:"M/s";
-    ]
+  Times.record ~budgetf ~n_domains ~init ~work ()
+  |> Times.to_thruput_metrics ~n:n_msgs ~singular:"message" ~config
 
 let run_suite ~budgetf =
-  Util.cross
-    (Util.cross [ 1; 2 ] [ false ])
-    (Util.cross [ 1; 2 ] [ false; true ])
-  |> List.concat_map
-     @@ fun ((n_adders, blocking_add), (n_takers, blocking_take)) ->
-     run_one ~budgetf ~n_adders ~blocking_add ~n_takers ~blocking_take ()
+  run_one_domain ~budgetf ()
+  @ (Util.cross
+       (Util.cross [ 1; 2 ] [ false ])
+       (Util.cross [ 1; 2 ] [ false; true ])
+    |> List.concat_map
+       @@ fun ((n_adders, blocking_add), (n_takers, blocking_take)) ->
+       run_one ~budgetf ~n_adders ~blocking_add ~n_takers ~blocking_take ())

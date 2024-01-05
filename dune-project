@@ -80,9 +80,9 @@
    (and
     (>= 0.1.0)
     :with-test))
-  (mtime
+  (multicore-bench
    (and
-    (>= 2.0.0)
+    (>= 0.1.0)
     :with-test))
   (alcotest
    (and
@@ -99,10 +99,6 @@
   (mdx
    (and
     (>= 2.3.0)
-    :with-test))
-  (yojson
-   (and
-    (>= 2.1.0)
     :with-test))
   (odoc
    (and
