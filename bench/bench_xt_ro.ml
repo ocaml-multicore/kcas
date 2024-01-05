@@ -1,5 +1,5 @@
 open Kcas
-open Bench
+open Multicore_bench
 
 let run_one ~budgetf ?(n_locs = 2)
     ?(n_iter = 20 * (9 - n_locs) * Util.iter_factor) () =
@@ -25,24 +25,10 @@ let run_one ~budgetf ?(n_locs = 2)
     loop n_iter
   in
 
-  let times = Times.record ~n_domains:1 ~budgetf ~init ~work () in
+  let config = Printf.sprintf "%d loc tx" n_locs in
 
-  let name metric = Printf.sprintf "%s/%d loc tx" metric n_locs in
-
-  List.concat
-    [
-      Stats.of_times times
-      |> Stats.scale (1_000_000_000.0 /. Float.of_int n_iter)
-      |> Stats.to_json
-           ~name:(name "time per transaction")
-           ~description:"Time to perform a single transaction" ~units:"ns";
-      Times.invert times |> Stats.of_times
-      |> Stats.scale (Float.of_int n_iter /. 1_000_000.0)
-      |> Stats.to_json
-           ~name:(name "transactions over time")
-           ~description:"Number of transactions performed over time"
-           ~units:"M/s";
-    ]
+  Times.record ~budgetf ~n_domains:1 ~init ~work ()
+  |> Times.to_thruput_metrics ~n:n_iter ~singular:"transaction" ~config
 
 let run_suite ~budgetf =
   [ 0; 1; 2; 4; 8 ]

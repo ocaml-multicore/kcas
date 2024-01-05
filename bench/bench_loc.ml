@@ -1,5 +1,5 @@
 open Kcas
-open Bench
+open Multicore_bench
 
 type t = Op : string * int * 'a * ('a Loc.t -> unit) * ('a Loc.t -> unit) -> t
 
@@ -21,21 +21,8 @@ let run_one ~budgetf ?(n_iter = 250 * Util.iter_factor)
     loop n_iter
   in
 
-  let times = Times.record ~n_domains:1 ~budgetf ~init ~work () in
-
-  List.concat
-    [
-      Stats.of_times times
-      |> Stats.scale (1_000_000_000.0 /. Float.of_int n_iter)
-      |> Stats.to_json
-           ~name:(Printf.sprintf "time per op/%s" name)
-           ~description:"Time to perform a single op" ~units:"ns";
-      Times.invert times |> Stats.of_times
-      |> Stats.scale (Float.of_int n_iter /. 1_000_000.0)
-      |> Stats.to_json
-           ~name:(Printf.sprintf "ops over time/%s" name)
-           ~description:"Number of operations performed over time" ~units:"M/s";
-    ]
+  Times.record ~budgetf ~n_domains:1 ~init ~work ()
+  |> Times.to_thruput_metrics ~n:n_iter ~singular:"op" ~config:name
 
 let run_suite ~budgetf =
   [
