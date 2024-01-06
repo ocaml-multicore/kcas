@@ -1,183 +1,224 @@
 open Kcas
 
-type 'a t = { prev : 'a t Loc.t; next : 'a t Loc.t }
-type 'a node = { node_prev : 'a t Loc.t; node_next : 'a t Loc.t; value : 'a }
+(** Tagged GADT for representing doubly-linked lists.
 
-external as_list : 'a node -> 'a t = "%identity"
-external as_node : 'a t -> 'a node = "%identity"
+    The [lhs] and [rhs] fields are the first two fields in both a [List] and a
+    [Node] so that it is possible (by using an unsafe cast) to access the fields
+    without knowing whether the target is a [List] or a [Node]. *)
+type ('a, _) tdt =
+  | List : {
+      lhs : 'a cursor Loc.t;
+          (** [lhs] points to the rightmost node of this list or to the list
+              itself in case the list is empty. *)
+      rhs : 'a cursor Loc.t;
+          (** [rhs] points to the leftmost node of this list or to the list
+              itself in case the list is empty. *)
+    }
+      -> ('a, [> `List ]) tdt
+  | Node : {
+      lhs : 'a cursor Loc.t;
+          (** [lhs] points to the node on the left side of this node, to the
+              list if this node is the leftmost node, or to the node itself in
+              case this node is not in any list. *)
+      rhs : 'a cursor Loc.t;
+          (** [rhs] points to the node on the right side of this node, to the
+              list if this node is the rightmost node, or to the node itself in
+              case this node is not in any list. *)
+      value : 'a;
+    }
+      -> ('a, [> `Node ]) tdt
 
-let[@inline] get { value; _ } = value
+and 'a cursor = At : ('a, [< `List | `Node ]) tdt -> 'a cursor [@@unboxed]
+
+type 'a t = ('a, [ `List ]) tdt
+type 'a node = ('a, [ `Node ]) tdt
+
+external as_list : ('a, _) tdt -> 'a t = "%identity"
+external as_node : ('a, _) tdt -> 'a node = "%identity"
+
+let[@inline] get (Node { value; _ } : 'a node) = value
+
+let[@inline] lhs_of list_or_node =
+  let (List list_r) = as_list list_or_node in
+  list_r.lhs
+
+let[@inline] rhs_of list_or_node =
+  let (List list_r) = as_list list_or_node in
+  list_r.rhs
+
+let[@inline] value_of (Node node_r : 'a node) = node_r.value
 
 let create () =
-  let prev = Loc.make ~padded:true (Obj.magic ())
-  and next = Loc.make ~padded:true (Obj.magic ()) in
-  let list = Multicore_magic.copy_as_padded { prev; next } in
-  Loc.set prev list;
-  Loc.set next list;
+  let lhs = Loc.make ~padded:true (Obj.magic ()) in
+  let rhs = Loc.make ~padded:true (Obj.magic ()) in
+  let list = Multicore_magic.copy_as_padded (List { lhs; rhs }) in
+  Loc.set lhs (At list);
+  Loc.set rhs (At list);
   list
 
 let create_node value =
   let node =
-    let node_prev = Loc.make (Obj.magic ())
-    and node_next = Loc.make (Obj.magic ()) in
-    { node_prev; node_next; value }
+    let lhs = Loc.make (Obj.magic ()) in
+    let rhs = Loc.make (Obj.magic ()) in
+    Node { lhs; rhs; value }
   in
-  Loc.set node.node_prev (as_list node);
-  Loc.set node.node_next (as_list node);
+  Loc.set (lhs_of node) (At node);
+  Loc.set (rhs_of node) (At node);
   node
 
-let create_node_with ~prev ~next value =
-  { node_prev = Loc.make prev; node_next = Loc.make next; value }
+let create_node_with ~lhs ~rhs value =
+  Node { lhs = Loc.make (At lhs); rhs = Loc.make (At rhs); value }
 
 module Xt = struct
   let remove ~xt node =
-    let list = as_list node in
-    let next = Xt.exchange ~xt list.next list in
-    if next != list then begin
-      let prev = Xt.exchange ~xt list.prev list in
-      Xt.set ~xt next.prev prev;
-      Xt.set ~xt prev.next next
+    let (At rhs) = Xt.exchange ~xt (rhs_of node) (At node) in
+    if At rhs != At node then begin
+      let (At lhs) = Xt.exchange ~xt (lhs_of node) (At node) in
+      Xt.set ~xt (lhs_of rhs) (At lhs);
+      Xt.set ~xt (rhs_of lhs) (At rhs)
     end
 
-  let is_empty ~xt list = Xt.get ~xt list.prev == list
+  let is_empty ~xt list = Xt.get ~xt (lhs_of list) == At list
 
   let add_node_l ~xt node list =
-    let next = Xt.get ~xt list.next in
-    assert (Loc.fenceless_get node.node_prev == list);
-    Loc.set node.node_next next;
-    Xt.set ~xt list.next (as_list node);
-    Xt.set ~xt next.prev (as_list node);
+    let (At rhs) = Xt.get ~xt (rhs_of list) in
+    assert (Loc.fenceless_get (lhs_of node) == At list);
+    Loc.set (rhs_of node) (At rhs);
+    Xt.set ~xt (rhs_of list) (At node);
+    Xt.set ~xt (lhs_of rhs) (At node);
     node
 
   let add_l ~xt value list =
-    let next = Xt.get ~xt list.next in
-    let node = create_node_with ~prev:list ~next value in
-    Xt.set ~xt list.next (as_list node);
-    Xt.set ~xt next.prev (as_list node);
+    let (At rhs) = Xt.get ~xt (rhs_of list) in
+    let node = create_node_with ~lhs:list ~rhs value in
+    Xt.set ~xt (rhs_of list) (At node);
+    Xt.set ~xt (lhs_of rhs) (At node);
     node
 
   let add_node_r ~xt node list =
-    let prev = Xt.get ~xt list.prev in
-    Loc.set node.node_prev prev;
-    assert (Loc.fenceless_get node.node_next == list);
-    Xt.set ~xt list.prev (as_list node);
-    Xt.set ~xt prev.next (as_list node);
+    let (At lhs) = Xt.get ~xt (lhs_of list) in
+    Loc.set (lhs_of node) (At lhs);
+    assert (Loc.fenceless_get (rhs_of node) == At list);
+    Xt.set ~xt (lhs_of list) (At node);
+    Xt.set ~xt (rhs_of lhs) (At node);
     node
 
   let add_r ~xt value list =
-    let prev = Xt.get ~xt list.prev in
-    let node = create_node_with ~prev ~next:list value in
-    Xt.set ~xt list.prev (as_list node);
-    Xt.set ~xt prev.next (as_list node);
+    let (At lhs) = Xt.get ~xt (lhs_of list) in
+    let node = create_node_with ~lhs ~rhs:list value in
+    Xt.set ~xt (lhs_of list) (At node);
+    Xt.set ~xt (rhs_of lhs) (At node);
     node
 
   let move_l ~xt node list =
-    let node = as_list node in
-    let list_next = Xt.exchange ~xt list.next node in
-    if list_next != node then begin
-      let node_prev = Xt.exchange ~xt node.prev list in
-      let node_next = Xt.exchange ~xt node.next list_next in
-      if node_prev != node then begin
-        Xt.set ~xt node_prev.next node_next;
-        Xt.set ~xt node_next.prev node_prev
+    let (At list_rhs) = Xt.exchange ~xt (rhs_of list) (At node) in
+    if At list_rhs != At node then begin
+      let (At node_lhs) = Xt.exchange ~xt (lhs_of node) (At list) in
+      let (At node_rhs) = Xt.exchange ~xt (rhs_of node) (At list_rhs) in
+      if At node_lhs != At node then begin
+        Xt.set ~xt (rhs_of node_lhs) (At node_rhs);
+        Xt.set ~xt (lhs_of node_rhs) (At node_lhs)
       end;
-      Xt.set ~xt list_next.prev node
+      Xt.set ~xt (lhs_of list_rhs) (At node)
     end
 
   let move_r ~xt node list =
-    let node = as_list node in
-    let list_prev = Xt.exchange ~xt list.prev node in
-    if list_prev != node then begin
-      let node_next = Xt.exchange ~xt node.next list in
-      let node_prev = Xt.exchange ~xt node.prev list_prev in
-      if node_next != node then begin
-        Xt.set ~xt node_prev.next node_next;
-        Xt.set ~xt node_next.prev node_prev
+    let (At list_lhs) = Xt.exchange ~xt (lhs_of list) (At node) in
+    if At list_lhs != At node then begin
+      let (At node_rhs) = Xt.exchange ~xt (rhs_of node) (At list) in
+      let (At node_lhs) = Xt.exchange ~xt (lhs_of node) (At list_lhs) in
+      if At node_rhs != At node then begin
+        Xt.set ~xt (rhs_of node_lhs) (At node_rhs);
+        Xt.set ~xt (lhs_of node_rhs) (At node_lhs)
       end;
-      Xt.set ~xt list_prev.next node
+      Xt.set ~xt (rhs_of list_lhs) (At node)
     end
 
   let take_opt_l ~xt list =
-    let next = Xt.get ~xt list.next in
-    if next == list then None
+    let (At rhs) = Xt.get ~xt (rhs_of list) in
+    if At rhs == At list then None
     else
-      let node = as_node next in
+      let node = as_node rhs in
       remove ~xt node;
-      Some node.value
+      Some (value_of node)
 
   let take_opt_r ~xt list =
-    let prev = Xt.get ~xt list.prev in
-    if prev == list then None
+    let (At lhs) = Xt.get ~xt (lhs_of list) in
+    if At lhs == At list then None
     else
-      let node = as_node prev in
+      let node = as_node lhs in
       remove ~xt node;
-      Some node.value
+      Some (value_of node)
 
   let take_blocking_l ~xt list = Xt.to_blocking ~xt (take_opt_l list)
   let take_blocking_r ~xt list = Xt.to_blocking ~xt (take_opt_r list)
 
   let transfer_l ~xt t1 t2 =
-    let t1_next = Xt.exchange ~xt t1.next t1 in
-    if t1_next != t1 then begin
-      let t1_prev = Xt.exchange ~xt t1.prev t1 in
-      let t2_next = Xt.exchange ~xt t2.next t1_next in
-      Xt.set ~xt t2_next.prev t1_prev;
-      Xt.set ~xt t1_next.prev t2;
-      Xt.set ~xt t1_prev.next t2_next
+    let (At t1_rhs) = Xt.exchange ~xt (rhs_of t1) (At t1) in
+    if At t1_rhs != At t1 then begin
+      let (At t1_lhs) = Xt.exchange ~xt (lhs_of t1) (At t1) in
+      let (At t2_rhs) = Xt.exchange ~xt (rhs_of t2) (At t1_rhs) in
+      Xt.set ~xt (lhs_of t2_rhs) (At t1_lhs);
+      Xt.set ~xt (lhs_of t1_rhs) (At t2);
+      Xt.set ~xt (rhs_of t1_lhs) (At t2_rhs)
     end
 
   let transfer_r ~xt t1 t2 =
-    let t1_next = Xt.exchange ~xt t1.next t1 in
-    if t1_next != t1 then begin
-      let t1_prev = Xt.exchange ~xt t1.prev t1 in
-      let t2_prev = Xt.exchange ~xt t2.prev t1_prev in
-      Xt.set ~xt t2_prev.next t1_next;
-      Xt.set ~xt t1_prev.next t2;
-      Xt.set ~xt t1_next.prev t2_prev
+    let (At t1_rhs) = Xt.exchange ~xt (rhs_of t1) (At t1) in
+    if At t1_rhs != At t1 then begin
+      let (At t1_lhs) = Xt.exchange ~xt (lhs_of t1) (At t1) in
+      let (At t2_lhs) = Xt.exchange ~xt (lhs_of t2) (At t1_lhs) in
+      Xt.set ~xt (rhs_of t2_lhs) (At t1_rhs);
+      Xt.set ~xt (rhs_of t1_lhs) (At t2);
+      Xt.set ~xt (lhs_of t1_rhs) (At t2_lhs)
     end
 
   let swap ~xt t1 t2 =
-    let t1_next = Xt.get ~xt t1.next in
-    if t1_next == t1 then transfer_l ~xt t2 t1
+    let (At t1_rhs) = Xt.get ~xt (rhs_of t1) in
+    if At t1_rhs == At t1 then transfer_l ~xt t2 t1
     else
-      let t2_prev = Xt.get ~xt t2.prev in
-      if t2_prev == t2 then transfer_l ~xt t1 t2
+      let (At t2_lhs) = Xt.get ~xt (lhs_of t2) in
+      if At t2_lhs == At t2 then transfer_l ~xt t1 t2
       else
-        let t1_prev = Xt.exchange ~xt t1.prev t2_prev
-        and t2_next = Xt.exchange ~xt t2.next t1_next in
-        Xt.set ~xt t2.prev t1_prev;
-        Xt.set ~xt t1.next t2_next;
-        Xt.set ~xt t2_next.prev t1;
-        Xt.set ~xt t2_prev.next t1;
-        Xt.set ~xt t1_next.prev t2;
-        Xt.set ~xt t1_prev.next t2
+        let (At t1_lhs) = Xt.exchange ~xt (lhs_of t1) (At t2_lhs) in
+        let (At t2_rhs) = Xt.exchange ~xt (rhs_of t2) (At t1_rhs) in
+        Xt.set ~xt (lhs_of t2) (At t1_lhs);
+        Xt.set ~xt (rhs_of t1) (At t2_rhs);
+        Xt.set ~xt (lhs_of t2_rhs) (At t1);
+        Xt.set ~xt (rhs_of t2_lhs) (At t1);
+        Xt.set ~xt (lhs_of t1_rhs) (At t2);
+        Xt.set ~xt (rhs_of t1_lhs) (At t2)
 
-  let[@tail_mod_cons] rec to_list_as_l ~xt f list node =
-    if node == list then []
-    else f (as_node node) :: to_list_as_l ~xt f list (Xt.get ~xt node.next)
+  let[@tail_mod_cons] rec to_list_as_l ~xt f list (At at) =
+    if At at == At list then []
+    else f (as_node at) :: to_list_as_l ~xt f list (Xt.get ~xt (rhs_of at))
 
-  let to_list_as_l ~xt f list = to_list_as_l ~xt f list (Xt.get ~xt list.next)
+  let to_list_as_l ~xt f list =
+    to_list_as_l ~xt f list (Xt.get ~xt (rhs_of list))
+
   let to_list_l ~xt list = to_list_as_l ~xt get list
   let to_nodes_l ~xt list = to_list_as_l ~xt Fun.id list
 
-  let[@tail_mod_cons] rec to_list_as_r ~xt f list node =
-    if node == list then []
-    else f (as_node node) :: to_list_as_r ~xt f list (Xt.get ~xt node.prev)
+  let[@tail_mod_cons] rec to_list_as_r ~xt f list (At at) =
+    if At at == At list then []
+    else f (as_node at) :: to_list_as_r ~xt f list (Xt.get ~xt (lhs_of at))
 
-  let to_list_as_r ~xt f list = to_list_as_r ~xt f list (Xt.get ~xt list.prev)
+  let to_list_as_r ~xt f list =
+    to_list_as_r ~xt f list (Xt.get ~xt (lhs_of list))
+
   let to_list_r ~xt list = to_list_as_r ~xt get list
   let to_nodes_r ~xt list = to_list_as_r ~xt Fun.id list
 end
 
 let remove node = Kcas.Xt.commit { tx = Xt.remove node }
-let is_empty list = Loc.get list.prev == list
+let is_empty list = Loc.get (lhs_of list) == At list
 
 let add_l value list =
-  let node = create_node_with ~prev:list ~next:list value in
+  let node = create_node_with ~lhs:list ~rhs:list value in
   Kcas.Xt.commit { tx = Xt.add_node_l node list }
 
 let add_r value list =
-  let node = create_node_with ~prev:list ~next:list value in
+  let node = create_node_with ~lhs:list ~rhs:list value in
   Kcas.Xt.commit { tx = Xt.add_node_r node list }
 
 let move_l node list = Kcas.Xt.commit { tx = Xt.move_l node list }
@@ -206,22 +247,23 @@ let take_r list = match take_opt_r list with None -> raise Empty | Some v -> v
 
 let take_all list =
   let copy =
-    Multicore_magic.copy_as_padded
-      { prev = Loc.make ~padded:true list; next = Loc.make ~padded:true list }
+    let lhs = Loc.make ~padded:true (At list) in
+    let rhs = Loc.make ~padded:true (At list) in
+    List { lhs; rhs } |> Multicore_magic.copy_as_padded
   in
   let open Kcas in
   let tx ~xt =
-    let prev = Xt.exchange ~xt list.prev list in
-    if prev == list then begin
-      Loc.set copy.prev copy;
-      Loc.set copy.next copy
+    let (At lhs) = Xt.exchange ~xt (lhs_of list) (At list) in
+    if At lhs == At list then begin
+      Loc.set (lhs_of copy) (At copy);
+      Loc.set (rhs_of copy) (At copy)
     end
     else
-      let next = Xt.exchange ~xt list.next list in
-      Xt.set ~xt prev.next copy;
-      Xt.set ~xt next.prev copy;
-      Loc.set copy.prev prev;
-      Loc.set copy.next next
+      let (At rhs) = Xt.exchange ~xt (rhs_of list) (At list) in
+      Xt.set ~xt (rhs_of lhs) (At copy);
+      Xt.set ~xt (lhs_of rhs) (At copy);
+      Loc.set (lhs_of copy) (At lhs);
+      Loc.set (rhs_of copy) (At rhs)
   in
   Xt.commit { tx };
   copy
