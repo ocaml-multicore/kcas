@@ -39,16 +39,18 @@ type !'a t
 type !'a node
 (** Type of a node containing a value of type ['a]. *)
 
-val get : 'a node -> 'a
-(** [get node] returns the value stored in the {!node}. *)
-
 val create : unit -> 'a t
 (** [create ()] creates a new doubly-linked list. *)
+
+(** {2 Operations on nodes} *)
 
 val create_node : 'a -> 'a node
 (** [create_node value] creates a new doubly-linked list node that is not in any
     list.  The node can then e.g. be added to a list using {!move_l} or
     {!move_r}. *)
+
+val get : 'a node -> 'a
+(** [get node] returns the value stored in the {!node}. *)
 
 (** {1 Compositional interface} *)
 
@@ -79,8 +81,12 @@ exception Empty
 
 val take_l : 'a t -> 'a
 (** [take_l l] removes and returns the value of the leftmost node of the
-    doubly-linked list [l], or raises {!Empty} if the list is empty. *)
+    doubly-linked list [l], or raises {!Empty} if the list is empty.
+
+    @raise Empty if the list is empty. *)
 
 val take_r : 'a t -> 'a
 (** [take_r l] removes and returns the value of the rightmost node of the
-    doubly-linked list [l], or raises {!Empty} if the list is empty. *)
+    doubly-linked list [l], or raises {!Empty} if the list is empty.
+
+    @raise Empty if the list is empty. *)

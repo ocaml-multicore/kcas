@@ -4,6 +4,8 @@ module type Ops = sig
   type ('x, 'fn) fn
   type ('x, 'fn) blocking_fn
 
+  (** {2 Operations on nodes} *)
+
   val remove : ('x, 'a node -> unit) fn
   (** [remove n] removes the node [n] from the doubly-linked list it is part of.
       [remove] is idempotent. *)
@@ -16,9 +18,13 @@ module type Ops = sig
   (** [move_r n l] removes the node [n] from the doubly-linked list it is part
       of and then adds it to the right of the list [l]. *)
 
+  (** {2 Operations on lists} *)
+
   val is_empty : ('x, 'a t -> bool) fn
   (** [is_empty l] determines whether the doubly-linked list [l] is empty or
       not. *)
+
+  (** {3 Adding or removing values at the ends of a list} *)
 
   val add_l : ('x, 'a -> 'a t -> 'a node) fn
   (** [add_l v l] creates and returns a new node with the value [v] and adds the
@@ -46,6 +52,8 @@ module type Ops = sig
       doubly-linked list [l], or blocks waiting for the list to become
       non-empty. *)
 
+  (** {3 Moving all nodes between lists} *)
+
   val swap : ('x, 'a t -> 'a t -> unit) fn
   (** [swap l1 l2] exchanges the nodes of the doubly-linked lists [l1] and
       [l2]. *)
@@ -57,6 +65,8 @@ module type Ops = sig
   val transfer_r : ('x, 'a t -> 'a t -> unit) fn
   (** [transfer_r l1 l2] removes all nodes of [l1] and adds them to the right of
       [l2]. *)
+
+  (** {3 Extracting all values or nodes from a list} *)
 
   val to_list_l : ('x, 'a t -> 'a list) fn
   (** [to_list_l l] collects the values of the nodes of the doubly-linked list
