@@ -560,7 +560,7 @@ let inc x = x + 1
 let dec x = x - 1
 
 module Loc = struct
-  type !'a t = Loc : { state : 'state; id : 'id } -> 'a t
+  type !'a t = private Loc : { state : 'state; id : 'id } -> 'a t
 
   external of_loc : 'a loc -> 'a t = "%identity"
   external to_loc : 'a t -> 'a loc = "%identity"

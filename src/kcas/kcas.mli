@@ -177,10 +177,10 @@ end
     usually need not worry about. *)
 module Loc : sig
   (** Type of shared memory locations. *)
-  type !'a t =
+  type !'a t = private
     | Loc : { state : 'state; id : 'id } -> 'a t
         (** The shape is transparent to allow the compiler to perform
-            optimizations on array accesses.  User code should treat this tyoe
+            optimizations on array accesses.  User code should treat this type
             as abstract. *)
 
   val make : ?padded:bool -> ?mode:Mode.t -> 'a -> 'a t
