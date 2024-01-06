@@ -14,7 +14,7 @@ let run_single ~budgetf ?(n_msgs = 15 * Util.iter_factor) () =
 
   let times = Times.record ~n_domains:1 ~budgetf ~init ~work () in
 
-  let name metric = Printf.sprintf "%s/single-domain" metric in
+  let name metric = Printf.sprintf "%s/one domain" metric in
 
   List.concat
     [
