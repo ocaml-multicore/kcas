@@ -156,6 +156,14 @@
             >
             to perform long-running operations where appropriate.
           </li>
+          <li>
+            Operations use
+            <a
+              href="https://tarides.com/blog/2023-08-07-kcas-building-a-lock-free-stm-for-ocaml-1-2/#take-a-number"
+              >a randomized exponential backoff mechanism</a
+            >
+            to avoid quadratic shared memory traffic in case of contention.
+          </li>
         </ul>
       </section>
       <section class="block">
