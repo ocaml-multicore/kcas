@@ -1,5 +1,6 @@
 let benchmarks =
   [
+    ("Ref with [@poll error]", Bench_ref.run_suite);
     ("Atomic", Bench_atomic.run_suite);
     ("Kcas Loc", Bench_loc.run_suite);
     ("Kcas Xt", Bench_xt.run_suite);
