@@ -1,6 +1,7 @@
 module type Ops = sig
   type 'a t
   type 'a node
+  type 'a cursor
   type ('x, 'fn) fn
   type ('x, 'fn) blocking_fn
 
@@ -95,4 +96,12 @@ module type Ops = sig
 
       {b NOTE}: This operation is linear time, [O(n)], and should typically be
       avoided unless the list is privatized, e.g. by using {!take_all}. *)
+
+  (** {2 Operations on cursors} *)
+
+  val get_l : ('x, 'a cursor -> 'a cursor) fn
+  (** [get_l c] returns the cursor to the left of the current position. *)
+
+  val get_r : ('x, 'a cursor -> 'a cursor) fn
+  (** [get_r c] returns the cursor to the right of the current position. *)
 end

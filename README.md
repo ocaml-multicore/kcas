@@ -1028,7 +1028,12 @@ We can then test that the cache works as expected:
 # let a_cache : (int, string) cache = cache 2
 val a_cache : (int, string) cache =
   {space = Kcas.Loc.Loc {Kcas.Loc.state = <poly>; id = <poly>};
-   table = <abstr>; order = <abstr>}
+   table = <abstr>;
+   order =
+    Kcas_data.Dllist.List
+     {Kcas_data.Dllist.lhs =
+       Kcas.Loc.Loc {Kcas.Loc.state = <poly>; id = <poly>};
+      rhs = Kcas.Loc.Loc {Kcas.Loc.state = <poly>; id = <poly>}}}
 
 # Xt.commit { tx = set_blocking a_cache 101 "basics" }
 - : unit = ()
