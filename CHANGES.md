@@ -5,6 +5,8 @@ All notable changes to this project will be documented in this file.
 Next version:
 
 - Numerous minor internal improvements (@polytypic)
+- Added many benchmarks to allow better understanding of the overheads of
+  composable transactions (@polytypic)
 - Exposed shape of `_ Loc.t` to avoid float array pessimization (@polytypic)
 - Made `Accumulator` automatically scaling and removed optional `n_way`
   arguments (@polytypic)
