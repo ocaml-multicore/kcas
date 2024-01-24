@@ -415,10 +415,11 @@ module Xt : sig
 
       To mitigate potential issues due to this read skew anomaly and due to very
       long running transactions, all of the access recording operations in this
-      section periodically validate the entire transaction log.  An important
-      guideline for writing transactions is that loops inside a transaction
-      should always include an access of some shared memory location through the
-      transaction log or should otherwise be guaranteed to be bounded. *)
+      section periodically validate the entire transaction log when a previously
+      accessed location is accessed again.  An important guideline for writing
+      transactions is that loops inside a transaction should always include an
+      access of some shared memory location through the transaction log or
+      should otherwise be guaranteed to be bounded. *)
 
   val get : xt:'x t -> 'a Loc.t -> 'a
   (** [get ~xt r] returns the current value of the shared memory location [r] in
@@ -558,14 +559,4 @@ module Xt : sig
       The default {{!Mode.t} [mode]} for [commit] is [`Obstruction_free].
       However, after enough attempts have failed during the verification step,
       [commit] switches to [`Lock_free]. *)
-
-  (**/**)
-
-  val unsafe_modify : xt:'x t -> 'a Loc.t -> ('a -> 'a) -> unit
-  (** [unsafe_modify ~xt r f] is equivalent to [modify ~xt r f], but does not
-      assert against misuse. *)
-
-  val unsafe_update : xt:'x t -> 'a Loc.t -> ('a -> 'a) -> 'a
-  (** [unsafe_update ~xt r f] is equivalent to [update ~xt r f], but does not
-      assert against misuse. *)
 end
