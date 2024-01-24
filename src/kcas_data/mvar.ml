@@ -11,14 +11,13 @@ module Xt = struct
     Magic_option.is_none
       (Xt.compare_and_swap ~xt mv Magic_option.none (Magic_option.some value))
 
-  let put ~xt mv value =
-    Xt.unsafe_modify ~xt mv (Magic_option.put_or_retry value)
+  let put ~xt mv value = Xt.modify ~xt mv (Magic_option.put_or_retry value)
 
   let take_opt ~xt mv =
     Magic_option.to_option (Xt.exchange ~xt mv Magic_option.none)
 
   let take ~xt mv =
-    Magic_option.get_unsafe (Xt.unsafe_update ~xt mv Magic_option.take_or_retry)
+    Magic_option.get_unsafe (Xt.update ~xt mv Magic_option.take_or_retry)
 
   let peek ~xt mv = Magic_option.get_or_retry (Xt.get ~xt mv)
   let peek_opt ~xt mv = Magic_option.to_option (Xt.get ~xt mv)

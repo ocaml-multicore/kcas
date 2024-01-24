@@ -34,7 +34,7 @@ module Xt = struct
     + Elems.length (Xt.get ~xt middle)
     + Elems.length (Xt.get ~xt back)
 
-  let add ~xt x q = Xt.unsafe_modify ~xt q.back @@ Elems.cons x
+  let add ~xt x q = Xt.modify ~xt q.back @@ Elems.cons x
   let push = add
 
   (** Cooperative helper to move elems from back to middle. *)
@@ -53,7 +53,7 @@ module Xt = struct
 
   let take_opt ~xt t =
     let front = t.front in
-    let elems = Xt.unsafe_update ~xt front Elems.tl_safe in
+    let elems = Xt.update ~xt front Elems.tl_safe in
     if elems != Elems.empty then Elems.hd_opt elems
     else
       let middle = t.middle and back = t.back in
