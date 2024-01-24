@@ -772,39 +772,38 @@ module Xt = struct
   let post_commit ~xt:(Xt xt_r : _ t) action =
     xt_r.post_commit <- Action.append action xt_r.post_commit
 
-  let validate ~xt loc =
+  type _ op = Validate : unit op | Is_in_log : bool op
+
+  let do_op : type r. xt:'x t -> 'a Loc.t -> r op -> r =
+   fun ~xt loc op ->
     let loc = Loc.to_loc loc in
     let x = loc.id in
     match !(tree_as_ref xt) with
-    | T Leaf -> ()
-    | T (Node { loc = a; lt = T Leaf; _ }) when x < a.id -> ()
-    | T (Node { loc = a; gt = T Leaf; _ }) when a.id < x -> ()
-    | T (Node { loc = a; state; _ }) when Obj.magic a == loc ->
-        validate_one xt a state
+    | T Leaf -> begin match op with Validate -> () | Is_in_log -> false end
+    | T (Node { loc = a; lt = T Leaf; _ }) when x < a.id -> begin
+        match op with Validate -> () | Is_in_log -> false
+      end
+    | T (Node { loc = a; gt = T Leaf; _ }) when a.id < x -> begin
+        match op with Validate -> () | Is_in_log -> false
+      end
+    | T (Node { loc = a; state; _ }) when Obj.magic a == loc -> begin
+        match op with Validate -> validate_one xt a state | Is_in_log -> true
+      end
     | tree -> begin
         match splay ~hit_parent:true x tree with
-        | lt, T (Node node_r), gt ->
+        | lt, T (Node node_r), gt -> begin
             tree_as_ref xt := T (Node { node_r with lt; gt; awaiters = [] });
-            if Obj.magic node_r.loc == loc then
-              validate_one xt node_r.loc node_r.state
+            match op with
+            | Validate ->
+                if Obj.magic node_r.loc == loc then
+                  validate_one xt node_r.loc node_r.state
+            | Is_in_log -> Obj.magic node_r.loc == loc
+          end
         | _, T Leaf, _ -> impossible ()
       end
 
-  let is_in_log ~xt loc =
-    let loc = Loc.to_loc loc in
-    let x = loc.id in
-    match !(tree_as_ref xt) with
-    | T Leaf -> false
-    | T (Node { loc = a; lt = T Leaf; _ }) when x < a.id -> false
-    | T (Node { loc = a; gt = T Leaf; _ }) when a.id < x -> false
-    | T (Node { loc = a; _ }) when Obj.magic a == loc -> true
-    | tree -> begin
-        match splay ~hit_parent:true x tree with
-        | lt, T (Node node_r), gt ->
-            tree_as_ref xt := T (Node { node_r with lt; gt; awaiters = [] });
-            Obj.magic node_r.loc == loc
-        | _, T Leaf, _ -> impossible ()
-      end
+  let[@inline] validate ~xt loc = do_op ~xt loc Validate
+  let[@inline] is_in_log ~xt loc = do_op ~xt loc Is_in_log
 
   let rec rollback which tree_snap tree =
     if tree_snap == tree then tree
