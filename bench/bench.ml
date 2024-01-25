@@ -14,47 +14,6 @@ module Times = struct
     let runs = ref 0 |> Multicore_magic.copy_as_padded in
     Gc.full_major ();
     let budget_start = Mtime_clock.elapsed () in
-    let main domain_i =
-      for _ = 1 to n_warmups do
-        if domain_i = 0 then begin
-          before ();
-          Gc.major ()
-        end;
-        let state = init domain_i in
-        Barrier.await barrier_before;
-        work domain_i state;
-        Barrier.await barrier_after;
-        if domain_i = 0 then after ()
-      done;
-      while !runs < n_runs_min || not !budget_used do
-        Barrier.await barrier_init;
-        if domain_i = 0 then begin
-          before ();
-          if
-            let budget_stop = Mtime_clock.elapsed () in
-            let elapsedf =
-              Mtime.Span.to_float_ns
-                (Mtime.Span.abs_diff budget_stop budget_start)
-              *. (1. /. 1_000_000_000.0)
-            in
-            budgetf < elapsedf
-          then budget_used := true;
-          incr runs;
-          Gc.major ()
-        end;
-        let state = init domain_i in
-        Barrier.await barrier_before;
-        let start = Mtime_clock.elapsed () in
-        work domain_i state;
-        let stop = Mtime_clock.elapsed () in
-        Barrier.await barrier_after;
-        if domain_i = 0 then after ();
-        Stack.push
-          (Mtime.Span.to_float_ns (Mtime.Span.abs_diff stop start)
-          *. (1. /. 1_000_000_000.0))
-          results.(domain_i)
-      done
-    in
     let prepare_for_await () =
       let open struct
         type state = Init | Released | Awaiting of { mutable released : bool }
@@ -80,12 +39,53 @@ module Times = struct
       in
       Domain_local_await.{ release; await }
     in
-    Domain_local_await.using ~prepare_for_await ~while_running:(fun () ->
-        let domains =
-          Array.init n_domains @@ fun domain_i ->
-          Domain.spawn @@ fun () -> main domain_i
-        in
-        Array.iter Domain.join domains);
+    let main domain_i =
+      Domain_local_await.using ~prepare_for_await ~while_running:(fun () ->
+          for _ = 1 to n_warmups do
+            if domain_i = 0 then begin
+              before ();
+              Gc.major ()
+            end;
+            let state = init domain_i in
+            Barrier.await barrier_before;
+            work domain_i state;
+            Barrier.await barrier_after;
+            if domain_i = 0 then after ()
+          done;
+          while !runs < n_runs_min || not !budget_used do
+            Barrier.await barrier_init;
+            if domain_i = 0 then begin
+              before ();
+              if
+                let budget_stop = Mtime_clock.elapsed () in
+                let elapsedf =
+                  Mtime.Span.to_float_ns
+                    (Mtime.Span.abs_diff budget_stop budget_start)
+                  *. (1. /. 1_000_000_000.0)
+                in
+                budgetf < elapsedf
+              then budget_used := true;
+              incr runs;
+              Gc.major ()
+            end;
+            let state = init domain_i in
+            Barrier.await barrier_before;
+            let start = Mtime_clock.elapsed () in
+            work domain_i state;
+            let stop = Mtime_clock.elapsed () in
+            Barrier.await barrier_after;
+            if domain_i = 0 then after ();
+            Stack.push
+              (Mtime.Span.to_float_ns (Mtime.Span.abs_diff stop start)
+              *. (1. /. 1_000_000_000.0))
+              results.(domain_i)
+          done)
+    in
+    let domains =
+      Array.init n_domains @@ fun domain_i ->
+      Domain.spawn @@ fun () -> main domain_i
+    in
+    Array.iter Domain.join domains;
     let n = Stack.length results.(0) in
     let times = Array.create_float n in
     for run_i = 0 to n - 1 do
