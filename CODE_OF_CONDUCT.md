@@ -10,6 +10,5 @@ This project follows the OCaml Code of Conduct
 
 To report any violations, please contact:
 
-- Vesa Karvonen <vesa [at] tarides [dot] com>
 - Carine Morel <carine [at] tarides [dot] com>
 - Sudha Parimala <sudha [at] tarides [dot] com>
