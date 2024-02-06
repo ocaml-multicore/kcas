@@ -35,9 +35,9 @@
   (backoff
    (>= 0.1.0))
   (domain-local-await
-   (>= 1.0.0))
+   (>= 1.0.1))
   (domain-local-timeout
-   (>= 1.0.0))
+   (>= 1.0.1))
   (multicore-magic
    (>= 2.1.0))
   (domain_shims
@@ -74,7 +74,7 @@
     :with-test))
   (domain-local-await
    (and
-    (>= 1.0.0)
+    (>= 1.0.1)
     :with-test))
   (domain_shims
    (and

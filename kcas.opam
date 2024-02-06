@@ -19,8 +19,8 @@ depends: [
   "dune" {>= "3.8"}
   "ocaml" {>= "4.13.0"}
   "backoff" {>= "0.1.0"}
-  "domain-local-await" {>= "1.0.0"}
-  "domain-local-timeout" {>= "1.0.0"}
+  "domain-local-await" {>= "1.0.1"}
+  "domain-local-timeout" {>= "1.0.1"}
   "multicore-magic" {>= "2.1.0"}
   "domain_shims" {>= "0.1.0" & with-test}
   "alcotest" {>= "1.7.0" & with-test}
