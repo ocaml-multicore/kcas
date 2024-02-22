@@ -82,7 +82,7 @@
     :with-test))
   (multicore-bench
    (and
-    (>= 0.1.0)
+    (>= 0.1.1)
     :with-test))
   (alcotest
    (and
