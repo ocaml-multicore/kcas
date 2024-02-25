@@ -1,8 +1,4 @@
-# Release notes
-
-All notable changes to this project will be documented in this file.
-
-Next version:
+## 0.7.0
 
 - Numerous minor internal improvements (@polytypic)
 - Added many benchmarks to allow better understanding of the overheads of
