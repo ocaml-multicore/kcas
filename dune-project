@@ -1,4 +1,4 @@
-(lang dune 3.8)
+(lang dune 3.14)
 
 (name kcas)
 
@@ -52,9 +52,13 @@
    (and
     (>= 2.3.0)
     :with-test))
+  (sherlodoc
+   (and
+    (>= 0.2)
+    :with-doc))
   (odoc
    (and
-    (>= 2.2.0)
+    (>= 2.4.1)
     :with-doc))))
 
 (package
@@ -100,7 +104,11 @@
    (and
     (>= 2.3.0)
     :with-test))
+  (sherlodoc
+   (and
+    (>= 0.2)
+    :with-doc))
   (odoc
    (and
-    (>= 2.2.0)
+    (>= 2.4.1)
     :with-doc))))
