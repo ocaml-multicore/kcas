@@ -18,9 +18,12 @@ let run_one ~budgetf ~n_domains ?(n_ops = 40 * Util.iter_factor)
     Hashtbl.replace t i i
   done;
 
-  let n_ops_todo = Atomic.make n_ops |> Multicore_magic.copy_as_padded in
+  let n_ops_todo = Atomic.make 0 |> Multicore_magic.copy_as_padded in
 
-  let init _ = Random.State.make_self_init () in
+  let init _ =
+    Atomic.set n_ops_todo n_ops;
+    Random.State.make_self_init ()
+  in
 
   let work _ state =
     let rec work () =
@@ -46,7 +49,6 @@ let run_one ~budgetf ~n_domains ?(n_ops = 40 * Util.iter_factor)
     in
     work ()
   in
-  let after () = Atomic.set n_ops_todo n_ops in
 
   let config =
     Printf.sprintf "%d worker%s, %d%% reads" n_domains
@@ -54,7 +56,7 @@ let run_one ~budgetf ~n_domains ?(n_ops = 40 * Util.iter_factor)
       percent_read
   in
 
-  Times.record ~budgetf ~n_domains ~init ~work ~after ()
+  Times.record ~budgetf ~n_domains ~init ~work ()
   |> Times.to_thruput_metrics ~n:n_ops ~singular:"operation" ~config
 
 let run_suite ~budgetf =
