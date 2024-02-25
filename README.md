@@ -15,7 +15,9 @@
 </div>
 
 [**Kcas**](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/index.html)
-provides a software transactional memory (STM) implementation based on an atomic
+provides a
+[software transactional memory](https://en.wikipedia.org/wiki/Software_transactional_memory)
+(STM) implementation based on an atomic
 [lock-free](https://en.wikipedia.org/wiki/Non-blocking_algorithm#Lock-freedom)
 multi-word [compare-and-set](https://en.wikipedia.org/wiki/Compare-and-swap)
 (MCAS) algorithm
