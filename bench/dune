@@ -11,6 +11,8 @@ let () =
 (test
  (name main)
  (package kcas_data)
+ (action
+  (run %{test} -brief))
  (libraries
   kcas_data
   multicore-bench
