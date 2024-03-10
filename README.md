@@ -1,5 +1,6 @@
 [API reference](https://ocaml-multicore.github.io/kcas/doc/) &middot;
-[Benchmarks](https://bench.ci.dev/ocaml-multicore/kcas/branch/main/benchmark/default)
+[Benchmarks](https://bench.ci.dev/ocaml-multicore/kcas/branch/main) &middot;
+[Stdlib Benchmarks](https://bench.ci.dev/ocaml-multicore/multicore-bench/branch/main)
 
 <div align="center">
 
