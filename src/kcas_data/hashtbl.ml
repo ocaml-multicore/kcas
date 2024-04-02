@@ -106,8 +106,7 @@ type ('k, 'v) t = ('k, 'v) r Loc.t
 type 'k hashed_type = (module Stdlib.Hashtbl.HashedType with type t = 'k)
 
 let lo_buckets = 1 lsl 5
-let hi_buckets = (Sys.max_array_length lsr 1) + 1
-let () = assert (Bits.is_pow_2 hi_buckets)
+let hi_buckets = Bits.ceil_pow_2 (Sys.max_array_length lsr 1)
 let min_buckets_default = lo_buckets
 let max_buckets_default = Int.min hi_buckets (1 lsl 30 (* Limit of [hash] *))
 
