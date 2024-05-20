@@ -33,10 +33,27 @@ open Kcas
 
 (** {1 Common interface} *)
 
-type !'a t
+(** Tagged GADT for doubly-linked lists. *)
+type ('a, _) tdt =
+  | List : {
+      lhs : 'a cursor Loc.t;
+      rhs : 'a cursor Loc.t;
+    }
+      -> ('a, [> `List ]) tdt
+  | Node : {
+      lhs : 'a cursor Loc.t;
+      rhs : 'a cursor Loc.t;
+      value : 'a;
+    }
+      -> ('a, [> `Node ]) tdt
+
+(** Refers to either a {!Node} or to a doubly-linked {!List}. *)
+and 'a cursor = At : ('a, [< `List | `Node ]) tdt -> 'a cursor [@@unboxed]
+
+type 'a t = ('a, [ `List ]) tdt
 (** Type of a doubly-linked list containing {!node}s of type ['a]. *)
 
-type !'a node
+type 'a node = ('a, [ `Node ]) tdt
 (** Type of a node containing a value of type ['a]. *)
 
 val create : unit -> 'a t
@@ -58,6 +75,7 @@ module Xt :
   Dllist_intf.Ops
     with type 'a t := 'a t
     with type 'a node := 'a node
+    with type 'a cursor := 'a cursor
     with type ('x, 'fn) fn := xt:'x Xt.t -> 'fn
     with type ('x, 'fn) blocking_fn := xt:'x Xt.t -> 'fn
 (** Explicit transaction log passing on doubly-linked lists. *)
@@ -68,6 +86,7 @@ include
   Dllist_intf.Ops
     with type 'a t := 'a t
     with type 'a node := 'a node
+    with type 'a cursor := 'a cursor
     with type ('x, 'fn) fn := 'fn
     with type ('x, 'fn) blocking_fn := ?timeoutf:float -> 'fn
 
