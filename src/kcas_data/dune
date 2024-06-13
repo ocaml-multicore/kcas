@@ -3,6 +3,7 @@
  (public_name kcas_data)
  (libraries
   (re_export kcas)
+  backoff
   multicore-magic))
 
 (rule
