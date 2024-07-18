@@ -23,6 +23,7 @@
   queue_test_stm
   stack_test
   stack_test_stm
+  two_stack_queue_test_stm
   xt_test)
  (libraries
   alcotest
