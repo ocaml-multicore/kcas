@@ -21,12 +21,12 @@ depends: [
   "backoff" {>= "0.1.0"}
   "domain-local-await" {>= "1.0.1"}
   "domain-local-timeout" {>= "1.0.1"}
-  "multicore-magic" {>= "2.1.0"}
+  "multicore-magic" {>= "2.3.0"}
   "domain_shims" {>= "0.1.0" & with-test}
-  "alcotest" {>= "1.7.0" & with-test}
-  "mdx" {>= "2.3.0" & with-test}
+  "alcotest" {>= "1.8.0" & with-test}
+  "mdx" {>= "2.4.1" & with-test}
   "sherlodoc" {>= "0.2" & with-doc}
-  "odoc" {>= "2.4.1" & with-doc}
+  "odoc" {>= "2.4.2" & with-doc}
 ]
 build: [
   ["dune" "subst"] {dev}

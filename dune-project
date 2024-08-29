@@ -39,18 +39,18 @@
   (domain-local-timeout
    (>= 1.0.1))
   (multicore-magic
-   (>= 2.1.0))
+   (>= 2.3.0))
   (domain_shims
    (and
     (>= 0.1.0)
     :with-test))
   (alcotest
    (and
-    (>= 1.7.0)
+    (>= 1.8.0)
     :with-test))
   (mdx
    (and
-    (>= 2.3.0)
+    (>= 2.4.1)
     :with-test))
   (sherlodoc
    (and
@@ -58,7 +58,7 @@
     :with-doc))
   (odoc
    (and
-    (>= 2.4.1)
+    (>= 2.4.2)
     :with-doc))))
 
 (package
@@ -71,7 +71,7 @@
   (kcas
    (= :version))
   (multicore-magic
-   (>= 2.1.0))
+   (>= 2.3.0))
   (backoff
    (and
     (>= 0.1.0)
@@ -86,11 +86,11 @@
     :with-test))
   (multicore-bench
    (and
-    (>= 0.1.2)
+    (>= 0.1.4)
     :with-test))
   (alcotest
    (and
-    (>= 1.7.0)
+    (>= 1.8.0)
     :with-test))
   (qcheck-core
    (and
@@ -102,7 +102,7 @@
     :with-test))
   (mdx
    (and
-    (>= 2.3.0)
+    (>= 2.4.1)
     :with-test))
   (sherlodoc
    (and
@@ -110,5 +110,5 @@
     :with-doc))
   (odoc
    (and
-    (>= 2.4.1)
+    (>= 2.4.2)
     :with-doc))))
