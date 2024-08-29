@@ -48,6 +48,14 @@
    (and
     (>= 1.8.0)
     :with-test))
+  (qcheck-core
+   (and
+    (>= 0.21.2)
+    :with-test))
+  (qcheck-stm
+   (and
+    (>= 0.3)
+    :with-test))
   (mdx
    (and
     (>= 2.4.1)
