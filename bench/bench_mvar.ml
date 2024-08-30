@@ -14,6 +14,7 @@ let run_one ~budgetf ?(n_adders = 2) ?(blocking_add = false) ?(n_takers = 2)
     Countdown.non_atomic_set n_msgs_to_take n_msgs;
     Countdown.non_atomic_set n_msgs_to_add n_msgs
   in
+  let wrap _ _ action = Scheduler.run action in
   let work i () =
     if i < n_adders then
       let domain_index = i in
@@ -81,7 +82,7 @@ let run_one ~budgetf ?(n_adders = 2) ?(blocking_add = false) ?(n_takers = 2)
       (format "taker" blocking_take n_takers)
   in
 
-  Times.record ~budgetf ~n_domains ~init ~work ()
+  Times.record ~budgetf ~n_domains ~init ~wrap ~work ()
   |> Times.to_thruput_metrics ~n:n_msgs ~singular:"message" ~config
 
 let run_suite ~budgetf =

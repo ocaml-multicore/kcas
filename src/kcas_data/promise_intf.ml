@@ -3,14 +3,13 @@ module type Ops = sig
   type !-'a u
   type 'a or_exn
   type ('x, 'fn) fn
-  type ('x, 'fn) blocking_fn
 
   val resolve : ('x, 'a u -> 'a -> unit) fn
   (** [resolve u v] resolves the promise corresponding to the resolver [u] to
       the value [v]. Any awaiters of the corresponding promise are then
       unblocked. *)
 
-  val await : ('x, 'a t -> 'a) blocking_fn
+  val await : ('x, 'a t -> 'a) fn
   (** [await t] either immediately returns the resolved value of the promise [t]
       or blocks until the promise [t] is resolved. *)
 
@@ -24,7 +23,7 @@ module type Ops = sig
 
   (** {2 Result promises} *)
 
-  val await_exn : ('x, 'a or_exn -> 'a) blocking_fn
+  val await_exn : ('x, 'a or_exn -> 'a) fn
   (** [await_exn t] is equivalent to
       [match await t with v -> v | exception e -> raise e]. *)
 

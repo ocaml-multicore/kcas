@@ -62,5 +62,4 @@ module Spec = struct
     | _, _ -> false
 end
 
-let () =
-  Stm_run.run ~count:1000 ~verbose:true ~name:"Hashtbl" (module Spec) |> exit
+let () = Stm_run.run ~name:"Hashtbl" (module Spec) |> exit

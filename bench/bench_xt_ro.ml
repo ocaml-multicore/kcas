@@ -15,6 +15,7 @@ let run_one ~budgetf ?(n_locs = 2)
   in
 
   let init _ = () in
+  let wrap _ _ action = Scheduler.run action in
   let work _ () =
     let rec loop i =
       if i > 0 then begin
@@ -27,7 +28,7 @@ let run_one ~budgetf ?(n_locs = 2)
 
   let config = Printf.sprintf "%d loc tx" n_locs in
 
-  Times.record ~budgetf ~n_domains:1 ~init ~work ()
+  Times.record ~budgetf ~n_domains:1 ~init ~wrap ~work ()
   |> Times.to_thruput_metrics ~n:n_iter ~singular:"transaction" ~config
 
 let run_suite ~budgetf =

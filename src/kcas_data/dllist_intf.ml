@@ -2,7 +2,6 @@ module type Ops = sig
   type 'a t
   type 'a node
   type ('x, 'fn) fn
-  type ('x, 'fn) blocking_fn
 
   (** {2 Operations on nodes} *)
 
@@ -42,12 +41,12 @@ module type Ops = sig
   (** [take_opt_r l] removes and returns the value of rightmost node of the
       doubly-linked list [l], or return [None] if the list is empty. *)
 
-  val take_blocking_l : ('x, 'a t -> 'a) blocking_fn
+  val take_blocking_l : ('x, 'a t -> 'a) fn
   (** [take_blocking_l l] removes and returns the value of leftmost node of the
       doubly-linked list [l], or blocks waiting for the list to become
       non-empty. *)
 
-  val take_blocking_r : ('x, 'a t -> 'a) blocking_fn
+  val take_blocking_r : ('x, 'a t -> 'a) fn
   (** [take_blocking_r l] removes and returns the value of rightmost node of the
       doubly-linked list [l], or blocks waiting for the list to become
       non-empty. *)

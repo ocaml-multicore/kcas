@@ -23,7 +23,7 @@
        obstruction-free} read-only compare (CMP) operations that can be
       performed on overlapping locations in parallel without interference.
 
-    - {b Blocking await}: The algorithm supports timeouts and awaiting for
+    - {b Blocking await}: The algorithm supports cancelation and awaiting for
       changes to any number of shared memory locations.
 
     - {b Composable}: Independently developed transactions can be composed with
@@ -73,6 +73,7 @@
 
     {[
       # let a_domain = Domain.spawn @@ fun () ->
+          Scheduler.run @@ fun () ->
           let x = Loc.get_as (fun x -> Retry.unless (x <> 0); x) x in
           Printf.sprintf "The answer is %d!" x
       val a_domain : string Domain.t = <abstr>
@@ -81,7 +82,8 @@
     Perform transactions over locations:
 
     {[
-      # let tx ~xt =
+      # Scheduler.run @@ fun () ->
+        let tx ~xt =
           let a = Xt.get ~xt a
           and b = Xt.get ~xt b in
           Xt.set ~xt x (b - a)
@@ -106,16 +108,9 @@
     can skip over these. The documentation links back to these modules where
     appropriate. *)
 
-(** Timeout support. *)
-module Timeout : sig
-  exception Timeout
-  (** Exception that may be raised by operations such as {!Loc.get_as},
-      {!Loc.update}, {!Loc.modify}, or {!Xt.commit} when given a [~timeoutf] in
-      seconds. *)
-end
-
-(** Retry support. *)
 module Retry : sig
+  (** Retry support. *)
+
   exception Later
   (** Exception that may be raised to signal that the operation, such as
       {!Loc.get_as}, {!Loc.update}, or {!Xt.commit}, should be retried, at some
@@ -127,7 +122,7 @@ module Retry : sig
       shared memory locations have already changed. *)
 
   val later : unit -> 'a
-  (** [later ()] is equivalent to [raise Later]. *)
+  (** [later ()] is equivalent to [raise_notrace Later]. *)
 
   val unless : bool -> unit
   (** [unless condition] is equivalent to [if not condition then later ()]. *)
@@ -138,11 +133,12 @@ module Retry : sig
       outside of the transaction, and the transaction should be retried. *)
 
   val invalid : unit -> 'a
-  (** [invalid ()] is equivalent to [raise Invalid]. *)
+  (** [invalid ()] is equivalent to [raise_notrace Invalid]. *)
 end
 
-(** Operating modes of the [k-CAS-n-CMP] algorithm. *)
 module Mode : sig
+  (** Operating modes of the [k-CAS-n-CMP] algorithm. *)
+
   type t =
     [ `Lock_free
       (** In [`Lock_free] mode the algorithm makes sure that at least one domain
@@ -165,18 +161,15 @@ end
 
     - [backoff] specifies the configuration for the [Backoff] mechanism. In
       special cases, having more detailed knowledge of the application, one
-      might adjust the configuration to improve performance.
+      might adjust the configuration to improve performance. *)
 
-    - [timeoutf] specifies a timeout in seconds and, if specified, the
-      {!Timeout.Timeout} exception may be raised by the operation to signal that
-      the timeout expired. *)
-
-(** Shared memory locations.
-
-    This module is essentially compatible with the [Stdlib.Atomic] module,
-    except that a number of functions take some optional arguments that one
-    usually need not worry about. *)
 module Loc : sig
+  (** Shared memory locations.
+
+      This module is essentially compatible with the [Stdlib.Atomic] module,
+      except that a number of functions take some optional arguments that one
+      usually need not worry about. *)
+
   (** Type of shared memory locations. *)
   type !'a t = private
     | Loc : { state : 'state; id : 'id } -> 'a t
@@ -226,7 +219,7 @@ module Loc : sig
   val get : 'a t -> 'a
   (** [get r] reads the current value of the shared memory location [r]. *)
 
-  val get_as : ?timeoutf:float -> ('a -> 'b) -> 'a t -> 'b
+  val get_as : ('a -> 'b) -> 'a t -> 'b
   (** [get_as f loc] is equivalent to [f (get loc)]. The given function [f] may
       raise the {!Retry.Later} exception to signal that the conditional load
       should be retried only after the location has been modified outside of the
@@ -238,7 +231,7 @@ module Loc : sig
       location [r] to the [after] value if the current value of [r] is the
       [before] value. *)
 
-  val update : ?timeoutf:float -> ?backoff:Backoff.t -> 'a t -> ('a -> 'a) -> 'a
+  val update : ?backoff:Backoff.t -> 'a t -> ('a -> 'a) -> 'a
   (** [update r f] repeats [let b = get r in compare_and_set r b (f b)] until it
       succeeds and then returns the [b] value. The given function [f] may raise
       the {!Retry.Later} exception to signal that the update should only be
@@ -246,8 +239,7 @@ module Loc : sig
       also safe for the given function [f] to raise any other exception to abort
       the update. *)
 
-  val modify :
-    ?timeoutf:float -> ?backoff:Backoff.t -> 'a t -> ('a -> 'a) -> unit
+  val modify : ?backoff:Backoff.t -> 'a t -> ('a -> 'a) -> unit
   (** [modify r f] is equivalent to [update r f |> ignore]. *)
 
   val exchange : ?backoff:Backoff.t -> 'a t -> 'a -> 'a
@@ -278,13 +270,11 @@ module Loc : sig
   (** [fenceless_get r] is like [get r] except that [fenceless_get]s may be
       reordered. *)
 
-  val fenceless_update :
-    ?timeoutf:float -> ?backoff:Backoff.t -> 'a t -> ('a -> 'a) -> 'a
+  val fenceless_update : ?backoff:Backoff.t -> 'a t -> ('a -> 'a) -> 'a
   (** [fenceless_update r f] is like [update r f] except that in case [f x == x]
       the update may be reordered. *)
 
-  val fenceless_modify :
-    ?timeoutf:float -> ?backoff:Backoff.t -> 'a t -> ('a -> 'a) -> unit
+  val fenceless_modify : ?backoff:Backoff.t -> 'a t -> ('a -> 'a) -> unit
   (** [fenceless_modify r f] is like [modify r f] except that in case [f x == x]
       the modify may be reordered. *)
 end
@@ -319,73 +309,80 @@ end
     memory locations are atomically marked as having taken effect and subsequent
     reads of the locations will be able to see the newly written values. *)
 
-(** Explicit transaction log passing on shared memory locations.
-
-    This module provides a way to implement composable transactions over shared
-    memory locations. A transaction is a function written by the library user
-    and can be thought of as a specification of a sequence of {!Xt.get} and
-    {!Xt.set} accesses to shared memory locations. To actually perform the
-    accesses one then {!Xt.commit}s the transaction.
-
-    Transactions should generally not perform arbitrary side-effects, because
-    when a transaction is committed it may be attempted multiple times meaning
-    that the side-effects are also performed multiple times. {!Xt.post_commit}
-    can be used to perform an action only once after the transaction has been
-    committed succesfully.
-
-    {b WARNING}: To make it clear, the operations provided by the {!Loc} module
-    for accessing individual shared memory locations do not implicitly go
-    through the transaction mechanism and should generally not be used within
-    transactions. There are advanced algorithms where one might, within a
-    transaction, perform operations that do not get recorded into the
-    transaction log. Using such techniques correctly requires expert knowledge
-    and is not recommended for casual users.
-
-    As an example, consider an implementation of doubly-linked circular lists.
-    Instead of using a mutable field, [ref], or [Atomic.t], one would use a
-    shared memory location, or {!Loc.t}, for the pointers in the node type:
-
-    {[
-      type 'a node = { succ : 'a node Loc.t; pred : 'a node Loc.t; datum : 'a }
-    ]}
-
-    To remove a node safely one wants to atomically update the [succ] and [pred]
-    pointers of the predecessor and successor nodes and to also update the
-    [succ] and [pred] pointers of a node to point to the node itself, so that
-    removal becomes an {{:https://en.wikipedia.org/wiki/Idempotence} idempotent}
-    operation. Using explicit transaction log passing one could implement the
-    [remove] operation as follows:
-
-    {[
-      let remove ~xt node =
-        (* Read pointers to the predecessor and successor nodes: *)
-        let pred = Xt.get ~xt node.pred in
-        let succ = Xt.get ~xt node.succ in
-        (* Update pointers in this node: *)
-        Xt.set ~xt node.succ node;
-        Xt.set ~xt node.pred node;
-        (* Update pointers to this node: *)
-        Xt.set ~xt pred.succ succ;
-        Xt.set ~xt succ.pred pred
-    ]}
-
-    The labeled argument, [~xt], refers to the transaction log. Transactional
-    operations like {!Xt.get} and {!Xt.set} are then recorded in that log. To
-    actually remove a node, we need to commit the transaction
-
-    {@ocaml skip[
-      Xt.commit { tx = remove node }
-    ]}
-
-    which repeatedly calls the transaction function, [tx], to record a
-    transaction log and attempts to atomically perform it until it succeeds.
-
-    Notice that [remove] is not recursive. It doesn't have to account for
-    failure or perform a backoff. It is also not necessary to know or keep track
-    of what the previous values of locations were. All of that is taken care of
-    for us by the transaction log and the {!Xt.commit} function. Furthermore,
-    [remove] can easily be called as a part of a more complex transaction. *)
 module Xt : sig
+  (** Explicit transaction log passing on shared memory locations.
+
+      This module provides a way to implement composable transactions over
+      shared memory locations. A transaction is a function written by the
+      library user and can be thought of as a specification of a sequence of
+      {!Xt.get} and {!Xt.set} accesses to shared memory locations. To actually
+      perform the accesses one then {!Xt.commit}s the transaction.
+
+      Transactions should generally not perform arbitrary side-effects, because
+      when a transaction is committed it may be attempted multiple times meaning
+      that the side-effects are also performed multiple times. {!Xt.post_commit}
+      can be used to perform an action only once after the transaction has been
+      committed succesfully.
+
+      {b WARNING}: To make it clear, the operations provided by the {!Loc}
+      module for accessing individual shared memory locations do not implicitly
+      go through the transaction mechanism and should generally not be used
+      within transactions. There are advanced algorithms where one might, within
+      a transaction, perform operations that do not get recorded into the
+      transaction log. Using such techniques correctly requires expert knowledge
+      and is not recommended for casual users.
+
+      As an example, consider an implementation of doubly-linked circular lists.
+      Instead of using a mutable field, [ref], or [Atomic.t], one would use a
+      shared memory location, or {!Loc.t}, for the pointers in the node type:
+
+      {[
+        type 'a node = {
+          succ : 'a node Loc.t;
+          pred : 'a node Loc.t;
+          datum : 'a;
+        }
+      ]}
+
+      To remove a node safely one wants to atomically update the [succ] and
+      [pred] pointers of the predecessor and successor nodes and to also update
+      the [succ] and [pred] pointers of a node to point to the node itself, so
+      that removal becomes an
+      {{:https://en.wikipedia.org/wiki/Idempotence} idempotent} operation. Using
+      explicit transaction log passing one could implement the [remove]
+      operation as follows:
+
+      {[
+        let remove ~xt node =
+          (* Read pointers to the predecessor and successor nodes: *)
+          let pred = Xt.get ~xt node.pred in
+          let succ = Xt.get ~xt node.succ in
+          (* Update pointers in this node: *)
+          Xt.set ~xt node.succ node;
+          Xt.set ~xt node.pred node;
+          (* Update pointers to this node: *)
+          Xt.set ~xt pred.succ succ;
+          Xt.set ~xt succ.pred pred
+      ]}
+
+      The labeled argument, [~xt], refers to the transaction log. Transactional
+      operations like {!Xt.get} and {!Xt.set} are then recorded in that log. To
+      actually remove a node, we need to commit the transaction
+
+      {@ocaml skip[
+        Xt.commit { tx = remove node }
+      ]}
+
+      which repeatedly calls the transaction function, [tx], to record a
+      transaction log and attempts to atomically perform it until it succeeds.
+
+      Notice that [remove] is not recursive. It doesn't have to account for
+      failure or perform a backoff. It is also not necessary to know or keep
+      track of what the previous values of locations were. All of that is taken
+      care of for us by the transaction log and the {!Xt.commit} function.
+      Furthermore, [remove] can easily be called as a part of a more complex
+      transaction. *)
+
   type 'x t
   (** Type of an explicit transaction log on shared memory locations.
 
@@ -545,8 +542,7 @@ module Xt : sig
   val call : xt:'x t -> 'a tx -> 'a
   (** [call ~xt tx] is equivalent to [tx.Xt.tx ~xt]. *)
 
-  val commit :
-    ?timeoutf:float -> ?backoff:Backoff.t -> ?mode:Mode.t -> 'a tx -> 'a
+  val commit : ?backoff:Backoff.t -> ?mode:Mode.t -> 'a tx -> 'a
   (** [commit tx] repeatedly calls [tx] to record a log of shared memory
       accesses and attempts to perform them atomically until it succeeds and
       then returns whatever [tx] returned. [tx] may raise {!Retry.Later} or

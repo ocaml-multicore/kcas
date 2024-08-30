@@ -33,16 +33,11 @@ module Xt :
   Stack_intf.Ops
     with type 'a t := 'a t
     with type ('x, 'fn) fn := xt:'x Xt.t -> 'fn
-    with type ('x, 'fn) blocking_fn := xt:'x Xt.t -> 'fn
 (** Explicit transaction log passing on stacks. *)
 
 (** {1 Non-compositional interface} *)
 
-include
-  Stack_intf.Ops
-    with type 'a t := 'a t
-    with type ('x, 'fn) fn := 'fn
-    with type ('x, 'fn) blocking_fn := ?timeoutf:float -> 'fn
+include Stack_intf.Ops with type 'a t := 'a t with type ('x, 'fn) fn := 'fn
 
 val pop : 'a t -> 'a
 (** [pop s] removes and returns the topmost element in stack [s], or raises

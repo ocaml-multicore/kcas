@@ -62,8 +62,5 @@ end
 let capacity_of c = Kcas.Xt.commit { tx = Xt.capacity_of c }
 let set_capacity c n = Kcas.Xt.commit { tx = Xt.set_capacity c n }
 let get_opt c k = Kcas.Xt.commit { tx = Xt.get_opt c k }
-
-let set_blocking ?timeoutf c k v =
-  Kcas.Xt.commit ?timeoutf { tx = Xt.set_blocking c k v }
-
+let set_blocking c k v = Kcas.Xt.commit { tx = Xt.set_blocking c k v }
 let remove c k = Kcas.Xt.commit { tx = Xt.remove c k }

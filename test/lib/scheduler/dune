@@ -1,0 +1,9 @@
+(library
+ (name scheduler)
+ (libraries
+  picos_io.select
+  (select
+   scheduler.ml
+   from
+   (picos_mux.random picos_mux.multififo -> scheduler.ocaml5.ml)
+   (picos_mux.thread -> scheduler.ocaml4.ml))))

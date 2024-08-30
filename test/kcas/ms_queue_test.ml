@@ -1,3 +1,4 @@
+open Picos_std_structured
 open Kcas
 
 module Q = struct
@@ -43,6 +44,8 @@ let failure exit msg =
   failwith msg
 
 let write_skew_test n =
+  Scheduler.run ~n_domains:3 @@ fun () ->
+  Flock.join_after @@ fun () ->
   let q1 = Q.queue () and q2 = Q.queue () in
 
   let push_to_q2 ~xt =
@@ -61,20 +64,20 @@ let write_skew_test n =
 
   let exit = Atomic.make false in
 
-  let domains =
-    [
-      Domain.spawn (fun () ->
-          sync ();
-          while not (Atomic.get exit) do
-            Xt.commit { tx = push_to_q1 }
-          done);
-      Domain.spawn (fun () ->
-          sync ();
-          while not (Atomic.get exit) do
-            Xt.commit { tx = push_to_q2 }
-          done);
-    ]
-  in
+  begin
+    Flock.fork @@ fun () ->
+    sync ();
+    while not (Atomic.get exit) do
+      Xt.commit { tx = push_to_q1 }
+    done
+  end;
+  begin
+    Flock.fork (fun () ->
+        sync ();
+        while not (Atomic.get exit) do
+          Xt.commit { tx = push_to_q2 }
+        done)
+  end;
 
   sync ();
   for _ = 1 to n do
@@ -82,11 +85,10 @@ let write_skew_test n =
     | Some _, Some _ -> failure exit "write skew!"
     | _ -> ()
   done;
-  Atomic.set exit true;
-
-  List.iter Domain.join domains
+  Atomic.set exit true
 
 let tail_leak_test n =
+  Scheduler.run ~n_domains:2 @@ fun () ->
   let q = Q.queue () in
 
   let m = 2 in
@@ -120,7 +122,7 @@ let tail_leak_test n =
       raise e
   in
 
-  List.init m domain |> List.map Domain.spawn |> List.iter Domain.join
+  Run.all (List.init m domain)
 
 let () =
   let n = try int_of_string Sys.argv.(1) with _ -> 1 * Util.iter_factor in
