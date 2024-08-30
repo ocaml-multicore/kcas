@@ -1,11 +1,11 @@
 (library
  (name kcas)
  (public_name kcas)
- (libraries domain-local-await domain-local-timeout backoff multicore-magic))
+ (libraries picos backoff multicore-magic))
 
 (mdx
  (package kcas)
  (deps
   (package kcas))
- (libraries kcas backoff domain_shims)
+ (libraries kcas backoff scheduler threads.posix domain_shims)
  (files kcas.mli))

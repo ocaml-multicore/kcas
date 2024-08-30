@@ -9,7 +9,7 @@ let run_one ~budgetf ~n_domains ?(n_ops = 180 * Util.iter_factor) () =
   let n_ops_todo = Atomic.make n_ops |> Multicore_magic.copy_as_padded in
 
   let init _ = () in
-
+  let wrap _ _ action = Scheduler.run action in
   let work _ () =
     let rec work () =
       let n = Util.alloc n_ops_todo in
@@ -34,7 +34,7 @@ let run_one ~budgetf ~n_domains ?(n_ops = 180 * Util.iter_factor) () =
       (if n_domains = 1 then "" else "s")
   in
 
-  Times.record ~budgetf ~n_domains ~init ~work ~after ()
+  Times.record ~budgetf ~n_domains ~init ~wrap ~work ~after ()
   |> Times.to_thruput_metrics ~n:n_ops ~config ~singular:"operation"
 
 let run_suite ~budgetf =

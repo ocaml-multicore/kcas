@@ -1,3 +1,4 @@
+open Picos_std_structured
 open Kcas
 
 let loop_count = try int_of_string Sys.argv.(1) with _ -> Util.iter_factor
@@ -76,6 +77,6 @@ let accumulator_thread () =
   exit := true
 
 let () =
-  accumulator_thread :: List.init n_counters counter_thread
-  |> List.map Domain.spawn |> List.iter Domain.join;
+  Scheduler.run ~n_domains:(n_counters + 1) @@ fun () ->
+  Run.all (accumulator_thread :: List.init n_counters counter_thread);
   Printf.printf "Loc modes OK!\n%!"
