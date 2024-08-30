@@ -3,6 +3,8 @@
  * Copyright (c) 2023, Vesa Karvonen <vesa.a.j.k@gmail.com>
  *)
 
+open Picos
+
 (** Work around CSE bug in OCaml 5-5.1. *)
 let[@inline] atomic_get x =
   Atomic.get ((* Prevents CSE *) Sys.opaque_identity x)
@@ -21,82 +23,6 @@ let[@inline] fenceless_get x =
 (*
 let fenceless_get = atomic_get
 *)
-
-module Timeout = struct
-  exception Timeout
-
-  let[@inline never] timeout () = raise Timeout
-
-  type _ t =
-    | Unset : [> `Unset ] t
-    | Elapsed : [> `Elapsed ] t
-    | Call : (unit -> unit) -> [> `Call ] t
-    | Set : { mutable state : [< `Elapsed | `Call ] t } -> [> `Set ] t
-
-  external as_atomic : [< `Set ] t -> [< `Elapsed | `Call ] t Atomic.t
-    = "%identity"
-
-  (* Fenceless operations are safe here as the timeout state is not not visible
-     outside of the library and we don't always need the latest value and, when
-     we do, there is a fence after. *)
-
-  let[@inline] check (t : [< `Set | `Unset ] t) =
-    match t with
-    | Unset -> ()
-    | Set set_r ->
-        if fenceless_get (as_atomic (Set set_r)) == Elapsed then timeout ()
-
-  let set seconds (state : [< `Elapsed | `Call ] t Atomic.t) =
-    Domain_local_timeout.set_timeoutf seconds @@ fun () ->
-    match Atomic.exchange state Elapsed with
-    | Call release_or_cancel -> release_or_cancel ()
-    | Elapsed -> ()
-
-  let call_id = Call Fun.id
-
-  let[@inline never] alloc seconds =
-    let (Set set_r as t : [ `Set ] t) = Set { state = call_id } in
-    let cancel = set seconds (as_atomic t) in
-    if not (Atomic.compare_and_set (as_atomic t) call_id (Call cancel)) then
-      timeout ();
-    Set set_r
-
-  let[@inline] alloc_opt = function
-    | None -> Unset
-    | Some seconds -> alloc seconds
-
-  let[@inline never] await (state : [< `Elapsed | `Call ] t Atomic.t) release =
-    match fenceless_get state with
-    | Call cancel as alive ->
-        if Atomic.compare_and_set state alive (Call release) then Call cancel
-        else timeout ()
-    | Elapsed -> timeout ()
-
-  let[@inline] await (t : [ `Unset | `Set ] t) release =
-    match t with Unset -> Unset | Set r -> await (as_atomic (Set r)) release
-
-  let[@inline never] unawait (state : [< `Elapsed | `Call ] t Atomic.t) alive =
-    match fenceless_get state with
-    | Call _ as await ->
-        if not (Atomic.compare_and_set state await alive) then timeout ()
-    | Elapsed -> timeout ()
-
-  let[@inline] unawait t alive =
-    match (t, alive) with
-    | Set set_r, Call call_r -> unawait (as_atomic (Set set_r)) (Call call_r)
-    | _ -> ()
-
-  let[@inline] cancel_alive (alive : [< `Unset | `Call ] t) =
-    match alive with Unset -> () | Call cancel -> cancel ()
-
-  let[@inline] cancel (t : [< `Set | `Unset ] t) =
-    match t with
-    | Unset -> ()
-    | Set set_r -> (
-        match fenceless_get (as_atomic (Set set_r)) with
-        | Elapsed -> ()
-        | Call cancel -> cancel ())
-end
 
 module Id = struct
   let neg_id = Atomic.make (-1)
@@ -128,14 +54,12 @@ end = struct
     x
 end
 
-type awaiter = unit -> unit
-
-let[@inline] resume_awaiter awaiter = awaiter ()
+type awaiter = Trigger.t
 
 let[@inline] resume_awaiters = function
   | [] -> ()
-  | [ awaiter ] -> resume_awaiter awaiter
-  | awaiters -> List.iter resume_awaiter awaiters
+  | [ awaiter ] -> Trigger.signal awaiter
+  | awaiters -> List.iter Trigger.signal awaiters
 
 module Mode = struct
   type t = [ `Lock_free | `Obstruction_free ]
@@ -166,7 +90,7 @@ and _ tdt =
 
               This field must be first, see [root_as_atomic] and [tree_as_ref].
           *)
-      timeout : [ `Set | `Unset ] Timeout.t;
+      mutable fiber : Fiber.Maybe.t;
       mutable mode : Mode.t;
       mutable validate_counter : int;
       mutable post_commit : Action.t;
@@ -467,67 +391,49 @@ let rec remove_awaiter backoff loc before awaiter =
       if not (Atomic.compare_and_set (as_atomic loc) state_old state_new) then
         remove_awaiter (Backoff.once backoff) loc before awaiter
 
-let block timeout loc before =
-  let t = Domain_local_await.prepare_for_await () in
-  let alive = Timeout.await timeout t.release in
-  if add_awaiter loc before t.release then begin
-    try t.await ()
-    with cancellation_exn ->
-      remove_awaiter Backoff.default loc before t.release;
-      Timeout.cancel_alive alive;
-      raise cancellation_exn
-  end;
-  Timeout.unawait timeout alive
+let block loc before =
+  let t = Trigger.create () in
+  if add_awaiter loc before t then
+    match Trigger.await t with
+    | None -> ()
+    | Some (exn, bt) ->
+        remove_awaiter Backoff.default loc before t;
+        Printexc.raise_with_backtrace exn bt
 
-let rec update_no_alloc timeout backoff loc state f =
+let rec update_no_alloc backoff loc state f =
   (* Fenceless is safe as we have had a fence before if needed and there is a fence after. *)
   let state_old = fenceless_get (as_atomic loc) in
   let before = eval state_old in
   match f before with
   | after ->
-      if before == after then begin
-        Timeout.cancel timeout;
-        before
-      end
+      if before == after then before
       else begin
         state.after <- after;
         if Atomic.compare_and_set (as_atomic loc) state_old state then begin
           resume_awaiters state_old.awaiters;
-          Timeout.cancel timeout;
           before
         end
-        else update_no_alloc timeout (Backoff.once backoff) loc state f
+        else update_no_alloc (Backoff.once backoff) loc state f
       end
   | exception Retry.Later ->
-      block timeout loc before;
-      update_no_alloc timeout backoff loc state f
-  | exception exn ->
-      Timeout.cancel timeout;
-      raise exn
+      block loc before;
+      update_no_alloc backoff loc state f
 
-let update_with_state timeout backoff loc f state_old =
+let update_with_state backoff loc f state_old =
   let before = eval state_old in
   match f before with
   | after ->
-      if before == after then begin
-        Timeout.cancel timeout;
-        before
-      end
+      if before == after then before
       else
         let state = new_state after in
         if Atomic.compare_and_set (as_atomic loc) state_old state then begin
           resume_awaiters state_old.awaiters;
-          Timeout.cancel timeout;
           before
         end
-        else update_no_alloc timeout (Backoff.once backoff) loc state f
+        else update_no_alloc (Backoff.once backoff) loc state f
   | exception Retry.Later ->
       let state = new_state before in
-      block timeout loc before;
-      update_no_alloc timeout backoff loc state f
-  | exception exn ->
-      Timeout.cancel timeout;
-      raise exn
+      update_no_alloc backoff loc state f
 
 let rec exchange_no_alloc backoff loc state =
   let state_old = atomic_get (as_atomic loc) in
@@ -553,8 +459,8 @@ let[@inline] rec cas_with_state backoff loc before state state_old =
           having installed or removed a waiter.
 
           Fenceless is safe as there was a fence before. *)
-       cas_with_state (Backoff.once backoff) loc before state
-         (fenceless_get (as_atomic loc)))
+       let backoff = Backoff.once backoff in
+       cas_with_state backoff loc before state (atomic_get (as_atomic loc)))
 
 let inc x = x + 1
 let dec x = x - 1
@@ -584,25 +490,15 @@ module Loc = struct
   let[@inline] get_id loc = (to_loc loc).id
   let get loc = eval (atomic_get (as_atomic (to_loc loc)))
 
-  let rec get_as timeout f loc state =
+  let rec get_as f loc state =
     let before = eval state in
-    match f before with
-    | value ->
-        Timeout.cancel timeout;
-        value
-    | exception Retry.Later ->
-        block timeout (to_loc loc) before;
-        (* Fenceless is safe as there was already a fence before. *)
-        get_as timeout f loc (fenceless_get (as_atomic (to_loc loc)))
-    | exception exn ->
-        Timeout.cancel timeout;
-        raise exn
+    try f before
+    with Retry.Later ->
+      block (to_loc loc) before;
+      (* Fenceless is safe as there was already a fence before. *)
+      get_as f loc (fenceless_get (as_atomic (to_loc loc)))
 
-  let[@inline] get_as ?timeoutf f loc =
-    get_as
-      (Timeout.alloc_opt timeoutf)
-      f loc
-      (atomic_get (as_atomic (to_loc loc)))
+  let[@inline] get_as f loc = get_as f loc (atomic_get (as_atomic (to_loc loc)))
 
   let[@inline] get_mode loc =
     if (to_loc loc).id < 0 then `Lock_free else `Obstruction_free
@@ -612,21 +508,18 @@ module Loc = struct
     let state_old = atomic_get (as_atomic (to_loc loc)) in
     cas_with_state backoff (to_loc loc) before state state_old
 
-  let fenceless_update ?timeoutf ?(backoff = Backoff.default) loc f =
-    let timeout = Timeout.alloc_opt timeoutf in
-    update_with_state timeout backoff (to_loc loc) f
+  let fenceless_update ?(backoff = Backoff.default) loc f =
+    update_with_state backoff (to_loc loc) f
       (fenceless_get (as_atomic (to_loc loc)))
 
-  let[@inline] fenceless_modify ?timeoutf ?backoff loc f =
-    fenceless_update ?timeoutf ?backoff loc f |> ignore
+  let[@inline] fenceless_modify ?backoff loc f =
+    fenceless_update ?backoff loc f |> ignore
 
-  let update ?timeoutf ?(backoff = Backoff.default) loc f =
-    let timeout = Timeout.alloc_opt timeoutf in
-    update_with_state timeout backoff (to_loc loc) f
+  let update ?(backoff = Backoff.default) loc f =
+    update_with_state backoff (to_loc loc) f
       (atomic_get (as_atomic (to_loc loc)))
 
-  let[@inline] modify ?timeoutf ?backoff loc f =
-    update ?timeoutf ?backoff loc f |> ignore
+  let[@inline] modify ?backoff loc f = update ?backoff loc f |> ignore
 
   let exchange ?(backoff = Backoff.default) loc value =
     exchange_no_alloc backoff (to_loc loc) (new_state value)
@@ -711,6 +604,17 @@ module Xt = struct
     tree_as_ref xt := T (Node { loc; state; lt; gt; awaiters = [] });
     before
 
+  let check (Xt xt_r : _ t) =
+    match Fiber.Maybe.to_fiber_or_current xt_r.fiber with
+    | fiber ->
+        Fiber.check fiber;
+        if xt_r.fiber != Fiber.Maybe.of_fiber fiber then
+          xt_r.fiber <- Fiber.Maybe.of_fiber fiber
+    | exception _ ->
+        (* Getting the current fiber should never fail except when not running
+           inside a scheduler. *)
+        ()
+
   let update_old : type c a. _ -> a loc -> c -> (c, a) up -> _ -> _ -> _ -> a =
    fun (Xt xt_r as xt : _ t) loc c up lt gt state' ->
     let c0 = xt_r.validate_counter in
@@ -721,7 +625,7 @@ module Xt = struct
        The assumption is that potentially infinite loops will repeatedly access
        the same locations. *)
     if c0 land c1 = 0 then begin
-      Timeout.check xt_r.timeout;
+      check xt;
       validate_all_rec xt !(tree_as_ref xt)
     end;
     let state : a state = Obj.magic state' in
@@ -929,17 +833,13 @@ module Xt = struct
 
   let initial_validate_period = 4
 
-  let success (Xt xt_r : _ t) result =
-    Timeout.cancel xt_r.timeout;
-    Action.run xt_r.post_commit result
-
   let rec commit backoff (Xt xt_r as xt : _ t) tx =
     match tx ~xt with
     | result -> begin
         match !(tree_as_ref xt) with
-        | T Leaf -> success xt result
+        | T Leaf -> Action.run xt_r.post_commit result
         | T (Node { loc; state; lt = T Leaf; gt = T Leaf; _ }) ->
-            if is_cmp xt state then success xt result
+            if is_cmp xt state then Action.run xt_r.post_commit result
             else begin
               state.which <- W After;
               let before = state.before in
@@ -948,7 +848,7 @@ module Xt = struct
                  fence. *)
               let state_old = fenceless_get (as_atomic loc) in
               if cas_with_state Backoff.default loc before state state_old then
-                success xt result
+                Action.run xt_r.post_commit result
               else commit_once_reuse backoff xt tx
             end
         | T (Node node_r) -> begin
@@ -956,22 +856,22 @@ module Xt = struct
             match determine xt 0 root with
             | status ->
                 if a_cmp_followed_by_a_cas < status then begin
-                  if finish xt root (verify xt root) then success xt result
+                  if finish xt root (verify xt root) then
+                    Action.run xt_r.post_commit result
                   else begin
-                    (* We switch to [`Lock_free] as there was
-                       interference. *)
+                    (* We switch to [`Lock_free] as there was interference. *)
                     commit_once_alloc backoff `Lock_free xt tx
                   end
                 end
                 else if
                   a_cmp = status
                   || finish xt root (if 0 <= status then After else Before)
-                then success xt result
+                then Action.run xt_r.post_commit result
                 else commit_once_alloc backoff xt_r.mode xt tx
             | exception Exit ->
                 (* Fenceless is safe as there was a fence before. *)
                 if fenceless_get (root_as_atomic xt) == R After then
-                  success xt result
+                  Action.run xt_r.post_commit result
                 else commit_once_alloc backoff xt_r.mode xt tx
           end
       end
@@ -981,58 +881,52 @@ module Xt = struct
         | T Leaf -> invalid_retry ()
         | T (Node node_r) -> begin
             let root = Node node_r in
-            let t = Domain_local_await.prepare_for_await () in
-            let alive = Timeout.await xt_r.timeout t.release in
-            match add_awaiters t.release xt root with
+            let t = Trigger.create () in
+            match add_awaiters t xt root with
             | T Leaf -> begin
-                match t.await () with
-                | () ->
-                    remove_awaiters t.release xt (T Leaf) root |> ignore;
-                    Timeout.unawait xt_r.timeout alive;
+                match Trigger.await t with
+                | None ->
+                    remove_awaiters t xt (T Leaf) root |> ignore;
                     commit_reset_reuse backoff xt tx
-                | exception cancellation_exn ->
-                    remove_awaiters t.release xt (T Leaf) root |> ignore;
-                    Timeout.cancel_alive alive;
-                    raise cancellation_exn
+                | Some (exn, bt) ->
+                    remove_awaiters t xt (T Leaf) root |> ignore;
+                    Printexc.raise_with_backtrace exn bt
               end
             | T (Node _) as stop ->
-                remove_awaiters t.release xt stop root |> ignore;
-                Timeout.unawait xt_r.timeout alive;
+                remove_awaiters t xt stop root |> ignore;
                 commit_once_reuse backoff xt tx
           end
       end
-    | exception exn ->
-        Timeout.cancel xt_r.timeout;
-        raise exn
 
   and commit_once_reuse backoff xt tx =
+    check xt;
     commit_reuse (Backoff.once backoff) xt tx
 
   and commit_reset_reuse backoff xt tx =
+    check xt;
     commit_reuse (Backoff.reset backoff) xt tx
 
   and commit_reuse backoff (Xt xt_r as xt : _ t) tx =
     tree_as_ref xt := T Leaf;
     xt_r.validate_counter <- initial_validate_period;
     xt_r.post_commit <- Action.noop;
-    Timeout.check xt_r.timeout;
     commit backoff xt tx
 
-  and commit_once_alloc backoff mode (Xt xt_r : _ t) tx =
+  and commit_once_alloc backoff mode (Xt xt_r as xt : _ t) tx =
+    check xt;
     let backoff = Backoff.once backoff in
-    Timeout.check xt_r.timeout;
     let rot = U Leaf in
     let validate_counter = initial_validate_period in
     let post_commit = Action.noop in
     let xt = Xt { xt_r with rot; mode; validate_counter; post_commit } in
     commit backoff xt tx
 
-  let[@inline] commit ?timeoutf ?(backoff = Backoff.default)
-      ?(mode = `Obstruction_free) { tx } =
-    let timeout = Timeout.alloc_opt timeoutf
+  let[@inline] commit ?(backoff = Backoff.default) ?(mode = `Obstruction_free)
+      { tx } =
+    let fiber = Fiber.Maybe.nothing
     and rot = U Leaf
     and validate_counter = initial_validate_period
     and post_commit = Action.noop in
-    let xt = Xt { rot; timeout; mode; validate_counter; post_commit } in
+    let xt = Xt { rot; fiber; mode; validate_counter; post_commit } in
     commit backoff xt tx
 end

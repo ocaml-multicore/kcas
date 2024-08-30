@@ -14,6 +14,7 @@ let run_one ~budgetf ~n_domains ?(n_ops = 50 * Util.iter_factor) () =
     Countdown.non_atomic_set n_ops_todo n_ops;
     Array.unsafe_get xs i
   in
+  let wrap _ _ action = Scheduler.run action in
   let work domain_index x =
     let tx1 ~xt =
       let a = Xt.get ~xt a in
@@ -41,7 +42,7 @@ let run_one ~budgetf ~n_domains ?(n_ops = 50 * Util.iter_factor) () =
     Printf.sprintf "%d worker%s" n_domains (if n_domains = 1 then "" else "s")
   in
 
-  Times.record ~budgetf ~n_domains ~init ~work ()
+  Times.record ~budgetf ~n_domains ~init ~wrap ~work ()
   |> Times.to_thruput_metrics ~n:n_ops ~singular:"transaction" ~config
 
 let run_suite ~budgetf =

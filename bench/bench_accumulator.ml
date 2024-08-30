@@ -9,6 +9,7 @@ let run_one ~budgetf ~n_domains ?(n_ops = 180 * Util.iter_factor) () =
   let n_ops_todo = Countdown.create ~n_domains () in
 
   let init _ = Countdown.non_atomic_set n_ops_todo n_ops in
+  let wrap _ _ action = Scheduler.run action in
   let work domain_index () =
     let rec work () =
       let n = Countdown.alloc n_ops_todo ~domain_index ~batch:1000 in
@@ -31,7 +32,7 @@ let run_one ~budgetf ~n_domains ?(n_ops = 180 * Util.iter_factor) () =
       (if n_domains = 1 then "" else "s")
   in
 
-  Times.record ~budgetf ~n_domains ~init ~work ()
+  Times.record ~budgetf ~n_domains ~init ~wrap ~work ()
   |> Times.to_thruput_metrics ~n:n_ops ~config ~singular:"operation"
 
 let run_suite ~budgetf =
