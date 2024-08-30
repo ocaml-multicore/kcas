@@ -1,3 +1,4 @@
+open Picos_std_structured
 open Kcas
 
 module Lru_cache = struct
@@ -19,21 +20,23 @@ module Lru_cache = struct
       | exception Retry.Later -> false
   end
 
-  let get ?timeoutf c k = Kcas.Xt.commit ?timeoutf { tx = Xt.get c k }
-  let get_if ?timeoutf c k p = Kcas.Xt.commit ?timeoutf { tx = Xt.get_if c k p }
+  let get c k = Kcas.Xt.commit { tx = Xt.get c k }
+  let get_if c k p = Kcas.Xt.commit { tx = Xt.get_if c k p }
   let try_set c k d = Kcas.Xt.commit { tx = Xt.try_set c k d }
 end
 
 let () =
+  Scheduler.run ~n_domains:2 @@ fun () ->
+  Flock.join_after @@ fun () ->
   let c = Lru_cache.create 10 in
-  let domain =
-    Domain.spawn @@ fun () ->
+  let answer =
+    Flock.fork_as_promise @@ fun () ->
     let tx ~xt = Lru_cache.Xt.get ~xt c "a" + Lru_cache.Xt.get ~xt c "b" in
     Xt.commit { tx }
   in
   Lru_cache.set_blocking c "b" 30;
   Lru_cache.set_blocking c "a" 12;
-  assert (Domain.join domain = 42);
+  assert (Promise.await answer = 42);
   ()
 
 let () =

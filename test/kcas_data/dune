@@ -14,6 +14,8 @@
   stack_test_stm
   xt_test)
  (libraries
+  scheduler
+  picos_std.structured
   alcotest
   kcas
   kcas_data
