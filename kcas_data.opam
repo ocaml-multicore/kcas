@@ -22,7 +22,7 @@ depends: [
   "backoff" {>= "0.1.0" & with-test}
   "domain-local-await" {>= "1.0.1" & with-test}
   "domain_shims" {>= "0.1.0" & with-test}
-  "multicore-bench" {>= "0.1.4" & with-test}
+  "multicore-bench" {>= "0.1.5" & with-test}
   "alcotest" {>= "1.8.0" & with-test}
   "qcheck-core" {>= "0.21.2" & with-test}
   "qcheck-stm" {>= "0.3" & with-test}
