@@ -14,6 +14,7 @@ let () =
  (action
   (run %{test} -brief))
  (libraries
+  scheduler
   kcas_data
   multicore-bench
   backoff

@@ -11,6 +11,7 @@ let run_one ~budgetf ?(n_adders = 2) ?(blocking_add = false) ?(n_takers = 2)
   let n_msgs_to_add = Atomic.make n_msgs |> Multicore_magic.copy_as_padded in
 
   let init _ = () in
+  let wrap _ _ action = Scheduler.run action in
   let work i () =
     if i < n_adders then
       if blocking_add then
@@ -79,7 +80,7 @@ let run_one ~budgetf ?(n_adders = 2) ?(blocking_add = false) ?(n_takers = 2)
       (format "taker" blocking_take n_takers)
   in
 
-  Times.record ~budgetf ~n_domains ~init ~work ~after ()
+  Times.record ~budgetf ~n_domains ~init ~wrap ~work ~after ()
   |> Times.to_thruput_metrics ~n:n_msgs ~singular:"message" ~config
 
 let run_suite ~budgetf =

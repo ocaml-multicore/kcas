@@ -1,12 +1,14 @@
 open Kcas
 
 let await_between_threads () =
+  Scheduler.run @@ fun () ->
   let x = Loc.make 0 in
   let y = Loc.make 0 in
 
   let a_thread =
     ()
     |> Thread.create @@ fun () ->
+       Scheduler.run @@ fun () ->
        Loc.get_as (fun x -> Retry.unless (x <> 0)) x;
        Loc.set y 22
   in
