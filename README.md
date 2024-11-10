@@ -47,8 +47,8 @@ Features and properties:
   read-only compare (CMP) operations that can be performed on overlapping
   locations in parallel without interference.
 
-- **_Blocking await_**: The algorithm supports timeouts and awaiting for changes
-  to any number of shared memory locations.
+- **_Blocking await_**: The algorithm supports cancelation and awaiting for
+  changes to any number of shared memory locations.
 
 - **_Composable_**: Independently developed transactions can be composed with
   ease sequentially, conjunctively, conditionally, and disjunctively.
@@ -76,7 +76,7 @@ is distributed under the [ISC license](LICENSE.md).
     - [A transactional lock-free queue](#a-transactional-lock-free-queue)
     - [Composing transactions](#composing-transactions)
     - [Blocking transactions](#blocking-transactions)
-    - [Timeouts](#timeouts)
+    - [Cancelation and Timeouts](#cancelation-and-timeouts)
     - [A transactional lock-free leftist heap](#a-transactional-lock-free-leftist-heap)
   - [Programming with transactional data structures](#programming-with-transactional-data-structures)
     - [The dining philosophers problem](#the-dining-philosophers-problem)
@@ -101,14 +101,7 @@ is distributed under the [ISC license](LICENSE.md).
 
 To use the library
 
-<!--
 ```ocaml
-# #thread
-```
--->
-
-```ocaml
-# #require "kcas"
 # open Kcas
 ```
 
@@ -143,6 +136,7 @@ Block waiting for changes to locations:
 
 ```ocaml
 # let a_domain = Domain.spawn @@ fun () ->
+    Scheduler.run @@ fun () ->
     let x = Loc.get_as (fun x -> Retry.unless (x <> 0); x) x in
     Printf.sprintf "The answer is %d!" x
 val a_domain : string Domain.t = <abstr>
@@ -551,12 +545,27 @@ and then spawn a domain that tries to atomically both pop and dequeue:
 
 ```ocaml
 # let a_domain = Domain.spawn @@ fun () ->
+    Scheduler.run @@ fun () ->
     let tx ~xt = (pop ~xt a_stack, dequeue ~xt a_queue) in
     let (popped, dequeued) = Xt.commit { tx } in
     Printf.sprintf "I popped %d and dequeued %d!"
       popped dequeued
 val a_domain : string Domain.t = <abstr>
 ```
+
+**Kcas** uses the [Picos](https://github.com/ocaml-multicore/picos/) interface
+to implement blocking. Above `Scheduler.run` starts an effects based
+[Picos compatible](https://ocaml-multicore.github.io/picos/doc/picos/index.html#interoperability)
+scheduler, which allows **Kcas** to block in a scheduler friendly manner.
+
+> **_Note_**: Typically your entire program would run inside a scheduler and you
+> should
+> [fork fibers](https://ocaml-multicore.github.io/picos/doc/picos_mux/index.html#examples)
+> rather than spawn domains and start schedulers. The
+> [MDX](https://github.com/realworldocaml/mdx) tool used for checking this
+> document does not allow one to start a scheduler once and run individual code
+> snippets within the scheduler, which is why individual examples spawn domains
+> and start schedulers.
 
 The domain is now blocked waiting for changes to the stack and the queue. As
 long as we don't populate both at the same time
@@ -585,7 +594,7 @@ The retry mechanism essentially allows a transaction to wait for an arbitrary
 condition and can function as a fairly expressive communication and
 synchronization mechanism.
 
-#### Timeouts
+#### Cancelation and Timeouts
 
 > If you block, will they come?
 
@@ -605,43 +614,30 @@ val pop_or_raise_if :
   xt:'a Xt.t -> bool Loc.t -> 'b list Loc.t -> xt:'c Xt.t -> 'b = <fun>
 ```
 
-This works, but creating, checking, and canceling timeouts properly can be a lot
-of work. Therefore **Kcas** also directly supports an optional `timeoutf`
-argument for potentially blocking operations. For example, to perform a blocking
-pop with a timeout, one can simply explicitly pass the desired timeout in
-seconds:
+This works, but creating, checking, and canceling timeouts properly in this
+manner can be a lot of work. Therefore **Kcas** also directly supports
+[cancelation](https://ocaml-multicore.github.io/picos/doc/picos_std/Picos_std_structured/index.html#understanding-cancelation)
+through the [Picos](https://github.com/ocaml-multicore/picos/) interface. This
+both allows **Kcas** transactions to be cleanly terminated in case the program
+has encountered an error and also allows one to simply use a timeout mechanism
+provided by the scheduler. For example, the sample
+[structured concurrency library](https://ocaml-multicore.github.io/picos/doc/picos_std/Picos_std_structured/index.html)
+
+```ocaml
+# open Picos_std_structured
+```
+
+for Picos provides the
+[`Control.terminate_after`](https://ocaml-multicore.github.io/picos/doc/picos_std/Picos_std_structured/Control/index.html#val-terminate_after)
+operation, which allows one to easily run an operation with a timeout on the
+current fiber:
 
 ```ocaml
 # let an_empty_stack = stack () in
-  Xt.commit ~timeoutf:0.1 { tx = pop an_empty_stack }
-Exception: Failure "Domain_local_timeout.set_timeoutf not implemented".
-```
-
-Oops! What happened above is that the
-[_domain local timeout_](https://github.com/ocaml-multicore/domain-local-timeout)
-mechanism used by **Kcas** was not implemented on the current domain. The idea
-is that, in the future, concurrent schedulers provide the mechanism out of the
-box, but there is also a default implementation using the Stdlib `Thread` and
-`Unix` modules that works on most platforms. However, to avoid direct
-dependencies to `Thread` and `Unix`, we need to explicitly tell the library that
-it can use those modules:
-
-```ocaml
-# Domain_local_timeout.set_system (module Thread) (module Unix)
-- : unit = ()
-```
-
-This initialization, if needed, should be done by application code rather than
-by libraries.
-
-If we now retry the previous example we will get a
-[`Timeout`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Timeout/index.html#exception-Timeout)
-exception as expected:
-
-```ocaml
-# let an_empty_stack = stack () in
-  Xt.commit ~timeoutf:0.1 { tx = pop an_empty_stack }
-Exception: Kcas.Timeout.Timeout.
+  Scheduler.run @@ fun () ->
+  Control.terminate_after ~seconds:0.1 @@ fun () ->
+  Xt.commit { tx = pop an_empty_stack }
+Exception: Picos_std_structured__Control.Terminate.
 ```
 
 Besides
@@ -651,7 +647,7 @@ potentially blocking single location operations such as
 [`update`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Loc/index.html#val-update),
 and
 [`modify`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Loc/index.html#val-modify)
-support the optional `timeoutf` argument.
+support cancelation.
 
 #### A transactional lock-free leftist heap
 
@@ -839,10 +835,9 @@ structures.
 One source of ready-made data structures is
 [**Kcas_data**](https://ocaml-multicore.github.io/kcas/doc/kcas_data/Kcas_data/index.html).
 Let's explore how we can leverage those data structures. Of course, first we
-need to `#require` the package and we'll also open it for convenience:
+open `Kcas_data` for convenience:
 
 ```ocaml
-# #require "kcas_data"
 # open Kcas_data
 ```
 
@@ -915,6 +910,7 @@ the philosophers:
     in
     Array.iter Domain.join @@ Array.init philosophers @@ fun i ->
       Domain.spawn @@ fun () ->
+      Scheduler.run @@ fun () ->
       let fork_lhs = forks.(i)
       and fork_rhs = forks.((i + 1) mod philosophers)
       and eaten = eaten.(i) in

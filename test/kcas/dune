@@ -1,9 +1,11 @@
 (tests
  (names test ms_queue_test threads loc_modes)
  (libraries
+  scheduler
+  picos_std.finally
+  picos_std.structured
   alcotest
   kcas
-  domain-local-timeout
   threads.posix
   unix
   domain_shims)

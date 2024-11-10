@@ -9,10 +9,8 @@ module Xt :
   Lru_cache_intf.Ops
     with type ('k, 'v) t := ('k, 'v) t
     with type ('x, 'fn) fn := xt:'x Xt.t -> 'fn
-    with type ('x, 'fn) blocking_fn := xt:'x Xt.t -> 'fn
 
 include
   Lru_cache_intf.Ops
     with type ('k, 'v) t := ('k, 'v) t
     with type ('x, 'fn) fn := 'fn
-    with type ('x, 'fn) blocking_fn := ?timeoutf:float -> 'fn
