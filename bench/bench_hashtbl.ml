@@ -18,16 +18,16 @@ let run_one ~budgetf ~n_domains ?(n_ops = 40 * Util.iter_factor)
     Hashtbl.replace t i i
   done;
 
-  let n_ops_todo = Atomic.make 0 |> Multicore_magic.copy_as_padded in
+  let n_ops_todo = Countdown.create ~n_domains () in
 
   let init _ =
-    Atomic.set n_ops_todo n_ops;
+    Countdown.non_atomic_set n_ops_todo n_ops;
     Random.State.make_self_init ()
   in
 
-  let work _ state =
+  let work domain_index state =
     let rec work () =
-      let n = Util.alloc n_ops_todo in
+      let n = Countdown.alloc n_ops_todo ~domain_index ~batch:1000 in
       if n <> 0 then
         let rec loop n =
           if 0 < n then
@@ -60,6 +60,7 @@ let run_one ~budgetf ~n_domains ?(n_ops = 40 * Util.iter_factor)
   |> Times.to_thruput_metrics ~n:n_ops ~singular:"operation" ~config
 
 let run_suite ~budgetf =
-  Util.cross [ 90; 50; 10 ] [ 1; 2; 4 ]
+  Util.cross [ 90; 50; 10 ] [ 1; 2; 4; 8 ]
   |> List.concat_map @@ fun (percent_read, n_domains) ->
-     run_one ~budgetf ~n_domains ~percent_read ()
+     if Domain.recommended_domain_count () < n_domains then []
+     else run_one ~budgetf ~n_domains ~percent_read ()
