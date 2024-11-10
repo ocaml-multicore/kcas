@@ -5,12 +5,16 @@ let max_0 n =
   n land lnot m
 
 let ceil_pow_2_minus_1 n =
-  let n = n lor (n lsr 1) in
-  let n = n lor (n lsr 2) in
-  let n = n lor (n lsr 4) in
-  let n = n lor (n lsr 8) in
-  let n = n lor (n lsr 16) in
-  if Sys.int_size > 32 then n lor (n lsr 32) else n
+  let n = Nativeint.of_int n in
+  let n = Nativeint.logor n (Nativeint.shift_right_logical n 1) in
+  let n = Nativeint.logor n (Nativeint.shift_right_logical n 2) in
+  let n = Nativeint.logor n (Nativeint.shift_right_logical n 4) in
+  let n = Nativeint.logor n (Nativeint.shift_right_logical n 8) in
+  let n = Nativeint.logor n (Nativeint.shift_right_logical n 16) in
+  Nativeint.to_int
+    (if Sys.int_size > 32 then
+       Nativeint.logor n (Nativeint.shift_right_logical n 32)
+     else n)
 
 let ceil_pow_2 n =
   if n <= 1 then 1
