@@ -8,11 +8,13 @@ let run_one ~budgetf ~n_domains ?(n_ops = 50 * Util.iter_factor) () =
   let b = Loc.make ~padded:true 52 in
   let xs = Loc.make_array ~padded:true n_domains 0 in
 
-  let n_ops_todo = Atomic.make n_ops |> Multicore_magic.copy_as_padded in
+  let n_ops_todo = Countdown.create ~n_domains () in
 
-  let init i = Array.unsafe_get xs i in
-
-  let work _ x =
+  let init i =
+    Countdown.non_atomic_set n_ops_todo n_ops;
+    Array.unsafe_get xs i
+  in
+  let work domain_index x =
     let tx1 ~xt =
       let a = Xt.get ~xt a in
       let b = Xt.get ~xt b in
@@ -23,7 +25,7 @@ let run_one ~budgetf ~n_domains ?(n_ops = 50 * Util.iter_factor) () =
       Xt.set ~xt x (a + b)
     in
     let rec work () =
-      let n = Util.alloc n_ops_todo in
+      let n = Countdown.alloc n_ops_todo ~domain_index ~batch:1000 in
       if n <> 0 then begin
         for _ = 1 to n asr 1 do
           Xt.commit { tx = tx1 };
@@ -35,15 +37,15 @@ let run_one ~budgetf ~n_domains ?(n_ops = 50 * Util.iter_factor) () =
     work ()
   in
 
-  let after () = Atomic.set n_ops_todo n_ops in
-
   let config =
     Printf.sprintf "%d worker%s" n_domains (if n_domains = 1 then "" else "s")
   in
 
-  Times.record ~budgetf ~n_domains ~init ~work ~after ()
+  Times.record ~budgetf ~n_domains ~init ~work ()
   |> Times.to_thruput_metrics ~n:n_ops ~singular:"transaction" ~config
 
 let run_suite ~budgetf =
   [ 1; 2; 4 ]
-  |> List.concat_map @@ fun n_domains -> run_one ~budgetf ~n_domains ()
+  |> List.concat_map @@ fun n_domains ->
+     if Domain.recommended_domain_count () < n_domains then []
+     else run_one ~budgetf ~n_domains ()

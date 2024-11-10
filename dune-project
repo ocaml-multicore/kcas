@@ -33,7 +33,7 @@
   (ocaml
    (>= 4.13.0))
   (backoff
-   (>= 0.1.0))
+   (>= 0.1.1))
   (domain-local-await
    (>= 1.0.1))
   (domain-local-timeout
@@ -82,7 +82,7 @@
    (>= 2.3.0))
   (backoff
    (and
-    (>= 0.1.0)
+    (>= 0.1.1)
     :with-test))
   (domain-local-await
    (and
@@ -94,7 +94,7 @@
     :with-test))
   (multicore-bench
    (and
-    (>= 0.1.5)
+    (>= 0.1.7)
     :with-test))
   (alcotest
    (and

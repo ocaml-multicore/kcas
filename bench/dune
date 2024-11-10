@@ -1,22 +1,22 @@
-(* -*- tuareg -*- *)
-
-let maybe_domain_shims_and_threads =
-  if Jbuild_plugin.V1.ocaml_version < "5" then "domain_shims threads.posix"
-  else ""
-
-let () =
-  Jbuild_plugin.V1.send
-  @@ {|
+(rule
+ (enabled_if
+  (< %{ocaml_version} 5.0.0))
+ (action
+  (copy domain.ocaml4.ml domain.ml)))
 
 (test
  (name main)
  (package kcas_data)
  (action
-  (run %{test} -brief))
- (libraries
-  kcas_data
-  multicore-bench
-  backoff
-  multicore-magic |}
-  ^ maybe_domain_shims_and_threads ^ {| ))
-|}
+  (progn
+   (run %{test} -brief "Kcas Loc")
+   (run %{test} -brief "Kcas Xt")
+   (run %{test} -brief "Kcas Xt read-only")
+   (run %{test} -brief "Kcas parallel CMP")
+   (run %{test} -brief "Kcas_data Accumulator")
+   (run %{test} -brief "Kcas_data Dllist")
+   (run %{test} -brief "Kcas_data Hashtbl")
+   (run %{test} -brief "Kcas_data Mvar")
+   (run %{test} -brief "Kcas_data Queue")
+   (run %{test} -brief "Kcas_data Stack")))
+ (libraries kcas_data multicore-bench backoff multicore-magic))
