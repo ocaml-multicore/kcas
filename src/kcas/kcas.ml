@@ -396,9 +396,9 @@ let block loc before =
   if add_awaiter loc before t then
     match Trigger.await t with
     | None -> ()
-    | Some (exn, bt) ->
+    | Some exn_bt ->
         remove_awaiter Backoff.default loc before t;
-        Printexc.raise_with_backtrace exn bt
+        Printexc.raise_with_backtrace (fst exn_bt) (snd exn_bt)
 
 let rec update_no_alloc backoff loc state f =
   (* Fenceless is safe as we have had a fence before if needed and there is a fence after. *)
@@ -860,19 +860,20 @@ module Xt = struct
                     Action.run xt_r.post_commit result
                   else begin
                     (* We switch to [`Lock_free] as there was interference. *)
-                    commit_once_alloc backoff `Lock_free xt tx
+                    xt_r.mode <- `Lock_free;
+                    commit_once_alloc backoff xt tx
                   end
                 end
                 else if
                   a_cmp = status
                   || finish xt root (if 0 <= status then After else Before)
                 then Action.run xt_r.post_commit result
-                else commit_once_alloc backoff xt_r.mode xt tx
+                else commit_once_alloc backoff xt tx
             | exception Exit ->
                 (* Fenceless is safe as there was a fence before. *)
                 if fenceless_get (root_as_atomic xt) == R After then
                   Action.run xt_r.post_commit result
-                else commit_once_alloc backoff xt_r.mode xt tx
+                else commit_once_alloc backoff xt tx
           end
       end
     | exception Retry.Invalid -> commit_once_reuse backoff xt tx
@@ -888,9 +889,9 @@ module Xt = struct
                 | None ->
                     remove_awaiters t xt (T Leaf) root |> ignore;
                     commit_reset_reuse backoff xt tx
-                | Some (exn, bt) ->
+                | Some exn_bt ->
                     remove_awaiters t xt (T Leaf) root |> ignore;
-                    Printexc.raise_with_backtrace exn bt
+                    Printexc.raise_with_backtrace (fst exn_bt) (snd exn_bt)
               end
             | T (Node _) as stop ->
                 remove_awaiters t xt stop root |> ignore;
@@ -898,27 +899,29 @@ module Xt = struct
           end
       end
 
-  and commit_once_reuse backoff xt tx =
-    check xt;
-    commit_reuse (Backoff.once backoff) xt tx
-
-  and commit_reset_reuse backoff xt tx =
-    check xt;
-    commit_reuse (Backoff.reset backoff) xt tx
-
-  and commit_reuse backoff (Xt xt_r as xt : _ t) tx =
+  and commit_once_reuse backoff (Xt xt_r as xt : _ t) tx =
     tree_as_ref xt := T Leaf;
     xt_r.validate_counter <- initial_validate_period;
     xt_r.post_commit <- Action.noop;
+    let backoff = Backoff.once backoff in
+    check xt;
     commit backoff xt tx
 
-  and commit_once_alloc backoff mode (Xt xt_r as xt : _ t) tx =
+  and commit_reset_reuse backoff (Xt xt_r as xt : _ t) tx =
+    tree_as_ref xt := T Leaf;
+    xt_r.validate_counter <- initial_validate_period;
+    xt_r.post_commit <- Action.noop;
+    let backoff = Backoff.reset backoff in
     check xt;
-    let backoff = Backoff.once backoff in
+    commit backoff xt tx
+
+  and commit_once_alloc backoff (Xt xt_r : _ t) tx =
     let rot = U Leaf in
     let validate_counter = initial_validate_period in
     let post_commit = Action.noop in
-    let xt = Xt { xt_r with rot; mode; validate_counter; post_commit } in
+    let xt = Xt { xt_r with rot; validate_counter; post_commit } in
+    let backoff = Backoff.once backoff in
+    check xt;
     commit backoff xt tx
 
   let[@inline] commit ?(backoff = Backoff.default) ?(mode = `Obstruction_free)
