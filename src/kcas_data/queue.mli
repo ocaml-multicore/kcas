@@ -19,8 +19,15 @@ type !'a t
 exception Empty
 (** Raised when {!take} or {!peek} is applied to an empty queue. *)
 
-val create : unit -> 'a t
-(** [create ()] returns a new empty queue. *)
+val create : ?capacity:int -> unit -> 'a t
+(** [create ()] returns a new empty queue.
+
+    The optional [capacity] can be used to specify the maximum number of
+    elements that may be stored in the queue at any point.
+
+    {b WARNING}: A [capacity] of [0] is allowed, but it means that no elements
+    can be passed through the queue. In other words, a zero capacity queue is
+    effectively closed. *)
 
 val copy : 'a t -> 'a t
 (** [copy q] returns a copy of the queue [q]. *)
