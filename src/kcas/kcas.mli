@@ -1,9 +1,10 @@
 (** This library provides a software transactional memory (STM) implementation
     based on an atomic
     {{:https://en.wikipedia.org/wiki/Non-blocking_algorithm#Lock-freedom}
-    lock-free} multi-word {{:https://en.wikipedia.org/wiki/Compare-and-swap}
-    compare-and-set} (MCAS) algorithm enhanced with read-only compare operations
-    and ability to block awaiting for changes.
+     lock-free} multi-word
+    {{:https://en.wikipedia.org/wiki/Compare-and-swap} compare-and-set} (MCAS)
+    algorithm enhanced with read-only compare operations and ability to block
+    awaiting for changes.
 
     Features and properties:
 
@@ -19,8 +20,8 @@
 
     - {b Read-only compares}: The algorithm supports
       {{:https://en.wikipedia.org/wiki/Non-blocking_algorithm#Obstruction-freedom}
-      obstruction-free} read-only compare (CMP) operations that can be performed
-      on overlapping locations in parallel without interference.
+       obstruction-free} read-only compare (CMP) operations that can be
+      performed on overlapping locations in parallel without interference.
 
     - {b Blocking await}: The algorithm supports timeouts and awaiting for
       changes to any number of shared memory locations.
@@ -101,8 +102,8 @@
 
 (** {1 Auxiliary modules}
 
-    The modules in this section serve auxiliary purposes.  On a first read you
-    can skip over these.  The documentation links back to these modules where
+    The modules in this section serve auxiliary purposes. On a first read you
+    can skip over these. The documentation links back to these modules where
     appropriate. *)
 
 (** Timeout support. *)
@@ -144,13 +145,13 @@ end
 module Mode : sig
   type t =
     [ `Lock_free
-      (** In [`Lock_free] mode the algorithm makes sure that at least one domain will
-      be able to make progress at the cost of performing read-only operations as
-      read-write operations. *)
+      (** In [`Lock_free] mode the algorithm makes sure that at least one domain
+          will be able to make progress at the cost of performing read-only
+          operations as read-write operations. *)
     | `Obstruction_free
       (** In [`Obstruction_free] mode the algorithm proceeds optimistically and
-      allows read-only operations to fail due to interference from other domains
-      that might have been prevented in the [`Lock_free] mode. *)
+          allows read-only operations to fail due to interference from other
+          domains that might have been prevented in the [`Lock_free] mode. *)
     ]
   (** Type of an operating mode of the [k-CAS-n-CMP] algorithm. *)
 end
@@ -162,7 +163,7 @@ end
     module except that some of the operations take additional optional
     arguments:
 
-    - [backoff] specifies the configuration for the [Backoff] mechanism.  In
+    - [backoff] specifies the configuration for the [Backoff] mechanism. In
       special cases, having more detailed knowledge of the application, one
       might adjust the configuration to improve performance.
 
@@ -180,23 +181,23 @@ module Loc : sig
   type !'a t = private
     | Loc : { state : 'state; id : 'id } -> 'a t
         (** The shape is transparent to allow the compiler to perform
-            optimizations on array accesses.  User code should treat this type
-            as abstract. *)
+            optimizations on array accesses. User code should treat this type as
+            abstract. *)
 
   val make : ?padded:bool -> ?mode:Mode.t -> 'a -> 'a t
   (** [make initial] creates a new shared memory location with the [initial]
       value.
 
-      The optional [padded] argument defaults to [false].  If explicitly
+      The optional [padded] argument defaults to [false]. If explicitly
       specified as [~padded:true] the location will be allocated in a way to
-      avoid false sharing.  For relatively long lived shared memory locations
+      avoid false sharing. For relatively long lived shared memory locations
       this can improve performance and make performance more stable at the cost
-      of using more memory.  It is not recommended to use [~padded:true] for
+      of using more memory. It is not recommended to use [~padded:true] for
       short lived shared memory locations.
 
       The optional {{!Mode.t} [mode]} argument defaults to [`Obstruction_free].
       If explicitly specified as [`Lock_free], the location will always be
-      accessed using the lock-free operating mode.  This may improve performance
+      accessed using the lock-free operating mode. This may improve performance
       in rare cases where a location is updated frequently and obstruction-free
       read-only accesses would almost certainly suffer from interference.
 
@@ -216,8 +217,8 @@ module Loc : sig
       lowest index is as fast as possible. *)
 
   val get_mode : 'a t -> Mode.t
-  (** [get_mode r] returns the operating mode of the shared memory location
-      [r]. *)
+  (** [get_mode r] returns the operating mode of the shared memory location [r].
+  *)
 
   val get_id : 'a t -> int
   (** [get_id r] returns the unique id of the shared memory location [r]. *)
@@ -226,10 +227,10 @@ module Loc : sig
   (** [get r] reads the current value of the shared memory location [r]. *)
 
   val get_as : ?timeoutf:float -> ('a -> 'b) -> 'a t -> 'b
-  (** [get_as f loc] is equivalent to [f (get loc)].  The given function [f] may
+  (** [get_as f loc] is equivalent to [f (get loc)]. The given function [f] may
       raise the {!Retry.Later} exception to signal that the conditional load
       should be retried only after the location has been modified outside of the
-      conditional load.  It is also safe for the given function [f] to raise any
+      conditional load. It is also safe for the given function [f] to raise any
       other exception to abort the conditional load. *)
 
   val compare_and_set : ?backoff:Backoff.t -> 'a t -> 'a -> 'a -> bool
@@ -239,9 +240,9 @@ module Loc : sig
 
   val update : ?timeoutf:float -> ?backoff:Backoff.t -> 'a t -> ('a -> 'a) -> 'a
   (** [update r f] repeats [let b = get r in compare_and_set r b (f b)] until it
-      succeeds and then returns the [b] value.  The given function [f] may raise
+      succeeds and then returns the [b] value. The given function [f] may raise
       the {!Retry.Later} exception to signal that the update should only be
-      retried after the location has been modified outside of the update.  It is
+      retried after the location has been modified outside of the update. It is
       also safe for the given function [f] to raise any other exception to abort
       the update. *)
 
@@ -297,21 +298,21 @@ end
     or three phases:
 
     1. The first phase essentially records a list or log of operations to access
-    shared memory locations.  The first phase involves code you write as a user
-    of the library.  Aside from some advanced techniques, shared memory
-    locations are not mutated during this phase.
+    shared memory locations. The first phase involves code you write as a user
+    of the library. Aside from some advanced techniques, shared memory locations
+    are not mutated during this phase.
 
-    2. The second phase attempts to perform the operations atomically.  This is
-    done internally by the library implementation.  Only logically invisible
+    2. The second phase attempts to perform the operations atomically. This is
+    done internally by the library implementation. Only logically invisible
     writes to shared memory locations are performed during this phase.
 
     3. In [`Obstruction_free] {{!Mode.t} mode} a third phase verifies all
-    read-only operations.  This is also done internally by the library
+    read-only operations. This is also done internally by the library
     implementation.
 
-    Each phase may fail.  In particular, in the first phase, as no changes to
+    Each phase may fail. In particular, in the first phase, as no changes to
     shared memory have yet been attempted, it is safe, for example, to raise
-    exceptions to signal failure.  Failure on the third phase is automatically
+    exceptions to signal failure. Failure on the third phase is automatically
     handled by {!Xt.commit}.
 
     Only after all phases have completed succesfully, the writes to shared
@@ -321,42 +322,38 @@ end
 (** Explicit transaction log passing on shared memory locations.
 
     This module provides a way to implement composable transactions over shared
-    memory locations.  A transaction is a function written by the library user
+    memory locations. A transaction is a function written by the library user
     and can be thought of as a specification of a sequence of {!Xt.get} and
-    {!Xt.set} accesses to shared memory locations.  To actually perform the
+    {!Xt.set} accesses to shared memory locations. To actually perform the
     accesses one then {!Xt.commit}s the transaction.
 
     Transactions should generally not perform arbitrary side-effects, because
     when a transaction is committed it may be attempted multiple times meaning
-    that the side-effects are also performed multiple times.  {!Xt.post_commit}
+    that the side-effects are also performed multiple times. {!Xt.post_commit}
     can be used to perform an action only once after the transaction has been
     committed succesfully.
 
     {b WARNING}: To make it clear, the operations provided by the {!Loc} module
     for accessing individual shared memory locations do not implicitly go
     through the transaction mechanism and should generally not be used within
-    transactions.  There are advanced algorithms where one might, within a
+    transactions. There are advanced algorithms where one might, within a
     transaction, perform operations that do not get recorded into the
-    transaction log.  Using such techniques correctly requires expert knowledge
+    transaction log. Using such techniques correctly requires expert knowledge
     and is not recommended for casual users.
 
-    As an example, consider an implementation of doubly-linked circular
-    lists. Instead of using a mutable field, [ref], or [Atomic.t], one would use
-    a shared memory location, or {!Loc.t}, for the pointers in the node type:
+    As an example, consider an implementation of doubly-linked circular lists.
+    Instead of using a mutable field, [ref], or [Atomic.t], one would use a
+    shared memory location, or {!Loc.t}, for the pointers in the node type:
 
     {[
-      type 'a node = {
-        succ: 'a node Loc.t;
-        pred: 'a node Loc.t;
-        datum: 'a;
-      }
+      type 'a node = { succ : 'a node Loc.t; pred : 'a node Loc.t; datum : 'a }
     ]}
 
     To remove a node safely one wants to atomically update the [succ] and [pred]
     pointers of the predecessor and successor nodes and to also update the
     [succ] and [pred] pointers of a node to point to the node itself, so that
     removal becomes an {{:https://en.wikipedia.org/wiki/Idempotence} idempotent}
-    operation.  Using explicit transaction log passing one could implement the
+    operation. Using explicit transaction log passing one could implement the
     [remove] operation as follows:
 
     {[
@@ -386,7 +383,7 @@ end
     Notice that [remove] is not recursive. It doesn't have to account for
     failure or perform a backoff. It is also not necessary to know or keep track
     of what the previous values of locations were. All of that is taken care of
-    for us by the transaction log and the {!Xt.commit} function.  Furthermore,
+    for us by the transaction log and the {!Xt.commit} function. Furthermore,
     [remove] can easily be called as a part of a more complex transaction. *)
 module Xt : sig
   type 'x t
@@ -394,7 +391,7 @@ module Xt : sig
 
       Note that a transaction log itself is not safe against concurrent or
       parallel use and should generally only be used by a single thread of
-      execution.  If a new thread of execution is spawned inside a function
+      execution. If a new thread of execution is spawned inside a function
       recording shared memory accesses to a log and the new thread of execution
       also records accesses to the log it may become inconsistent. *)
 
@@ -407,16 +404,16 @@ module Xt : sig
 
       It is important to understand that it is possible for a transaction to
       observe the contents of two (or more) different shared memory locations
-      from two (or more) different committed updates.  This means that
-      invariants that hold between two (or more) different shared memory
-      locations may be seen as broken inside the transaction function.  However,
-      it is not possible for the transaction attempt to succeed after it has
-      seen such an inconsistent view of the shared memory locations.
+      from two (or more) different committed updates. This means that invariants
+      that hold between two (or more) different shared memory locations may be
+      seen as broken inside the transaction function. However, it is not
+      possible for the transaction attempt to succeed after it has seen such an
+      inconsistent view of the shared memory locations.
 
       To mitigate potential issues due to this read skew anomaly and due to very
       long running transactions, all of the access recording operations in this
       section periodically validate the entire transaction log when a previously
-      accessed location is accessed again.  An important guideline for writing
+      accessed location is accessed again. An important guideline for writing
       transactions is that loops inside a transaction should always include an
       access of some shared memory location through the transaction log or
       should otherwise be guaranteed to be bounded. *)
@@ -430,9 +427,9 @@ module Xt : sig
       to be the given value [v] in the explicit transaction log [xt]. *)
 
   val update : xt:'x t -> 'a Loc.t -> ('a -> 'a) -> 'a
-  (** [update ~xt r f] is equivalent to [let x = get ~xt r in set ~xt r (f x); x]
-      with the limitation that [f] must not and is not allowed to access the
-      transaction log. *)
+  (** [update ~xt r f] is equivalent to
+      [let x = get ~xt r in set ~xt r (f x); x] with the limitation that [f]
+      must not and is not allowed to access the transaction log. *)
 
   val modify : xt:'x t -> 'a Loc.t -> ('a -> 'a) -> unit
   (** [modify ~xt r f] is equivalent to [let x = get ~xt r in set ~xt r (f x)]
@@ -443,7 +440,8 @@ module Xt : sig
   (** [exchange ~xt r v] is equivalent to [update ~xt r (fun _ -> v)]. *)
 
   val swap : xt:'x t -> 'a Loc.t -> 'a Loc.t -> unit
-  (** [swap ~xt l1 l2] is equivalent to [set ~xt l1 @@ exchange ~xt l2 @@ get ~xt l1]. *)
+  (** [swap ~xt l1 l2] is equivalent to
+      [set ~xt l1 @@ exchange ~xt l2 @@ get ~xt l1]. *)
 
   val compare_and_set : xt:'x t -> 'a Loc.t -> 'a -> 'a -> bool
   (** [compare_and_set ~xt r before after] is equivalent to
@@ -453,8 +451,7 @@ module Xt : sig
   (** [compare_and_swap ~xt r before after] is equivalent to
 
       {@ocaml skip[
-        update ~xt r @@ fun actual ->
-        if actual == before then after else actual
+        update ~xt r @@ fun actual -> if actual == before then after else actual
       ]} *)
 
   val fetch_and_add : xt:'x t -> int Loc.t -> int -> int
@@ -479,7 +476,7 @@ module Xt : sig
   (** {1 Nested transactions}
 
       The transaction mechanism does not implicitly rollback changes recorded in
-      the transaction log.  Using {!snapshot} and {!rollback} it is possible to
+      the transaction log. Using {!snapshot} and {!rollback} it is possible to
       implement nested conditional transactions that may tentatively record
       changes in the transaction log and then later discard those changes. *)
 
@@ -497,11 +494,11 @@ module Xt : sig
 
       Performing a rollback is potentially as expensive as linear time [O(n)] in
       the number of locations accessed, but, depending on the exact access
-      patterns, may also be performed more quickly.  The implementation is
+      patterns, may also be performed more quickly. The implementation is
       optimized with the assumption that a rollback is performed at most once
       per snapshot.
 
-      {b NOTE}: Only changes are discarded.  Any location newly accessed after
+      {b NOTE}: Only changes are discarded. Any location newly accessed after
       the snapshot was taken will remain recorded in the log as a read-only
       entry. *)
 
@@ -542,7 +539,7 @@ module Xt : sig
 
   type 'a tx = { tx : 'x. xt:'x t -> 'a } [@@unboxed]
   (** Type of a transaction function that is polymorphic with respect to an
-      explicit transaction log.  The universal quantification helps to ensure
+      explicit transaction log. The universal quantification helps to ensure
       that the transaction log cannot accidentally escape. *)
 
   val call : xt:'x t -> 'a tx -> 'a
@@ -552,7 +549,7 @@ module Xt : sig
     ?timeoutf:float -> ?backoff:Backoff.t -> ?mode:Mode.t -> 'a tx -> 'a
   (** [commit tx] repeatedly calls [tx] to record a log of shared memory
       accesses and attempts to perform them atomically until it succeeds and
-      then returns whatever [tx] returned.  [tx] may raise {!Retry.Later} or
+      then returns whatever [tx] returned. [tx] may raise {!Retry.Later} or
       {!Retry.Invalid} to explicitly request a retry or any other exception to
       abort the transaction.
 

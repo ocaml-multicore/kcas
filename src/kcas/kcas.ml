@@ -149,8 +149,8 @@ type 'a state = {
 }
 
 (** Tagged GADT for representing both the state of MCAS operations and of the
-    transaction log or splay [tree].  Different subsets of this GADT are used in
-    different contexts.  See the [root], [tree], and [which] existentials. *)
+    transaction log or splay [tree]. Different subsets of this GADT are used in
+    different contexts. See the [root], [tree], and [which] existentials. *)
 and _ tdt =
   | Before : [> `Before ] tdt
       (** The result has been determined to be the [before] value.
@@ -164,15 +164,15 @@ and _ tdt =
       mutable rot : rot;
           (** [rot] is for Root or Tree.
 
-              This field must be first, see [root_as_atomic] and
-              [tree_as_ref]. *)
+              This field must be first, see [root_as_atomic] and [tree_as_ref].
+          *)
       timeout : [ `Set | `Unset ] Timeout.t;
       mutable mode : Mode.t;
       mutable validate_counter : int;
       mutable post_commit : Action.t;
     }
       -> [> `Xt ] tdt
-      (** The result might not yet have been determined.  The [root] either says
+      (** The result might not yet have been determined. The [root] either says
           which it is or points to the root of the transaction log or [tree].
 
           Note that if/when local/stack allocation mode becomes available in

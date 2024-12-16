@@ -3,12 +3,12 @@ open Kcas
 (** First-In First-Out (FIFO) queue.
 
     The interface provides a subset of the OCaml [Stdlib.Queue] module.
-    [transfer] and [add_seq] are not provided at all.  Compositional versions of
+    [transfer] and [add_seq] are not provided at all. Compositional versions of
     {!iter}, {!fold}, {!peek}, {!top}, and {!take} are not provided.
 
     The queue implementation is designed to avoid contention between a producer
-    and a consumer operating concurrently.  The implementation is also designed
-    to avoid starvation.  Performance in most concurrent use cases should be
+    and a consumer operating concurrently. The implementation is also designed
+    to avoid starvation. Performance in most concurrent use cases should be
     superior to what can be achieved with one or two locks. *)
 
 (** {1 Common interface} *)

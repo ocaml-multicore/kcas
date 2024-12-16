@@ -12,8 +12,8 @@ open Kcas
     - The [length] operation is not provided.
     - The [set] operation is not provided.
 
-    A non-compositional {!take_all} operation is added for {{:
-    https://en.wikipedia.org/wiki/Privatization_(computer_programming)}privatization}
+    A non-compositional {!take_all} operation is added for
+    {{:https://en.wikipedia.org/wiki/Privatization_(computer_programming)}privatization}
     as well as conversions to a list of nodes ({!to_nodes_l} and {!to_nodes_r})
     and to a list of values ({!to_list_l} and {!to_list_r}).
 
@@ -46,7 +46,7 @@ val create : unit -> 'a t
 
 val create_node : 'a -> 'a node
 (** [create_node value] creates a new doubly-linked list node that is not in any
-    list.  The node can then e.g. be added to a list using {!move_l} or
+    list. The node can then e.g. be added to a list using {!move_l} or
     {!move_r}. *)
 
 val get : 'a node -> 'a

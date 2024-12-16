@@ -22,15 +22,15 @@
     explicitly documented.
 
     The main feature of these data structure implementations is their
-    compositionality.  If your application does not need compositionality, then
+    compositionality. If your application does not need compositionality, then
     other concurrency and parallelism safe data structure libraries may
     potentially offer better performance.
 
     But why should you care about composability?
 
     As an example, consider the implementation of a least-recently-used (LRU)
-    cache or a bounded associative map, but first, let's open the libraries
-    for convenience:
+    cache or a bounded associative map, but first, let's open the libraries for
+    convenience:
 
     {[
       open Kcas
@@ -41,35 +41,38 @@
     and a doubly-linked list and keep track of the amount of space in the cache:
 
     {[
-      type ('k, 'v) cache =
-        { space: int Loc.t;
-          table: ('k, 'k Dllist.node * 'v) Hashtbl.t;
-          order: 'k Dllist.t }
+      type ('k, 'v) cache = {
+        space : int Loc.t;
+        table : ('k, 'k Dllist.node * 'v) Hashtbl.t;
+        order : 'k Dllist.t;
+      }
     ]}
 
     On a cache lookup the doubly-linked list node corresponding to the accessed
     key is moved to the left end of the list:
 
     {[
-      let get_opt {table; order; _} key =
+      let get_opt { table; order; _ } key =
         Hashtbl.find_opt table key
         |> Option.map @@ fun (node, datum) ->
-           Dllist.move_l node order; datum
+           Dllist.move_l node order;
+           datum
     ]}
 
     On a cache update, in case of overflow, the association corresponding to the
     node on the right end of the list is dropped:
 
     {[
-      let set {table; order; space; _} key datum =
+      let set { table; order; space; _ } key datum =
         let node =
           match Hashtbl.find_opt table key with
           | None ->
-            if 0 = Loc.update space (fun n -> max 0 (n-1))
-            then Dllist.take_opt_r order
-                 |> Option.iter (Hashtbl.remove table);
-            Dllist.add_l key order
-          | Some (node, _) -> Dllist.move_l node order; node
+              if 0 = Loc.update space (fun n -> max 0 (n - 1)) then
+                Dllist.take_opt_r order |> Option.iter (Hashtbl.remove table);
+              Dllist.add_l key order
+          | Some (node, _) ->
+              Dllist.move_l node order;
+              node
         in
         Hashtbl.replace table key (node, datum)
     ]}
@@ -98,33 +101,34 @@
     operations. For the [get_opt] operation we end up with
 
     {[
-      let get_opt ~xt {table; order; _} key =
+      let get_opt ~xt { table; order; _ } key =
         Hashtbl.Xt.find_opt ~xt table key
         |> Option.map @@ fun (node, datum) ->
-           Dllist.Xt.move_l ~xt node order; datum
+           Dllist.Xt.move_l ~xt node order;
+           datum
     ]}
 
     and the [set] operation is just as easy to convert to a transactional
-    version.  One way to think about transactions is that they give us back the
+    version. One way to think about transactions is that they give us back the
     ability to compose programs such as the above. *)
 
 (** {1 [Stdlib] style data structures}
 
     The data structures in this section are designed to closely mimic the
-    corresponding unsynchronized data structures in the OCaml [Stdlib].  Each of
+    corresponding unsynchronized data structures in the OCaml [Stdlib]. Each of
     these provide a non-compositional, but concurrency and parallelism safe,
-    interface that is close to the [Stdlib] equivalent.  Additionally,
+    interface that is close to the [Stdlib] equivalent. Additionally,
     compositional transactional interfaces are provided for some operations.
 
     These implementations will use more space than the corresponding [Stdlib]
-    data structures.  Performance, when accessed concurrently, should be
+    data structures. Performance, when accessed concurrently, should be
     competitive or superior compared to naïve locking. *)
 
 module Hashtbl = Hashtbl
 module Queue = Queue
 module Stack = Stack
 
-(** {1 Communication and synchronization primitives}  *)
+(** {1 Communication and synchronization primitives} *)
 
 module Mvar = Mvar
 module Promise = Promise

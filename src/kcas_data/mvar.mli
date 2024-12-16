@@ -6,15 +6,15 @@ open Kcas
     with blocking semantics on both {!take} and {!put}.
 
     {b NOTE}: The current implementation is not guaranteed to be fair or
-    scalable.  In other words, when multiple producers block on {!put} or
+    scalable. In other words, when multiple producers block on {!put} or
     multiple consumers block on {!take} the operations are not queued and it is
     possible for a particular producer or consumer to starve. *)
 
 (** {1 Common interface} *)
 
 type !'a t
-(** The type of a synchronizing variable that may contain a value of type
-    ['a]. *)
+(** The type of a synchronizing variable that may contain a value of type ['a].
+*)
 
 val create : 'a option -> 'a t
 (** [create x_opt] returns a new synchronizing variable that will either be

@@ -18,7 +18,7 @@ open Kcas
 (** {1 Common interface} *)
 
 type !+'a t
-(** The type of a promise of a value of type ['a].  *)
+(** The type of a promise of a value of type ['a]. *)
 
 type !-'a u
 (** The type of a resolver of a value of type ['a]. *)

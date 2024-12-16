@@ -55,8 +55,8 @@ module type Ops = sig
   (** {3 Moving all nodes between lists} *)
 
   val swap : ('x, 'a t -> 'a t -> unit) fn
-  (** [swap l1 l2] exchanges the nodes of the doubly-linked lists [l1] and
-      [l2]. *)
+  (** [swap l1 l2] exchanges the nodes of the doubly-linked lists [l1] and [l2].
+  *)
 
   val transfer_l : ('x, 'a t -> 'a t -> unit) fn
   (** [transfer_l l1 l2] removes all nodes of [l1] and adds them to the left of
