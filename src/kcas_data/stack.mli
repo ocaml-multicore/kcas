@@ -3,7 +3,7 @@ open Kcas
 (** Last-In First-Out (LIFO) stack.
 
     The interface provides a subset of the OCaml [Stdlib.Stack] module.
-    [add_seq] is not provided at all.  Compositional versions of {!iter},
+    [add_seq] is not provided at all. Compositional versions of {!iter},
     {!fold}, {!pop}, and {!top} are not provided.
 
     The implementation is essentially a

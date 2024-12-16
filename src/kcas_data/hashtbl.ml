@@ -495,7 +495,9 @@ let filter_map_inplace fn t =
   Kcas.Xt.commit { tx };
   Kcas.Xt.commit { tx = Xt.perform_pending t } |> ignore;
   (* Fenceless is safe as commit above has fences. *)
-  match Loc.fenceless_get raised with Done -> () | exn -> raise exn
+  match Loc.fenceless_get raised with
+  | Done -> ()
+  | exn -> raise exn
 
 let stats t =
   let length = ref 0 in

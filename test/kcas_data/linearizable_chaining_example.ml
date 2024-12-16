@@ -1,19 +1,18 @@
 (** This demonstrates an approach to composing non-blocking linearizable data
     structures inspired by the paper
 
-      Concurrent Size
-      by Gal Sela and Erez Petrank
-      https://arxiv.org/pdf/2209.07100.pdf
+    Concurrent Size by Gal Sela and Erez Petrank
+    https://arxiv.org/pdf/2209.07100.pdf
 
     First a [Hashtbl] is implemented that allows [idempotent_add] and
-    [idempotent_remove] operations to be specified.  The hash table makes sure
+    [idempotent_remove] operations to be specified. The hash table makes sure
     that any operations that might witness the addition or the removal of a key
     will perform those operations before returning.
 
     Then a [Hashtbl_with_order] is implemented on top of the [Hashtbl] by
     specifying the [idempotent_add] and [idempotent_remove] operation such that
     they update a lock-free doubly-linked list to maintain a list of the keys in
-    the hash table in insertion [order].  In other words, we composed a hash
+    the hash table in insertion [order]. In other words, we composed a hash
     table with a doubly-linked list, both lock-free and linearizable, resulting
     in a lock-free linearizable hash table that maintains the insertion order.
 

@@ -3,7 +3,7 @@ module type Ops = sig
   type ('x, 'fn) fn
 
   val add : ('x, t -> int -> unit) fn
-  (** [add a n] increments the value of the accumulator [a] by [n].  [add]
+  (** [add a n] increments the value of the accumulator [a] by [n]. [add]
       operations can be performed scalably in parallel. *)
 
   val incr : ('x, t -> unit) fn
