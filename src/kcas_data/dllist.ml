@@ -70,6 +70,9 @@ let create_node_with ~lhs ~rhs value =
   Node { lhs = Loc.make (At lhs); rhs = Loc.make (At rhs); value }
 
 module Xt = struct
+  let get_l ~xt (At at) = Xt.get ~xt (lhs_of at)
+  let get_r ~xt (At at) = Xt.get ~xt (rhs_of at)
+
   let remove ~xt node =
     let (At rhs) = Xt.exchange ~xt (rhs_of node) (At node) in
     if At rhs != At node then begin
@@ -210,6 +213,8 @@ module Xt = struct
   let to_nodes_r ~xt list = to_list_as_r ~xt Fun.id list
 end
 
+let get_l (At at) = Loc.get (lhs_of at)
+let get_r (At at) = Loc.get (rhs_of at)
 let remove node = Kcas.Xt.commit { tx = Xt.remove node }
 let is_empty list = Loc.get (lhs_of list) == At list
 
