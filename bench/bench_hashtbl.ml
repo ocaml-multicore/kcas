@@ -24,7 +24,7 @@ let run_one ~budgetf ~n_domains ?(n_ops = 40 * Util.iter_factor)
     Countdown.non_atomic_set n_ops_todo n_ops;
     Random.State.make_self_init ()
   in
-
+  let wrap _ _ action = Scheduler.run action in
   let work domain_index state =
     let rec work () =
       let n = Countdown.alloc n_ops_todo ~domain_index ~batch:1000 in
@@ -56,7 +56,7 @@ let run_one ~budgetf ~n_domains ?(n_ops = 40 * Util.iter_factor)
       percent_read
   in
 
-  Times.record ~budgetf ~n_domains ~init ~work ()
+  Times.record ~budgetf ~n_domains ~init ~wrap ~work ()
   |> Times.to_thruput_metrics ~n:n_ops ~singular:"operation" ~config
 
 let run_suite ~budgetf =

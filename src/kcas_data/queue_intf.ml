@@ -1,7 +1,6 @@
 module type Ops = sig
   type 'a t
   type ('x, 'fn) fn
-  type ('x, 'fn) blocking_fn
 
   val is_empty : ('x, 'a t -> bool) fn
   (** [is_empty s] determines whether the queue [q] is empty. *)
@@ -32,11 +31,11 @@ module type Ops = sig
   (** [peek_opt q] returns the first element in queue [q], without removing it
       from the queue, or returns [None] if the queue is empty. *)
 
-  val peek_blocking : ('x, 'a t -> 'a) blocking_fn
+  val peek_blocking : ('x, 'a t -> 'a) fn
   (** [peek_blocking q] returns the first element in queue [q], without removing
       it from the queue, or blocks waiting for the queue to become non-empty. *)
 
-  val take_blocking : ('x, 'a t -> 'a) blocking_fn
+  val take_blocking : ('x, 'a t -> 'a) fn
   (** [take_blocking q] removes and returns the first element in queue [q], or
       blocks waiting for the queue to become non-empty. *)
 

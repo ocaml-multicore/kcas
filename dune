@@ -3,5 +3,11 @@
  (deps
   (package kcas)
   (package kcas_data))
- (libraries domain_shims)
+ (libraries
+  domain_shims
+  kcas
+  kcas_data
+  multicore-magic
+  picos_std.structured
+  scheduler)
  (files README.md))
