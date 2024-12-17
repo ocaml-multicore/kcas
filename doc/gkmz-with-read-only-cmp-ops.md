@@ -146,7 +146,7 @@ contain `state`s which contain a reference to the `casn` descriptor. This cyclic
 form allows the whole data structure to be traversed starting from any `state`,
 which one might find in a location.
 
-Here is a the core of the GKMZ algorithm in OCaml:
+Here is the core of the GKMZ algorithm in OCaml:
 
 ```ocaml
  let finish casn desired =
@@ -207,7 +207,7 @@ Here is a the core of the GKMZ algorithm in OCaml:
    gkmz casn cass
 ```
 
-Note that every call of `atomically` allocates a fresh location for `casn`
+Note that every call of `atomically` allocates a fresh location for a `casn`
 descriptor and also fresh `state`s for all the `CASS` descriptors. This is
 important as it makes sure that
 [ABA problems](https://en.wikipedia.org/wiki/ABA_problem) are avoided. It is
