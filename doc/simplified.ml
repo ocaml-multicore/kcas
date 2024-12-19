@@ -91,3 +91,10 @@ end = struct
 
   let get loc = get_from (Atomic.get loc)
 end
+
+let () =
+  let x = Kcas.make 82 in
+  let y = Kcas.make 40 in
+  assert (Kcas.atomically [ CAS (x, 82, 42) ] [ CMP (y, 40) ]);
+  assert (Kcas.get x == 42 && Kcas.get y == 40);
+  ()
