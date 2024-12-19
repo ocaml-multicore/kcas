@@ -1,4 +1,12 @@
-module Kcas : sig
+module type Awaiter = sig
+  type t
+
+  val signal : t -> unit
+end
+
+module Make (Awaiter : Awaiter) : sig
+  module Awaiter : Awaiter
+
   type 'a loc
 
   val make : 'a -> 'a loc
@@ -9,18 +17,36 @@ module Kcas : sig
 
   val atomically : cas list -> cmp list -> bool
 end = struct
+  module Awaiter = Awaiter
+
   type 'a loc = 'a state Atomic.t
-  and 'a state = { before : 'a; after : 'a; casn : casn }
-  and cass = CASS : 'a loc * 'a state -> cass
+
+  and 'a state = {
+    mutable before : 'a;
+    mutable after : 'a;
+    casn : casn;
+    awaiters : Awaiter.t list;
+  }
+
+  and cass =
+    | CASS : {
+        loc : 'a loc;
+        desired : 'a state;
+        mutable awaiters : Awaiter.t list;
+      }
+        -> cass
+
+  and cmps = CMPS : { loc : 'a loc; current : 'a state } -> cmps
   and casn = status Atomic.t
 
   and status =
-    | Undetermined of { cass : cass list; cmps : cass list }
+    | Undetermined of { cass : cass list; cmps : cmps list }
     | After
     | Before
 
   let make after =
-    Atomic.make { before = after; after; casn = Atomic.make After }
+    Atomic.make
+      { before = after; after; casn = Atomic.make After; awaiters = [] }
 
   type cas = CAS : 'a loc * 'a * 'a -> cas
   type cmp = CMP : 'a loc * 'a -> cmp
@@ -29,31 +55,44 @@ end = struct
     match Atomic.get casn with
     | After -> true
     | Before -> false
-    | Undetermined { cmps; _ } as current ->
+    | Undetermined undetermined as current ->
         let desired =
           if
             desired == After
-            && cmps
-               |> List.exists @@ fun (CASS (loc, state)) ->
-                  Atomic.get loc != state
+            && undetermined.cmps
+               |> List.exists @@ fun (CMPS cmps) ->
+                  Atomic.get cmps.loc != cmps.current
           then Before
           else desired
         in
-        Atomic.compare_and_set casn current desired |> ignore;
+        if Atomic.compare_and_set casn current desired then begin
+          if desired == After then begin
+            undetermined.cass
+            |> List.iter @@ fun (CASS cass) ->
+               List.iter Awaiter.signal cass.awaiters;
+               cass.desired.before <- cass.desired.after
+          end
+          else begin
+            undetermined.cass
+            |> List.iter @@ fun (CASS cass) ->
+               cass.desired.after <- cass.desired.before
+          end
+        end;
         Atomic.get casn == After
 
   let rec gkmz casn = function
     | [] -> finish casn After
-    | CASS (loc, desired) :: continue as retry -> begin
-        let current = Atomic.get loc in
-        if desired == current then gkmz casn continue
+    | CASS cass :: continue as retry -> begin
+        let current = Atomic.get cass.loc in
+        if cass.desired == current then gkmz casn continue
         else
           let current_value = get_from current in
-          if current_value != desired.before then finish casn Before
+          if current_value != cass.desired.before then finish casn Before
           else
             match Atomic.get casn with
             | Undetermined _ ->
-                if Atomic.compare_and_set loc current desired then
+                cass.awaiters <- current.awaiters;
+                if Atomic.compare_and_set cass.loc current cass.desired then
                   gkmz casn continue
                 else gkmz casn retry
             | After -> true
@@ -73,7 +112,9 @@ end = struct
     let cass =
       logical_cas_list
       |> List.map @@ function
-         | CAS (loc, before, after) -> CASS (loc, { before; after; casn })
+         | CAS (loc, before, after) ->
+             let next = { before; after; casn; awaiters = [] } in
+             CASS { loc; desired = next; awaiters = [] }
     in
     let cmps =
       logical_cmp_list
@@ -81,7 +122,7 @@ end = struct
          | CMP (loc, expected) ->
              let current = Atomic.get loc in
              if get_from current != expected then raise Exit
-             else CASS (loc, current)
+             else CMPS { loc; current }
     in
     Atomic.set casn (Undetermined { cass; cmps });
     gkmz casn cass
@@ -93,8 +134,14 @@ end = struct
 end
 
 let () =
-  let x = Kcas.make 82 in
-  let y = Kcas.make 40 in
-  assert (Kcas.atomically [ CAS (x, 82, 42) ] [ CMP (y, 40) ]);
-  assert (Kcas.get x == 42 && Kcas.get y == 40);
+  let module Awaiter = struct
+    type t = unit
+
+    let signal = ignore
+  end in
+  let module STM = Make (Awaiter) in
+  let x = STM.make 82 in
+  let y = STM.make 40 in
+  assert (STM.atomically [ CAS (x, 82, 42) ] [ CMP (y, 40) ]);
+  assert (STM.get x == 42 && STM.get y == 40);
   ()
