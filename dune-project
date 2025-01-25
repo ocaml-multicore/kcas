@@ -34,12 +34,22 @@
    (>= 4.13.0))
   (backoff
    (>= 0.1.1))
-  (domain-local-await
-   (>= 1.0.1))
-  (domain-local-timeout
-   (>= 1.0.1))
   (multicore-magic
    (>= 2.3.0))
+  (picos
+   (>= 0.5.0))
+  (picos_std
+   (and
+    (>= 0.5.0)
+    :with-test))
+  (picos_io
+   (and
+    (>= 0.5.0)
+    :with-test))
+  (picos_mux
+   (and
+    (>= 0.5.0)
+    :with-test))
   (domain_shims
    (and
     (>= 0.1.0)
@@ -84,9 +94,21 @@
    (and
     (>= 0.1.1)
     :with-test))
-  (domain-local-await
+  (picos
    (and
-    (>= 1.0.1)
+    (>= 0.5.0)
+    :with-test))
+  (picos_std
+   (and
+    (>= 0.5.0)
+    :with-test))
+  (picos_io
+   (and
+    (>= 0.5.0)
+    :with-test))
+  (picos_mux
+   (and
+    (>= 0.5.0)
     :with-test))
   (domain_shims
    (and
