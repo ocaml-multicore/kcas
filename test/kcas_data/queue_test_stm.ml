@@ -30,8 +30,7 @@ module Spec = struct
     [
       Gen.int |> Gen.map (fun x -> Push x);
       Gen.return Take_opt;
-      Gen.return Peek_opt;
-      Gen.return Length;
+      Gen.return Length |> Gen.map (fun _ -> Peek_opt);
     ]
     |> Gen.oneof |> make ~print:show_cmd
 
