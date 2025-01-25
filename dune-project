@@ -48,6 +48,10 @@
    (and
     (>= 1.8.0)
     :with-test))
+  (dscheck
+   (and
+    (>= 0.5.0)
+    :with-test))
   (qcheck-core
    (and
     (>= 0.21.2)
