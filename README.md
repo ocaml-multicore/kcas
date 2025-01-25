@@ -81,6 +81,7 @@ is distributed under the [ISC license](LICENSE.md).
   - [Programming with transactional data structures](#programming-with-transactional-data-structures)
     - [The dining philosophers problem](#the-dining-philosophers-problem)
     - [A transactional LRU cache](#a-transactional-lru-cache)
+    - [The sleeping barbers problem](#the-sleeping-barbers-problem)
 - [Designing lock-free algorithms with k-CAS](#designing-lock-free-algorithms-with-k-cas)
   - [Understand performance](#understand-performance)
   - [Minimize accesses](#minimize-accesses)
@@ -1048,6 +1049,270 @@ val a_cache : (int, string) cache =
 
 As an exercise, implement an operation to `remove` associations from a cache and
 an operation to change the capacity of the cache.
+
+#### The sleeping barbers problem
+
+The
+[sleeping barber problem](https://en.wikipedia.org/wiki/Sleeping_barber_problem)
+is another classic communication and synchronization problem. Let's write a
+solution using **Kcas**.
+
+There are
+[many ways to solve the problem](https://en.wikipedia.org/wiki/Sleeping_barber_problem#Solutions)
+and, in particular, there are concise and subtle implementations using
+semaphores or mutexes. Instead of transliterating a solution using semaphores,
+our approach uses queues and other concurrent data structures. We also solve the
+generalized problem with multiple barbers and we also implement a mechanism to
+close the barbershop. In addition, we abstract the concept of a barbershop,
+where barbers and customers interact. All of this makes our solution longer than
+the well known semaphore based solution. On the other hand, one might argue that
+our solution is a more direct transliteration of the problem. Our solution also
+avoids the starvation problem by using queues.
+
+Let's begin by abstracting customer
+
+```ocaml
+type customer = {
+  notify_hair_has_been_cut : 'x.xt:'x Xt.t -> unit;
+}
+```
+
+and barber
+
+```ocaml
+type barber = {
+  wake_up : 'x.xt:'x Xt.t -> customer -> unit;
+}
+```
+
+actors. The idea is that barbers notify customers after finishing their haircut
+and, adhering to the problem description, customers wake up sleeping barbers.
+
+A barbershop consists of any number of barbers and waiting customers and can be
+marked as closed:
+
+```ocaml
+type barbershop = {
+  sleeping_barbers : barber Queue.t;
+  waiting_customers : customer Queue.t;
+  is_closed : bool Loc.t;
+}
+```
+
+The barbershop constructor does not limit the number of barbers, which are
+assumed to bring their own chairs, but does require a specification of the
+number of waiting room chairs for customers:
+
+```ocaml
+# let barbershop ~num_waiting_chairs =
+    let sleeping_barbers = Queue.create ()
+    and waiting_customers = Queue.create ~capacity:num_waiting_chairs ()
+    and is_closed = Loc.make false in
+    { sleeping_barbers; waiting_customers; is_closed }
+val barbershop : num_waiting_chairs:int -> barbershop = <fun>
+```
+
+Although the `barbershop` type is not abstract, we treat it as such, so we
+provide a transactional predicate to check whether the barbershop is closed or
+not:
+
+```ocaml
+# let is_closed ~xt bs = Xt.get ~xt bs.is_closed
+val is_closed : xt:'a Xt.t -> barbershop -> bool = <fun>
+```
+
+To `close` a barbershop we set the `is_closed` location to `true` and clear both
+the sleeping barbers and waiting customers queues:
+
+```ocaml
+# let close ~xt bs =
+    Xt.set ~xt bs.is_closed true;
+    Queue.Xt.clear ~xt bs.sleeping_barbers;
+    Queue.Xt.clear ~xt bs.waiting_customers
+val close : xt:'a Xt.t -> barbershop -> unit = <fun>
+```
+
+A barber can try to get a customer sitting on a waiting room chair:
+
+```ocaml
+# let get_sitting_customer_opt ~xt bs =
+    Queue.Xt.take_opt ~xt bs.waiting_customers
+val get_sitting_customer_opt : xt:'a Xt.t -> barbershop -> customer option =
+  <fun>
+```
+
+Or may go to sleep on the barber's own chair:
+
+```ocaml
+# let sleep ~xt bs barber =
+    if not (is_closed ~xt bs) then
+      Queue.Xt.add ~xt barber bs.sleeping_barbers
+val sleep : xt:'a Xt.t -> barbershop -> barber -> unit = <fun>
+```
+
+Note that the `sleep` transaction uses the `is_closed` predicate. Barbers, as
+well as customers, must leave the shop in case it is closed.
+
+A customer can try to find a sleeping barber:
+
+```ocaml
+# let get_sleeping_barber_opt ~xt bs =
+    Queue.Xt.take_opt ~xt bs.sleeping_barbers
+val get_sleeping_barber_opt : xt:'a Xt.t -> barbershop -> barber option =
+  <fun>
+```
+
+Or sit on a waiting room chair:
+
+```ocaml
+# let try_sitting ~xt bs customer =
+    not (is_closed ~xt bs) &&
+    Queue.Xt.try_add ~xt customer bs.waiting_customers
+val try_sitting : xt:'a Xt.t -> barbershop -> customer -> bool = <fun>
+```
+
+The above `try_sitting` transaction is non-blocking. In case the
+`waiting_customers` queue is full, it will return `false`. With the `customer`
+actor implementation we'll look at shortly this would mean that customers would
+busy-wait, which works, but potentially wastes energy. Here is a blocking
+version of `try_sitting`:
+
+```ocaml
+# let try_sitting ~xt bs customer =
+    not (is_closed ~xt bs) &&
+    begin
+      Queue.Xt.add ~xt customer bs.waiting_customers;
+      true
+    end
+val try_sitting : xt:'a Xt.t -> barbershop -> customer -> bool = <fun>
+```
+
+Both of the above `try_sitting` transactions work with the `customer` actor
+we'll see shortly, but with the latter blocking version we avoid busy-wait.
+
+The above constitutes the barbershop abstraction which is a kind of passive
+concurrent data structure. Let's then implement the active participants of the
+problem.
+
+A customer tries to get a haircut. When a customer enter the barbershop he first
+tries to find a sleeping barber. If none is available, the customer then tries
+to sit on a waiting room chair. If both fail, then the customer has no option
+except to retry. Otherwise the customer waits to get a haircut. If the shop is
+closed, the customer exits. Here is the `customer` actor:
+
+```ocaml
+# let customer shop cuts =
+    let clean = Mvar.create None in
+    let self = { notify_hair_has_been_cut = Mvar.Xt.put clean true } in
+    while not (Xt.commit { tx = is_closed shop }) do
+      let get_barber_opt ~xt =
+        match get_sleeping_barber_opt ~xt shop with
+        | None ->
+          try_sitting ~xt shop self
+        | Some barber ->
+          barber.wake_up ~xt self;
+          true
+      in
+      if Xt.commit { tx = get_barber_opt } then
+        let try_await_haircut ~xt =
+          not (is_closed ~xt shop) &&
+          Mvar.Xt.take ~xt clean
+        in
+        if Xt.commit { tx = try_await_haircut } then
+          Loc.incr cuts
+    done
+val customer : barbershop -> int Loc.t -> unit = <fun>
+```
+
+A barber tries to get a customer to give a haircut. A barber first looks for a
+customer from the waiting room. If none is available, the barber goes to sleep
+waiting for a wakeup from a customer. After obtaining a customer in either way,
+the barber gives a haircut to the customer. Otherwise the shop must be closed
+and the barber exits. Here is the `barber` actor:
+
+```ocaml
+# let barber shop cuts =
+    let customer = Mvar.create None in
+    let self = { wake_up = Mvar.Xt.put customer } in
+    while not (Xt.commit { tx = is_closed shop }) do
+      let cut customer =
+        Xt.commit { tx = customer.notify_hair_has_been_cut };
+        Loc.incr cuts
+      in
+      let get_customer_opt ~xt =
+        match get_sitting_customer_opt ~xt shop with
+        | Some _ as some -> some
+        | None ->
+          sleep ~xt shop self;
+          None
+      in
+      match Xt.commit { tx = get_customer_opt } with
+      | Some customer -> cut customer
+      | None ->
+        let await_wakeup_opt ~xt =
+          if is_closed ~xt shop then None
+          else Some (Mvar.Xt.take ~xt customer)
+        in
+        match Xt.commit { tx = await_wakeup_opt } with
+        | Some customer -> cut customer
+        | None -> ()
+    done
+val barber : barbershop -> int Loc.t -> unit = <fun>
+```
+
+To run the problem, a barbershop is created with given number of waiting room
+chairs, is populated by given number of barbers, and a given number of customers
+are spawned. Once each barber has given and each customer has received a given
+number of haircuts the shop is closed. This termination condition seeks to
+demonstrate that no actor is starved. Here is the `sleeping_barbers` setup:
+
+```ocaml
+# let sleeping_barbers ~barbers
+                       ~num_waiting_chairs
+                       ~customers
+                       ~cuts_per_actor =
+    assert (0 < barbers
+         && 0 <= num_waiting_chairs
+         && 0 <= customers
+         && 0 <= cuts_per_actor);
+    let shop = barbershop ~num_waiting_chairs in
+    let barbers = Array.init barbers @@ fun _ ->
+      let cuts = Loc.make 0 in
+      (cuts, Domain.spawn @@ (fun () -> barber shop cuts))
+    and customers = Array.init customers @@ fun _ ->
+      let cuts = Loc.make 0 in
+      (cuts, Domain.spawn @@ (fun () -> customer shop cuts))
+    in
+    let agents = Array.append barbers customers in
+    while agents
+          |> Array.map fst
+          |> Array.exists @@ fun c ->
+             Loc.get c < cuts_per_actor do
+      Domain.cpu_relax ()
+    done;
+    Xt.commit { tx = close shop };
+    agents
+    |> Array.map snd
+    |> Array.iter Domain.join
+val sleeping_barbers :
+  barbers:int ->
+  num_waiting_chairs:int -> customers:int -> cuts_per_actor:int -> unit =
+  <fun>
+```
+
+Finally, let's try our solution:
+
+```ocaml
+# sleeping_barbers ~barbers:2
+                   ~num_waiting_chairs:1
+                   ~customers:4
+                   ~cuts_per_actor:10
+- : unit = ()
+```
+
+Like mentioned in the beginning, this is not the most concise solution of the
+sleeping barbers problem, but hopefully this solution can be understood
+relatively easily with respect to the problem description.
 
 ## Designing lock-free algorithms with k-CAS
 
