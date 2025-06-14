@@ -19,4 +19,4 @@
    (run %{test} -brief "Kcas_data Mvar")
    (run %{test} -brief "Kcas_data Queue")
    (run %{test} -brief "Kcas_data Stack")))
- (libraries kcas_data multicore-bench backoff multicore-magic))
+ (libraries backoff kcas_data multicore-bench multicore-magic scheduler))

@@ -1,3 +1,9 @@
+## Next version
+
+- Changed to use [Picos](https://github.com/ocaml-multicore/picos/) instead of
+  [DLA](https://github.com/ocaml-multicore/domain-local-await/) and
+  [DLT](https://github.com/ocaml-multicore/domain-local-timeout/) (@polytypic)
+
 ## 0.7.0
 
 - Numerous minor internal improvements (@polytypic)

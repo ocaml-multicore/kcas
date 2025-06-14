@@ -1,7 +1,10 @@
+open Picos_std_structured
 open Kcas
 open Kcas_data
 
 let basics () =
+  Scheduler.run ~n_domains:2 @@ fun () ->
+  Flock.join_after @@ fun () ->
   let mv = Mvar.create (Some 101) in
   assert (not (Mvar.is_empty mv));
   assert (Mvar.take mv = 101);
@@ -9,14 +12,13 @@ let basics () =
   assert (Mvar.take_opt mv = None);
   Mvar.put mv 42;
   let running = Mvar.create None in
-  let d =
-    Domain.spawn @@ fun () ->
+  begin
+    Flock.fork @@ fun () ->
     Mvar.put running ();
     Xt.commit { tx = Mvar.Xt.put mv 76 }
-  in
+  end;
   assert (Mvar.take running = ());
   assert (Xt.commit { tx = Mvar.Xt.take mv } = 42);
-  Domain.join d;
   assert (Mvar.take mv = 76)
 
 let () =

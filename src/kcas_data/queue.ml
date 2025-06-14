@@ -139,10 +139,10 @@ let take_opt q =
   | None -> Kcas.Xt.commit { tx = Xt.take_opt q }
   | some -> some
 
-let take_blocking ?timeoutf q =
+let take_blocking q =
   (* Fenceless is safe as we revert to a transaction in case we didn't update. *)
   match Loc.fenceless_update q.front Elems.tl_safe |> Elems.hd_opt with
-  | None -> Kcas.Xt.commit ?timeoutf { tx = Xt.take_blocking q }
+  | None -> Kcas.Xt.commit { tx = Xt.take_blocking q }
   | Some elem -> elem
 
 let take_all q = Kcas.Xt.commit { tx = Xt.take_all q }
@@ -152,9 +152,7 @@ let peek_opt q =
   | None -> Kcas.Xt.commit { tx = Xt.peek_opt q }
   | some -> some
 
-let peek_blocking ?timeoutf q =
-  Kcas.Xt.commit ?timeoutf { tx = Xt.peek_blocking q }
-
+let peek_blocking q = Kcas.Xt.commit { tx = Xt.peek_blocking q }
 let clear q = Kcas.Xt.commit { tx = Xt.clear q }
 let swap q1 q2 = Kcas.Xt.commit { tx = Xt.swap q1 q2 }
 let to_seq q = Kcas.Xt.commit { tx = Xt.to_seq q }

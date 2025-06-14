@@ -1,7 +1,6 @@
 module type Ops = sig
   type 'a t
   type ('x, 'fn) fn
-  type ('x, 'fn) blocking_fn
 
   val is_empty : ('x, 'a t -> bool) fn
   (** [is_empty s] determines whether the stack [s] is empty. *)
@@ -34,7 +33,7 @@ module type Ops = sig
       sequence for iterating through all the elements that were in the stack top
       to bottom. *)
 
-  val pop_blocking : ('x, 'a t -> 'a) blocking_fn
+  val pop_blocking : ('x, 'a t -> 'a) fn
   (** [pop_blocking s] removes and returns the topmost element of the stack [s],
       or blocks waiting for the queue to become non-empty. *)
 
@@ -42,7 +41,7 @@ module type Ops = sig
   (** [top_opt s] returns the topmost element in stack [s], or [None] if the
       stack is empty. *)
 
-  val top_blocking : ('x, 'a t -> 'a) blocking_fn
+  val top_blocking : ('x, 'a t -> 'a) fn
   (** [top_blocking s] returns the topmost element in stack [s], or blocks
       waiting for the queue to become non-empty. *)
 end
