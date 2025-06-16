@@ -23,10 +23,15 @@ module type Ops = sig
       and modifications of the queue have no effect on the sequence. *)
 
   val add : ('x, 'a -> 'a t -> unit) fn
-  (** [add x q] adds the element [x] at the end of the queue [q]. *)
+  (** [add x q] adds the element [x] at the end of the queue [q], or blocks
+      waiting until the queue is no longer full. *)
 
   val push : ('x, 'a -> 'a t -> unit) fn
   (** [push] is a synonym for {!add}. *)
+
+  val try_add : ('x, 'a -> 'a t -> bool) fn
+  (** [try_add x q] tries to add the element [x] to the end of the queue [q] and
+      returns [true] on success or [false] when the queue is full. *)
 
   val peek_opt : ('x, 'a t -> 'a option) fn
   (** [peek_opt q] returns the first element in queue [q], without removing it

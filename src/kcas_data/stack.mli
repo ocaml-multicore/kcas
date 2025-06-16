@@ -18,13 +18,20 @@ type !'a t
 exception Empty
 (** Raised when {!pop} or {!top} is applied to an empty stack. *)
 
-val create : unit -> 'a t
-(** [create ()] returns a new empty stack. *)
+val create : ?capacity:int -> unit -> 'a t
+(** [create ()] returns a new empty stack.
+
+    The optional [capacity] can be used to specify the maximum number of
+    elements that may be stored in the stack at any point.
+
+    {b WARNING}: A [capacity] of [0] is allowed, but it means that no elements
+    can be passed through the stack. In other words, a zero capacity stack is
+    effectively closed. *)
 
 val copy : 'a t -> 'a t
 (** [copy s] returns a copy of the stack [s]. *)
 
-val of_seq : 'a Seq.t -> 'a t
+val of_seq : ?capacity:int -> 'a Seq.t -> 'a t
 (** [of_seq xs] creates a stack from the sequence [xs]. *)
 
 (** {1 Compositional interface} *)
