@@ -3,6 +3,7 @@ let benchmarks =
     ("Kcas Loc", Bench_loc.run_suite);
     ("Kcas Xt", Bench_xt.run_suite);
     ("Kcas Xt read-only", Bench_xt_ro.run_suite);
+    ("Kcas Xt Leftist_heap (unscalable)", Bench_leftist_heap.run_suite);
     ("Kcas parallel CMP", Bench_parallel_cmp.run_suite);
     ("Kcas_data Accumulator", Bench_accumulator.run_suite);
     ("Kcas_data Dllist", Bench_dllist.run_suite);

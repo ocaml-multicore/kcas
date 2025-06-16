@@ -12,6 +12,7 @@
    (run %{test} -brief "Kcas Loc")
    (run %{test} -brief "Kcas Xt")
    (run %{test} -brief "Kcas Xt read-only")
+   (run %{test} -brief "Kcas Xt Leftist_heap (unscalable)")
    (run %{test} -brief "Kcas parallel CMP")
    (run %{test} -brief "Kcas_data Accumulator")
    (run %{test} -brief "Kcas_data Dllist")
