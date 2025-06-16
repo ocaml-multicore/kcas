@@ -1,5 +1,13 @@
 open Kcas_data
 
+let[@tail_mod_cons] rec to_list get_lr cursor =
+  match get_lr cursor with
+  | Dllist.At (List _) -> []
+  | Dllist.At (Node _ as node) ->
+      Dllist.get node :: to_list get_lr (Dllist.At node)
+
+let to_list get_lr list = to_list get_lr (Dllist.At list)
+
 let[@tail_mod_cons] rec take_as_list take l =
   match take l with None -> [] | Some x -> x :: take_as_list take l
 
@@ -37,7 +45,7 @@ let add () =
   Dllist.add_l 1 l |> ignore;
   Dllist.add_l 3 l |> ignore;
   Dllist.add_r 4 l |> ignore;
-  assert (take_as_list Dllist.take_opt_l l = [ 3; 1; 4 ])
+  assert (to_list Dllist.get_r l = [ 3; 1; 4 ])
 
 let move () =
   let t1 = Dllist.create () in
