@@ -23,7 +23,12 @@ module type Ops = sig
       and modifications of the stack have no effect on the sequence. *)
 
   val push : ('x, 'a -> 'a t -> unit) fn
-  (** [push x s] adds the element [x] to the top of the stack [s]. *)
+  (** [push x s] adds the element [x] to the top of the stack [s], or blocks
+      waiting until the stack is no longer full. *)
+
+  val try_push : ('x, 'a -> 'a t -> bool) fn
+  (** [try_push x s] tries to add the element [x] to the top of the stack [s]
+      and returns [true] on success or [false] when the stack is full. *)
 
   val pop_opt : ('x, 'a t -> 'a option) fn
   (** [pop_opt s] removes and returns the topmost element of the stack [s], or

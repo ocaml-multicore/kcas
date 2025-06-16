@@ -38,3 +38,13 @@ let rev_prepend_to_seq t tl =
         | Right t' -> t'
       in
       prepend_to_seq t tl ()
+
+let rec of_list_rev tl length = function
+  | [] -> tl
+  | x :: xs ->
+      let length = length + 1 in
+      of_list_rev { value = x; tl; length } length xs
+
+let[@inline] of_list_rev = function
+  | [] -> empty
+  | x :: xs -> of_list_rev (singleton x) 1 xs
